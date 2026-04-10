@@ -2807,12 +2807,25 @@ function validateCloudData(data){
   try{
     if(!data||typeof data!=='object'){console.error('❌ Invalid data type');return false;}
     if(!data.april||typeof data.april!=='object'){console.error('❌ Missing april object');return false;}
-    const platforms=['zepto','blinkit','instamart','amazon','flipkart','bigbasket'];
+    
+    // Check for at least ONE platform with valid structure (supports both cases)
+    const platforms=['Zepto','zepto','Blinkit','blinkit','Instamart','instamart','Amazon','amazon','Flipkart','flipkart','BigBasket','bigbasket'];
+    let foundValid=false;
+    
     for(const p of platforms){
-      if(!data.april[p]){console.error(`❌ Missing platform: ${p}`);return false;}
-      if(!Array.isArray(data.april[p].daily)){console.error(`❌ Invalid daily for ${p}`);return false;}
-      if(!Array.isArray(data.april[p].sku)){console.error(`❌ Invalid sku for ${p}`);return false;}
+      if(data.april[p]){
+        if(Array.isArray(data.april[p].daily)&&Array.isArray(data.april[p].sku)){
+          foundValid=true;
+          break;
+        }
+      }
     }
+    
+    if(!foundValid){
+      console.error('❌ No valid platform data found');
+      return false;
+    }
+    
     console.log('✅ Cloud data validated');
     return true;
   }catch(e){console.error('❌ Validation error:',e);return false;}
@@ -3464,6 +3477,30 @@ function activateReadonly() {
   // Hide reset + download-readonly buttons
   document.querySelectorAll('button').forEach(b => {
     if (b.textContent.includes('Reset') || b.textContent.includes('Download Read-Only')) b.style.display = 'none';
+    // CRITICAL: Hide all push buttons for viewers
+    if (b.textContent.includes('Push to Cloud') || 
+        b.textContent.includes('Push to GitHub') ||
+        b.textContent.includes('Generate Viewer Sync Code') ||
+        b.onclick && b.onclick.toString().includes('cloudPush') ||
+        b.onclick && b.onclick.toString().includes('githubPush')) {
+      b.style.display = 'none';
+    }
+  });
+  // Hide cloud/GitHub config inputs for viewers
+  const configInputs = ['cloudApiKey', 'cloudBinId', 'ghToken', 'ghUser', 'ghRepo', 'ghPath'];
+  configInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.disabled = true;
+      el.style.opacity = '0.5';
+      el.placeholder = 'Admin only';
+    }
+  });
+  // Hide save config buttons
+  document.querySelectorAll('button').forEach(b => {
+    if (b.textContent.includes('Save & Connect') || b.textContent.includes('Save GitHub Config')) {
+      b.style.display = 'none';
+    }
   });
   // Block upload tab in showTab
   const _orig = window.showTab;
