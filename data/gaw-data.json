@@ -3267,7 +3267,62 @@
       "march": []
     },
     "amazon": {
-      "daily": [],
+      "daily": [
+        {
+          "day": 1,
+          "gmv": 96424,
+          "units": 622,
+          "disc": 0
+        },
+        {
+          "day": 2,
+          "gmv": 108665,
+          "units": 681,
+          "disc": 0
+        },
+        {
+          "day": 3,
+          "gmv": 158856,
+          "units": 981,
+          "disc": 0
+        },
+        {
+          "day": 4,
+          "gmv": 113484,
+          "units": 740,
+          "disc": 0
+        },
+        {
+          "day": 5,
+          "gmv": 81238,
+          "units": 591,
+          "disc": 0
+        },
+        {
+          "day": 6,
+          "gmv": 96337,
+          "units": 592,
+          "disc": 0
+        },
+        {
+          "day": 7,
+          "gmv": 106727,
+          "units": 671,
+          "disc": 0
+        },
+        {
+          "day": 8,
+          "gmv": 113019,
+          "units": 679,
+          "disc": 0
+        },
+        {
+          "day": 9,
+          "gmv": 99007,
+          "units": 616,
+          "disc": 0
+        }
+      ],
       "city": [],
       "sku": [],
       "march": []
