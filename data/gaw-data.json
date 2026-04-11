@@ -894,23 +894,23 @@
       },
       "ICEH2GC8DVHQWX5R": {
         "name": "Keto Blueberry Cheesecake Ice Cream (100 ml)",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "ICEH2GC8GTFJWZ4H": {
         "name": "Black Forest Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "cat": "Ice Cream Pastries"
       },
       "ICEH2GC8NKWVARYJ": {
         "name": "Choco Brownie Fudge Ice Cream (100 ml)",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "ICEH2GC8NKYKCPGG": {
-        "name": "Red Velvet Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "name": "Red Velvet Red Valvet Ice Cream Pastry",
+        "cat": "Ice Cream Pastries"
       },
       "ICEH2GC8UFGYTMDJ": {
         "name": "Biscrunch Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "cat": "Ice Cream Pastries"
       },
       "ICEHEAFC5FGFRQHU": {
         "name": "Blueberry Cheesecake Jar",
@@ -918,11 +918,11 @@
       },
       "ICEHEAFCCXHSGDUM": {
         "name": "Dark Chocolate Cone",
-        "cat": "Cones"
+        "cat": "Ice Cream Cones"
       },
       "ICEHEAFCE6G5FGUY": {
         "name": "Belgian Chocolate Ice Cream (100 ml)",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "ICEHEAFCH98YXSHK": {
         "name": "Death by Chocolate Jar",
@@ -930,11 +930,11 @@
       },
       "ICEHEAFCPXXTNFZ3": {
         "name": "Blueberry Cone",
-        "cat": "Cones"
+        "cat": "Ice Cream Cones"
       },
       "ICEHEAFCRG6CJCW2": {
         "name": "Chocolate Brownie Cone",
-        "cat": "Cones"
+        "cat": "Ice Cream Cones"
       },
       "ICEHEAFCTX6UDJFT": {
         "name": "Hazelnut Jar",
@@ -954,7 +954,15 @@
       },
       "ICEH2GC8TBJK5KDC": {
         "name": "Mango Ice Cream Cup (100 ml)",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
+      },
+      "ICEH2GC8AFADSBK4": {
+        "name": "Keto Very Berry Ice Cream Cup (100 ml)",
+        "cat": "Ice Cream Cups"
+      },
+      "ICEH2GC8ZZGUP5DK": {
+        "name": "Malai Kulfi",
+        "cat": "Sticks"
       }
     },
     "BigBasket": {
