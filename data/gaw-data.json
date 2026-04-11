@@ -3328,7 +3328,62 @@
       "march": []
     },
     "flipkart": {
-      "daily": [],
+      "daily": [
+        {
+          "day": 1,
+          "gmv": 158391,
+          "units": 1231,
+          "disc": 0
+        },
+        {
+          "day": 2,
+          "gmv": 130403,
+          "units": 972,
+          "disc": 0
+        },
+        {
+          "day": 3,
+          "gmv": 190594,
+          "units": 1372,
+          "disc": 0
+        },
+        {
+          "day": 4,
+          "gmv": 173722,
+          "units": 1264,
+          "disc": 0
+        },
+        {
+          "day": 5,
+          "gmv": 227898,
+          "units": 1706,
+          "disc": 0
+        },
+        {
+          "day": 6,
+          "gmv": 119758,
+          "units": 876,
+          "disc": 0
+        },
+        {
+          "day": 7,
+          "gmv": 125803,
+          "units": 921,
+          "disc": 0
+        },
+        {
+          "day": 8,
+          "gmv": 138723,
+          "units": 1009,
+          "disc": 0
+        },
+        {
+          "day": 9,
+          "gmv": 136669,
+          "units": 993,
+          "disc": 0
+        }
+      ],
       "city": [],
       "sku": [],
       "march": []
