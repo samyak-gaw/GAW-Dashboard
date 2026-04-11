@@ -967,91 +967,91 @@
     },
     "BigBasket": {
       "40203125": {
-        "name": "Belgian Chocolate Ice Cream 100 Ml",
-        "cat": "Ice Cream Cup"
+        "name": "Belgian Chocolate Ice Cream 100 ml",
+        "cat": "Ice Cream Cups"
       },
       "40203126": {
-        "name": "Chocolate Brownie Fudge Ice Cream 100 Ml",
-        "cat": "Ice Cream Cup"
+        "name": "Chocolate Brownie Fudge Ice Cream 100 ml",
+        "cat": "Ice Cream Cups"
       },
       "40203130": {
-        "name": "Keto Very Berry Ice Cream 100 Ml",
-        "cat": "Ice Cream Cup"
+        "name": "Get A Whey Very Berry Ice Cream 100 ml",
+        "cat": "Ice Cream Cups"
       },
       "40221162": {
-        "name": "Belgian Chocolate Ice Cream Tub 500 Ml",
+        "name": "Belgian Chocolate Ice Cream Tub 500ml",
         "cat": "Ice Cream Tubs"
       },
       "40221163": {
-        "name": "Chocolate Brownie Fudge Ice Cream Tub 500 Ml",
+        "name": "Chocolate Brownie Fudge Ice Cream Tub 500ml",
         "cat": "Ice Cream Tubs"
       },
       "40221167": {
-        "name": "Mango Ice Cream Tub 500 Ml",
+        "name": "Mango Ice Cream Tub 500ml",
         "cat": "Ice Cream Tubs"
       },
       "40265470": {
-        "name": "Keto Blueberry Cheesecake Ice Cream 100 Ml",
-        "cat": "Ice Cream Cup"
+        "name": "Blueberry Cheesecake Ice Cream Cup 100ml",
+        "cat": "Ice Cream Cups"
       },
       "40339079": {
-        "name": "Brownie Crunch Ice Cream Bars 70 Ml",
+        "name": "Brownie Crunch Ice Cream Bar",
         "cat": "Sticks"
       },
       "40339080": {
-        "name": "Choco Hazelnut Crunch Ice Cream Bars 70 Ml",
+        "name": "Choco Hazelnut Crunch Ice Cream Bar",
         "cat": "Sticks"
       },
       "40339081": {
-        "name": "Black Forest Ice Cream Pastry 150 Ml",
-        "cat": "Ice Cream Pastry"
+        "name": "Black Forest Ice Cream Pastry",
+        "cat": "Ice Cream Pastries"
       },
       "40339082": {
-        "name": "Red Velvet Ice Cream Pastry 150 Ml",
-        "cat": "Ice Cream Pastry"
+        "name": "Red Velvet Ice Cream Pastry",
+        "cat": "Ice Cream Pastries"
       },
       "40339083": {
         "name": "Biscrunch Ice Cream Pastry 150 Ml",
         "cat": "Ice Cream Pastry"
       },
       "40339084": {
-        "name": "Chocolate Cassata",
+        "name": "Chocolate Cassata Ice Cream",
         "cat": "Cassata"
       },
       "40362028": {
-        "name": "Strawberry Cheesecake Jar 80 G",
+        "name": "Strawberry Cheesecake  Jar",
         "cat": "Dessert Jars"
       },
       "40362029": {
-        "name": "Tiramisu Cheesecake Jar 80 G",
+        "name": "Tiramisu Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "40362030": {
-        "name": "Hazelnut Choco Cheesecake Jar 80 G",
+        "name": "Hazelnut Choco Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "40362031": {
-        "name": "Blueberry Cheesecake Jar 80 G",
+        "name": "Blueberry Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "40362032": {
-        "name": "Death By Chocolate Jar 80 G",
+        "name": "Death By Chocolate Jar",
         "cat": "Dessert Jars"
       },
       "40362033": {
         "name": "Dark Chocolate Cone",
-        "cat": "Cones"
+        "cat": "Ice Cream Cones"
       },
       "40362034": {
         "name": "Chocolate Brownie Cone",
-        "cat": "Cones"
+        "cat": "Ice Cream Cones"
       },
       "40362035": {
         "name": "Blueberry Cone",
-        "cat": "Cones"
+        "cat": "Ice Cream Cones"
       },
       "40362036": {
-        "name": "Keto Blueberry Cheesecake Ice Cream Tub 500 Ml",
+        "name": "Blueberry Cheesecake JarTub 500ml",
         "cat": "Ice Cream Tubs"
       }
     }
