@@ -454,83 +454,87 @@
     "Blinkit": {
       "10110765": {
         "name": "Belgian Chocolate Ice Cream Cup 100 ml",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "10110766": {
         "name": "Chocolate Brownie Fudge Ice Cream Cup 100 ml",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "10110767": {
-        "name": "Keto Very Berry Ice Cream Cup 100 ml",
-        "cat": "Ice Cream Cup"
+        "name": "Very Berry Ice Cream Cup 100 ml",
+        "cat": "Ice Cream Cups"
       },
       "10110770": {
-        "name": "Keto Blueberry Cheesecake Ice Cream Cup 100 ml",
-        "cat": "Ice Cream Cup"
+        "name": "Blueberry Cheesecake Ice Cream Cup 100 ml",
+        "cat": "Ice Cream Cups"
+      },
+      "10114302": {
+        "name": "Blueberry Ice Cream Sandwich 2 Pieces",
+        "cat": "Ice Cream Sandwich"
       },
       "10141298": {
-        "name": "Black Forest Ice Cream Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "name": "Black Forest Ice Cream Pastry",
+        "cat": "Ice Cream Pastries"
       },
       "10141579": {
-        "name": "New York Style Cheesecake Slice 95 g",
-        "cat": "Dessert Slice"
+        "name": "New York Style Cheesecake Slice",
+        "cat": "Cake Slice"
       },
       "10152615": {
-        "name": "Brownie Crunch Ice Cream Stick 70 ml",
+        "name": "Brownie Crunch Ice Cream Bar",
         "cat": "Sticks"
       },
       "10156246": {
-        "name": "Red Velvet Ice Cream Pastry 150 ml",
-        "cat": "Ice Cream Pastry"
+        "name": "Red Velvet Ice Cream Pastry",
+        "cat": "Ice Cream Pastries"
       },
       "10159629": {
-        "name": "Biscrunch Ice Cream Pastry 150 ml",
-        "cat": "Ice Cream Pastry"
+        "name": "Biscrunch Ice Cream Pastry",
+        "cat": "Ice Cream Pastries"
       },
       "10159630": {
-        "name": "Chocolate Cassata Ice Cream 125 ml",
+        "name": "Chocolate Cassata Ice Cream",
         "cat": "Cassata"
       },
       "10176995": {
-        "name": "Blueberry Cheesecake Jar 80 g",
+        "name": "Blueberry Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "10177001": {
-        "name": "Hazelnut Choco Cheesecake Jar 80 g",
+        "name": "Hazelnut Choco Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "10177006": {
-        "name": "Death By Chocolate Cake Jar 80 g",
+        "name": "Death By Chocolate Cake Jar",
         "cat": "Dessert Jars"
       },
       "10177007": {
-        "name": "Tiramisu Jar 80 g",
+        "name": "Tiramisu Jar",
         "cat": "Dessert Jars"
       },
       "10177008": {
-        "name": "Triple Chocolate Ice Cream Cake 475 g",
+        "name": "Triple Chocolate Ice Cream Cake",
         "cat": "Ice Cream Cake"
       },
       "10275624": {
-        "name": "Hot Chocolate Fudge Ice Cream Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "name": "Hot Chocolate Fudge Ice Cream Pastry",
+        "cat": "Ice Cream Pastries"
       },
       "10292287": {
-        "name": "Raspberry Duet Ice Cream Stick 60 ml",
+        "name": "Raspberry Duet Ice Cream Stick",
         "cat": "Sticks"
       },
       "10292641": {
-        "name": "Mango Duet Ice Cream Stick 60 ml",
+        "name": "Mango Duet Ice Cream Stick",
         "cat": "Sticks"
       },
       "10293018": {
-        "name": "Dark Chocolate Ice Cream Cone 110 ml",
-        "cat": "Cones"
+        "name": "Dark Chocolate Ice Cream Cone",
+        "cat": "Ice Cream Cones"
       },
       "10293049": {
-        "name": "Choco Brownie Ice Cream Cone 110 ml",
-        "cat": "Cones"
+        "name": "Choco Brownie Ice Cream Cone",
+        "cat": "Ice Cream Cones"
       }
     },
     "Instamart": {
