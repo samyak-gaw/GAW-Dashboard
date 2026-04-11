@@ -3389,7 +3389,68 @@
       "march": []
     },
     "bigbasket": {
-      "daily": [],
+      "daily": [
+        {
+          "day": 1,
+          "gmv": 83425,
+          "units": 481,
+          "disc": 0
+        },
+        {
+          "day": 2,
+          "gmv": 84286,
+          "units": 499,
+          "disc": 0
+        },
+        {
+          "day": 3,
+          "gmv": 102011,
+          "units": 607,
+          "disc": 0
+        },
+        {
+          "day": 4,
+          "gmv": 102011,
+          "units": 607,
+          "disc": 0
+        },
+        {
+          "day": 5,
+          "gmv": 107242,
+          "units": 662,
+          "disc": 0
+        },
+        {
+          "day": 6,
+          "gmv": 78370,
+          "units": 484,
+          "disc": 0
+        },
+        {
+          "day": 7,
+          "gmv": 83237,
+          "units": 536,
+          "disc": 0
+        },
+        {
+          "day": 8,
+          "gmv": 101222,
+          "units": 632,
+          "disc": 0
+        },
+        {
+          "day": 9,
+          "gmv": 84289,
+          "units": 546,
+          "disc": 0
+        },
+        {
+          "day": 10,
+          "gmv": 81644,
+          "units": 500,
+          "disc": 0
+        }
+      ],
       "city": [],
       "sku": [],
       "march": []
