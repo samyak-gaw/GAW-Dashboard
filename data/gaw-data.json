@@ -540,19 +540,19 @@
     "Instamart": {
       "17130": {
         "name": "Chocolate Brownie Fudge Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "17132": {
         "name": "Belgian Chocolate Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "17133": {
         "name": "Mango Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "17134": {
-        "name": "Keto Friendly Blueberry Cheesecake Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "name": "Blueberry Cheesecake Ice Cream Cup 100ml",
+        "cat": "Ice Cream Cups"
       },
       "25436": {
         "name": "Chocolate Brownie Ice Cream Sandwich (2 Pieces)",
@@ -560,7 +560,7 @@
       },
       "35763": {
         "name": "Black Forest Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "cat": "Ice Cream Pastries"
       },
       "35764": {
         "name": "Malai Kulfi Stick",
@@ -571,99 +571,103 @@
         "cat": "Sticks"
       },
       "49758": {
-        "name": "Belgian Chocolate Ice Cream Tub",
+        "name": "Belgian Chocolate Ice Cream Tub 500ml",
         "cat": "Ice Cream Tubs"
       },
       "52909": {
-        "name": "Brownie Crunch Ice Cream Stick",
+        "name": "Brownie Crunch Ice Cream Bar",
         "cat": "Sticks"
       },
       "74574": {
-        "name": "Choco Hazelnut Crunch Ice Cream Stick",
+        "name": "Choco Hazelnut Crunch Ice Cream Bar",
         "cat": "Sticks"
       },
       "124064": {
-        "name": "Tiramisu Jar 80g",
+        "name": "Tiramisu Jar",
         "cat": "Dessert Jars"
+      },
+      "141185": {
+        "name": "Hot Chocolate Fudge Ice Cream Pastry",
+        "cat": "Ice Cream Pastries"
       },
       "170664": {
         "name": "Red Velvet Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "cat": "Ice Cream Pastries"
       },
       "173601": {
-        "name": "Strawberry Raspberry Ice Pops",
-        "cat": "Popsicle"
+        "name": "Strawberry Raspberry Ice Pop",
+        "cat": "Popsicles"
       },
       "225668": {
-        "name": "Blueberry Cheesecake Jar 80g",
+        "name": "Blueberry Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "262270": {
         "name": "Vanilla Chocobite Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "415296": {
         "name": "Triple Chocolate Ice Cream Cake",
         "cat": "Ice Cream Cake"
       },
       "456298": {
-        "name": "Dark Chocolate Ice Cream Cone 110ml",
-        "cat": "Cones"
+        "name": "Dark Chocolate Ice Cream Cone",
+        "cat": "Ice Cream Cones"
       },
       "467405": {
-        "name": "Tender Coconut Litchi Ice Pops",
-        "cat": "Popsicle"
+        "name": "Tender Coconut Litchi Ice Pop",
+        "cat": "Popsicles"
       },
       "470068": {
-        "name": "Mango Malai Creamsicle (Low Calorie Duet)",
+        "name": "Mango Malai Creamsicle",
         "cat": "Sticks"
       },
       "503217": {
         "name": "Biscrunch Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "cat": "Ice Cream Pastries"
       },
       "515499": {
-        "name": "Mango Ice Cream Tub",
+        "name": "Mango Ice Cream Tub 500ml",
         "cat": "Ice Cream Tubs"
       },
       "556816": {
-        "name": "Mango Medley Ice Cream Cone 110ml",
-        "cat": "Cones"
+        "name": "Mango Medley Ice Cream Cone",
+        "cat": "Ice Cream Cones"
       },
       "639100": {
-        "name": "Blueberry Cheesecake Ice Cream Cone 110ml",
-        "cat": "Cones"
+        "name": "Blueberry Cheesecake Ice Cream Cone",
+        "cat": "Ice Cream Cones"
       },
       "644708": {
-        "name": "Chocolate Brownie Ice Cream Cone 110ml",
-        "cat": "Cones"
+        "name": "Chocolate Brownie Ice Cream Cone",
+        "cat": "Ice Cream Cones"
       },
       "718116": {
         "name": "Chocolate Cassata",
         "cat": "Cassata"
       },
       "725140": {
-        "name": "Hazelnut Choco Cheesecake Jar 80g",
+        "name": "Hazelnut Choco Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "725797": {
-        "name": "Mango Duet",
+        "name": "Mango Duet Ice Cream Stick",
         "cat": "Sticks"
       },
       "834609": {
         "name": "Chocolate Overload Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "860758": {
-        "name": "Strawberry Cheesecake Jar 80g",
+        "name": "Strawberry Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "867711": {
-        "name": "Chocolate Brownie Fudge Ice Cream Tub",
+        "name": "Chocolate Brownie Fudge Ice Cream Tub 500ml",
         "cat": "Ice Cream Tubs"
       },
       "932255": {
-        "name": "Raspberry Duet",
+        "name": "Raspberry Duet Ice Cream Stick",
         "cat": "Sticks"
       },
       "966005": {
@@ -671,7 +675,7 @@
         "cat": "Ice Cream Sandwich"
       },
       "969627": {
-        "name": "Death By Chocolate Jar 80g",
+        "name": "Death By Chocolate Jar",
         "cat": "Dessert Jars"
       }
     },
