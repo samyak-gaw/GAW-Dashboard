@@ -795,48 +795,48 @@
     },
     "Amazon": {
       "B0F1Y4P7HG": {
-        "name": "Belgian Chocolate High Protein Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "name": "Belgian Chocolate Ice Cream Cup 100ml",
+        "cat": "Ice Cream Cups"
       },
       "B0F1Y3TXHC": {
-        "name": "Belgian Chocolate Ice Cream 500 ml",
+        "name": "Belgian Chocolate Ice Cream Tub 500 ml",
         "cat": "Ice Cream Tubs"
       },
       "B0F1Y5BDN9": {
         "name": "Biscrunch Forest Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "cat": "Ice Cream Pastries"
       },
       "B0F1Y5G9TV": {
         "name": "Black Forest Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "cat": "Ice Cream Pastries"
       },
       "B0F1Y4S56T": {
-        "name": "Blueberry Cheese Cake Jar",
+        "name": "Blueberry Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "B0F1Y4C8B6": {
         "name": "Blueberry Cheesecake Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "B0F1Y4LBLT": {
-        "name": "Brownie Crunch Ice Cream Stick 70 ml",
+        "name": "Brownie Crunch Ice Cream Bar",
         "cat": "Sticks"
       },
       "B0F1Y6DY4J": {
-        "name": "Choco Hazelnut Crunch Ice Cream Stick 70 ml",
+        "name": "Choco Hazelnut Crunch Ice Cream Bar",
         "cat": "Sticks"
       },
       "B0F1Y4DTGX": {
         "name": "Chocolate Brownie Fudge Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "cat": "Ice Cream Cups"
       },
       "B0F1Y4XCZQ": {
         "name": "Chocolate Brownie Fudge Ice Cream Tub 500 ml",
         "cat": "Ice Cream Tubs"
       },
       "B0F1Y3Z7XP": {
-        "name": "Chocolate Brownie Ice Cream Cone 110 ml",
-        "cat": "Cones"
+        "name": "Chocolate Brownie Ice Cream Cone",
+        "cat": "Ice Cream Cones"
       },
       "B0F1Y53V4J": {
         "name": "Chocolate Brownie Ice Cream Sandwich",
@@ -847,15 +847,15 @@
         "cat": "Cassata"
       },
       "B0F1Y71YXZ": {
-        "name": "Dark Chocolate Ice Cream Cone 110ml",
-        "cat": "Cones"
+        "name": "Dark Chocolate Ice Cream Cone",
+        "cat": "Ice Cream Cones"
       },
       "B0F1Y43KK2": {
-        "name": "Death By Chocolate Cake Jar",
+        "name": "Death by Chocolate Jar",
         "cat": "Dessert Jars"
       },
       "B0F1Y4Q5LQ": {
-        "name": "Hazelnut Choco Cheese Cake Jar",
+        "name": "Hazelnut Choco Cheesecake Jar",
         "cat": "Dessert Jars"
       },
       "B0F1XZPW71": {
@@ -867,23 +867,23 @@
         "cat": "Sticks"
       },
       "B0F1YMGCRY": {
-        "name": "Mango Ice Cream Cup 100ml",
-        "cat": "Ice Cream Cup"
+        "name": "Mango Ice Cream Cup 100 ml",
+        "cat": "Ice Cream Cups"
       },
       "B0GTZK6T6V": {
         "name": "Mango Ice Cream Tub 500 ml",
         "cat": "Ice Cream Tubs"
       },
       "B0F1XZPZKK": {
-        "name": "New York Style Cheesecake Slice",
-        "cat": "Ice Cream Cake"
+        "name": "New York Style Cheese Cake",
+        "cat": "Cake Slice"
       },
       "B0F1Y4VRSP": {
         "name": "Red Velvet Ice Cream Pastry",
-        "cat": "Ice Cream Pastry"
+        "cat": "Ice Cream Pastries"
       },
       "B0F1Y5KLX7": {
-        "name": "Tiramisu Cake Jar",
+        "name": "Tiramisu Jar",
         "cat": "Dessert Jars"
       }
     },
