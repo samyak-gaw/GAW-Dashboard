@@ -2071,7 +2071,7 @@ function renderPlatform(p,prefix,target){
     {label:priorMonthLabel()+' Avg DRR',data:days.map(d=>Math.round((mGmv(p,d.day)||0)/1000)),borderColor:col,borderDash:[5,5],tension:0.35,fill:false,pointRadius:0,borderWidth:1.5}
   ]},{scales:{y:{ticks:{callback:v=>'₹'+v+'K'}}}});
 
-  // City chart — only render if there is actual GMV for today (guards against orphaned city data from failed uploads)
+  // City chart — only render if there is actual GMV for today (guards against orphaned city data)
   const cities=getCityToday(p).filter(c=>c.city_group!=='(No City Data)');
   const todayGmv=getToday(p)?.gmv||0;
   const CCOLS=['#1a3a6e','#c0392b','#1a7a3a','#7b2d8b','#2980b9','#d4860a','#16a085','#8e44ad'];
@@ -3222,14 +3222,18 @@ function procBlinkit(){
   const ss=sr[0]||{};const sk=Object.keys(ss);
   const sDateCol=sk.find(k=>/^date$/i.test(k)||/order.?date/i.test(k))||'date';
   const sItemCol=sk.find(k=>/^item.?id$/i.test(k)||/product.?id/i.test(k))||'item_id';
-  const sCityCol=sk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/ship[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k)||/customer[\s_]?city/i.test(k)||/location/i.test(k))||'city';
+  const sCityCol=sk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/ship[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k)||/customer[\s_]?city/i.test(k)||/hub[\s_]?city/i.test(k)||/^zone$/i.test(k)||/^location$/i.test(k))||sk.find(k=>/city/i.test(k))||'city';
+  const _blRawCities=new Map(); // raw city value → GMV for diagnostics
   const sQtyCol=sk.find(k=>/qty.?sold/i.test(k)||/units.?sold/i.test(k)||/^units$/i.test(k))||'qty_sold';
   const sGmvCol=sk.find(k=>/mrp.?gmv/i.test(k)||/^gmv$/i.test(k)||/gross.?merch/i.test(k))||'mrp_gmv';
   let srParsed=0,srFail=0;
   sr.forEach(r=>{
     const day=parseDay(colVal(r,sDateCol,'date','Date','order_date'));if(!day){srFail++;return;}
     const item_id=String(colVal(r,sItemCol,'item_id','item_Id','product_id')||'').trim();
-    const city=nCity(colVal(r,sCityCol,'city','City','CITY')||'');
+    const rawCity=String(colVal(r,sCityCol,'city','City','CITY')||'');
+    const city=nCity(rawCity);
+    // Track raw city values for diagnostics
+    _blRawCities.set(rawCity,(_blRawCities.get(rawCity)||0)+(parseFloat(colVal(r,sGmvCol,'mrp_gmv','mrp','GMV','Gross Merchandise Value'))||0));
     const qty=parseFloat(colVal(r,sQtyCol,'qty_sold','units_sold','Units','Qty'))||0;
     const gmv=parseFloat(colVal(r,sGmvCol,'mrp_gmv','mrp','GMV','Gross Merchandise Value'))||0;
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{},citysku:{}};
@@ -3245,7 +3249,7 @@ function procBlinkit(){
   const ds=dr[0]||{};const dk=Object.keys(ds);
   const dDateCol=dk.find(k=>/^date$/i.test(k)||/order.?date/i.test(k))||'date';
   const dItemCol=dk.find(k=>/^item.?id$/i.test(k)||/product.?id/i.test(k))||'item_id';
-  const dCityCol=dk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/ship[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k)||/customer[\s_]?city/i.test(k)||/location/i.test(k))||'city';
+  const dCityCol=dk.find(k=>/^city$/i.test(k))||'city';
   // CRITICAL: match 'total_brand_fund' (total) NOT 'brandfund_absolute_value' (per-unit rate)
   const dDiscCol=dk.find(k=>k==='total_brand_fund')
     ||dk.find(k=>/^total.?brand/i.test(k))
@@ -3263,7 +3267,9 @@ function procBlinkit(){
     if(item_id&&byD[day].sku[item_id])byD[day].sku[item_id].disc=(byD[day].sku[item_id].disc||0)+disc;
   });
   const daysFound=Object.keys(byD).map(Number).sort((a,b)=>a-b);
-  window._blLastResult={parsed:srParsed,dateFails:srFail,daysFound,discColUsed:dDiscCol,cityColUsed:sCityCol};
+  // Sort raw city values by GMV desc, take top 15 for diagnostics
+  const _blCitySample=[..._blRawCities.entries()].sort((a,b)=>b[1]-a[1]).slice(0,15).map(([v])=>v||'(empty)');
+  window._blLastResult={parsed:srParsed,dateFails:srFail,daysFound,discColUsed:dDiscCol,cityColUsed:sCityCol,rawCitySample:_blCitySample};
   window._blLastCols={sampleKeys:sk.slice(0,10)};
   if(sr.length>0&&!daysFound.length){alert(`⚠ Blinkit: 0 valid dates found in ${sr.length} rows.\nDate column tried: "${sDateCol}"\nSample keys: ${sk.slice(0,8).join(', ')}`);return;}
   mergeInto('Blinkit',byD);
@@ -3276,7 +3282,7 @@ function procIM(){
   const sDateCol=sk.find(k=>/ordered.?date/i.test(k)||/order.?date/i.test(k))||'ORDERED_DATE';
   const sGmvCol=sk.find(k=>/^gmv$/i.test(k)||/gross.?merch/i.test(k)||/revenue/i.test(k))||'GMV';
   const sUnitCol=sk.find(k=>/units.?sold/i.test(k)||/^units$/i.test(k)||/qty/i.test(k))||'UNITS_SOLD';
-  const sCityCol=sk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/ship[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k))||'CITY';
+  const sCityCol=sk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k))||sk.find(k=>/city/i.test(k))||'CITY';
   const sItemCol=sk.find(k=>/item.?code/i.test(k)||/sku.?code/i.test(k)||/product.?id/i.test(k))||'ITEM_CODE';
   let srParsed=0,srFail=0;
   sr.forEach(r=>{
@@ -3298,7 +3304,7 @@ function procIM(){
   const ds=dr[0]||{};const dk=Object.keys(ds);
   const dDateCol=dk.find(k=>/order.?date/i.test(k)||/ordered.?date/i.test(k))||'ORDER_DATE';
   const dDiscCol=dk.find(k=>/discount.?spend/i.test(k)||/discount/i.test(k)||/spend/i.test(k))||'DISCOUNT_SPEND';
-  const dCityCol=dk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/ship[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k))||'CITY';
+  const dCityCol=dk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k))||dk.find(k=>/city/i.test(k))||'CITY';
   const dItemCol=dk.find(k=>/item.?code/i.test(k)||/sku/i.test(k))||'ITEM_CODE';
   dr.forEach(r=>{
     const day=parseDay(colVal(r,dDateCol,'ORDER_DATE','ORDERED_DATE','Date','date'));if(!day)return;
@@ -4636,6 +4642,8 @@ function updateUploadDiag(){
     html+=`Days: <b>${_dAbbr} ${(result.daysFound||[]).join(', '+_dAbbr+' ')}</b></div>`;
     if(result.dateFails>0)html+=`<div style="font-size:11px;color:#c0392b">⚠ ${result.dateFails} date parse failures</div>`;
     if(result.discColUsed)html+=`<div style="font-size:11px;color:#1a7a3a">Disc col: "${result.discColUsed}"</div>`;
+    if(result.cityColUsed)html+=`<div style="font-size:11px;color:#1a7a3a">City col: "<b>${result.cityColUsed}</b>"</div>`;
+    if(result.rawCitySample&&result.rawCitySample.length)html+=`<div style="font-size:11px;color:#c07700;margin-top:2px">⚠ Raw city values from file: <b>${result.rawCitySample.join(' · ')}</b></div>`;
     if(cols?.pidColUsed)html+=`<div style="font-size:11px;color:#1a7a3a">SKU ID col: "${cols.pidColUsed}"</div>`;
     if(cols?.gmvColUsed)html+=`<div style="font-size:11px;color:#1a7a3a">GMV col: "${cols.gmvColUsed}"</div>`;
     if(cols?.sampleKeys)html+=`<div style="font-size:10px;color:var(--muted);margin-top:3px">${cols.sampleKeys.slice(0,8).join(', ')}</div>`;
