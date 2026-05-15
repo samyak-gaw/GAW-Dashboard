@@ -1939,7 +1939,7 @@ function renderOverview(){
       <div style="font-size:11px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap">
         ${sdlw!==null?`<span style="background:#f0f3fa;border-radius:6px;padding:2px 6px">SDLW: <span class="${parseFloat(sdlw)>=0?'du':'dd'}">${parseFloat(sdlw)>=0?'▲':'▼'}${Math.abs(sdlw)}%</span></span>`:''}
         ${wow!==null?`<span style="background:#f0f3fa;border-radius:6px;padding:2px 6px">WoW: <span class="${parseFloat(wow)>=0?'du':'dd'}">${parseFloat(wow)>=0?'▲':'▼'}${Math.abs(wow)}%</span></span>`:''}
-        ${vm!==null?`<span style="background:#f0f3fa;border-radius:6px;padding:2px 6px">vsMar: <span class="${parseFloat(vm)>=0?'du':'dd'}">${parseFloat(vm)>=0?'▲':'▼'}${Math.abs(vm)}%</span></span>`:''}
+        ${vm!==null?`<span style="background:#f0f3fa;border-radius:6px;padding:2px 6px">vs${priorMonthLabel().slice(0,3)}: <span class="${parseFloat(vm)>=0?'du':'dd'}">${parseFloat(vm)>=0?'▲':'▼'}${Math.abs(vm)}%</span></span>`:''}
       </div></div>`;
   }).join('');
 
@@ -2019,7 +2019,7 @@ function renderPlatform(p,prefix,target){
     <div class="kpi" style="--acc:${col}"><div class="label">GMV · ${selLabel}</div><div class="value">${t?fC(t.gmv):'—'}</div>
       <div class="sub">
         ${sdlw!==null?`SDLW: <span class="${parseFloat(sdlw)>=0?'du':'dd'}">${parseFloat(sdlw)>=0?'▲':'▼'}${Math.abs(sdlw)}%</span> `:dod!==null?`DoD: <span class="${parseFloat(dod)>=0?'du':'dd'}">${parseFloat(dod)>=0?'▲':'▼'}${Math.abs(dod)}%</span> `:''}
-        ${vm!==null?`vsMar: <span class="${parseFloat(vm)>=0?'du':'dd'}">${parseFloat(vm)>=0?'▲':'▼'}${Math.abs(vm)}%</span>`:''}</div></div>
+        ${vm!==null?`vs${priorMonthLabel().slice(0,3)}: <span class="${parseFloat(vm)>=0?'du':'dd'}">${parseFloat(vm)>=0?'▲':'▼'}${Math.abs(vm)}%</span>`:''}</div></div>
     <div class="kpi g"><div class="label">Units · ${selLabel}</div><div class="value">${t?fN(t.units):'—'}</div><div class="sub">MTD Total: ${fN(mtd.units)}</div></div>
     <div class="kpi r"><div class="label">MTD Discount</div><div class="value">${fC(mtd.disc)}</div><div class="sub">Today: ${fC(t?t.disc||0:0)}</div></div>
     <div class="kpi"><div class="label">Disc % · ${selLabel}</div><div class="value">${dp}%</div><div class="sub" style="color:${parseFloat(dp)>30?'#c0392b':parseFloat(dp)>20?'#c07700':'#1a7a3a'}">${parseFloat(dp)>30?'⚠ High':parseFloat(dp)>20?'Moderate':'Efficient'}</div></div>
@@ -2580,7 +2580,6 @@ function renderProjections(){
   mkChart('projChart','line',{labels:pDays.map(d=>`${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} ${d}`),datasets:[
     {label:'Actual MTD',data:combinedActual,borderColor:'#1a3a6e',backgroundColor:'rgba(26,58,110,.12)',fill:true,tension:0.3,pointRadius:2,borderWidth:2.5,spanGaps:false},
     {label:'Trend (Regression)',data:regCumulative,borderColor:'#1a7a3a',borderDash:[6,3],fill:false,tension:0.3,pointRadius:0,borderWidth:2,spanGaps:true},
-    {label:'Simple DRR Proj',data:simCumulative,borderColor:'#c07700',borderDash:[3,3],fill:false,tension:0,pointRadius:0,borderWidth:1.5,spanGaps:true},
     {label:'Target',data:tgtLine,borderColor:'#c0392b',borderDash:[2,4],fill:false,tension:0,pointRadius:0,borderWidth:1.5}
   ]},{
     plugins:{legend:{labels:{font:{size:11},boxWidth:14}}},
@@ -2607,7 +2606,7 @@ function renderProjections(){
         <div><div style="font-size:11px;color:var(--muted)">Last Week's DRR</div><div style="font-size:18px;font-weight:800">${fC(wowProjChange.wkDRR)}</div></div>
         <div><div style="font-size:11px;color:var(--muted)">This Week's DRR</div><div style="font-size:18px;font-weight:800">${fC(wowProjChange.curDRR)}</div></div>
         <div><div style="font-size:11px;color:var(--muted)">Change</div><div style="font-size:22px;font-weight:800;color:${wowProjChange.pct>=0?'#1a7a3a':'#c0392b'}">${wowProjChange.pct>=0?'▲':'▼'}${Math.abs(wowProjChange.pct)}%</div></div>
-        ${regProj?`<div><div style="font-size:11px;color:var(--muted)">Regression Projection</div><div style="font-size:18px;font-weight:800;color:${regProj>=totTgt2?'#1a7a3a':'#c07700'}">${fC(regProj)}</div></div>`:''}
+        ${regProj?``:''}
       </div>
     </div>`;
   } else if(wowEl){wowEl.innerHTML='';}
@@ -3510,7 +3509,7 @@ function renderSnapshot(){
       <div style="font-size:11px;margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">
         ${sdlw!==null?`<span style="background:#f0f3fa;border-radius:5px;padding:2px 5px">SDLW: <span class="${parseFloat(sdlw)>=0?'du':'dd'}">${parseFloat(sdlw)>=0?'▲':'▼'}${Math.abs(sdlw)}%</span></span>`:''}
         ${dod!==null&&sdlw===null?`<span style="background:#f0f3fa;border-radius:5px;padding:2px 5px">DoD: <span class="${parseFloat(dod)>=0?'du':'dd'}">${parseFloat(dod)>=0?'▲':'▼'}${Math.abs(dod)}%</span></span>`:''}
-        ${vm!==null?`<span style="background:#f0f3fa;border-radius:5px;padding:2px 5px">vsMar: <span class="${parseFloat(vm)>=0?'du':'dd'}">${parseFloat(vm)>=0?'▲':'▼'}${Math.abs(vm)}%</span></span>`:''}
+        ${vm!==null?`<span style="background:#f0f3fa;border-radius:5px;padding:2px 5px">vs${priorMonthLabel().slice(0,3)}: <span class="${parseFloat(vm)>=0?'du':'dd'}">${parseFloat(vm)>=0?'▲':'▼'}${Math.abs(vm)}%</span></span>`:''}
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:6px">MTD: <b>${fC(m.gmv)}</b> / <b>${fC(tgt)}</b> = <b>${(m.gmv/tgt*100).toFixed(1)}%</b></div>
     </div>`;
@@ -3905,7 +3904,7 @@ function _buildMonthlyData(){
     const reqDRR=platLastDay<getMonthDays()?Math.round((tgt-m.gmv)/(getMonthDays()-platLastDay)):0;
     const projEnd=curDRR*getMonthDays();
     const marchGmv=DB.march_totals[p]?.gmv||0;
-    return{p,mtdGmv:m.gmv,mtdUnits:m.units,mtdDisc:m.disc,target:tgt,progress:(m.gmv/tgt*100).toFixed(1),curDRR,reqDRR,projEnd,marchGmv,vsMarч:marchGmv>0?((m.gmv-marchGmv)/marchGmv*100).toFixed(1):null,daysTracked:platLastDay};
+    return{p,mtdGmv:m.gmv,mtdUnits:m.units,mtdDisc:m.disc,target:tgt,progress:(m.gmv/tgt*100).toFixed(1),curDRR,reqDRR,projEnd,marchGmv,vsPrior:marchGmv>0?((m.gmv-marchGmv)/marchGmv*100).toFixed(1):null,daysTracked:platLastDay};
   });
   // Daily cross-platform
   const dailyRows=allDays.map(d=>{
