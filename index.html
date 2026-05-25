@@ -3276,20 +3276,24 @@ function procBlinkit(){
 function procIM(){
   const sr=window._imS||[],dr=window._imD||[];
   const byD={};
+  // Normalize SKU IDs: IM Discounts file ships ITEM_CODE as float-text (e.g. "35763.00000").
+  // Sales side may arrive clean. Force both passes to the same canonical integer-string form.
+  const normSku=v=>{const s=String(v==null?'':v).trim();if(!s)return'';const n=parseFloat(s);return(!isNaN(n)&&/^-?\d+(\.\d+)?$/.test(s))?String(Math.round(n)):s;};
   // Sales rows
   const ss=sr[0]||{};const sk=Object.keys(ss);
   const sDateCol=sk.find(k=>/ordered.?date/i.test(k)||/order.?date/i.test(k))||'ORDERED_DATE';
   const sGmvCol=sk.find(k=>/^gmv$/i.test(k)||/gross.?merch/i.test(k)||/revenue/i.test(k))||'GMV';
   const sUnitCol=sk.find(k=>/units.?sold/i.test(k)||/^units$/i.test(k)||/qty/i.test(k))||'UNITS_SOLD';
   const sCityCol=sk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k))||sk.find(k=>/city/i.test(k))||'CITY';
-  const sItemCol=sk.find(k=>/item.?code/i.test(k)||/sku.?code/i.test(k)||/product.?id/i.test(k))||'ITEM_CODE';
+  // Exact-match-first for SKU id; exclude *_NAME columns
+  const sItemCol=sk.find(k=>k==='ITEM_CODE')||sk.find(k=>k==='PRODUCT_ID')||sk.find(k=>/^item.?code$/i.test(k))||sk.find(k=>/^product.?id$/i.test(k))||sk.find(k=>/^sku.?(id|code)$/i.test(k))||sk.find(k=>/item.?code/i.test(k)||/sku.?code/i.test(k)||/product.?id/i.test(k))||'ITEM_CODE';
   let srParsed=0,srFail=0;
   sr.forEach(r=>{
     const day=parseDay(colVal(r,sDateCol,'ORDERED_DATE','ORDER_DATE','Date','date'));if(!day){srFail++;return;}
     const gmv=parseFloat(colVal(r,sGmvCol,'GMV','Revenue','MRP GMV'))||0;
     const units=parseFloat(colVal(r,sUnitCol,'UNITS_SOLD','Units','Qty','qty_sold'))||0;
     const city=nCity(colVal(r,sCityCol,'CITY','City','city')||'');
-    const ic=String(colVal(r,sItemCol,'ITEM_CODE','item_code','SKU','sku_code')||'').trim();
+    const ic=normSku(colVal(r,sItemCol,'ITEM_CODE','item_code','SKU','sku_code'));
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{},citysku:{}};
     byD[day].gmv+=gmv;byD[day].units+=units;
     if(!byD[day].city[city])byD[day].city[city]={gmv:0,units:0,disc:0};
@@ -3304,20 +3308,23 @@ function procIM(){
   const dDateCol=dk.find(k=>/order.?date/i.test(k)||/ordered.?date/i.test(k))||'ORDER_DATE';
   const dDiscCol=dk.find(k=>/discount.?spend/i.test(k)||/discount/i.test(k)||/spend/i.test(k))||'DISCOUNT_SPEND';
   const dCityCol=dk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k))||dk.find(k=>/city/i.test(k))||'CITY';
-  const dItemCol=dk.find(k=>/item.?code/i.test(k)||/sku/i.test(k))||'ITEM_CODE';
+  // Exact-match-first; do NOT match SKU_NAME / ITEM_NAME columns
+  const dItemCol=dk.find(k=>k==='ITEM_CODE')||dk.find(k=>k==='PRODUCT_ID')||dk.find(k=>/^item.?code$/i.test(k))||dk.find(k=>/^product.?id$/i.test(k))||dk.find(k=>/^sku.?(id|code)$/i.test(k))||dk.find(k=>(/item.?code/i.test(k)||/sku.?(id|code)/i.test(k))&&!/name/i.test(k))||'ITEM_CODE';
+  let drSkuMatched=0,drSkuMissed=0;
   dr.forEach(r=>{
     const day=parseDay(colVal(r,dDateCol,'ORDER_DATE','ORDERED_DATE','Date','date'));if(!day)return;
     const disc=parseFloat(colVal(r,dDiscCol,'DISCOUNT_SPEND','Discount','discount_amount'))||0;
     const city=nCity(colVal(r,dCityCol,'CITY','City')||'');
-    const ic=String(colVal(r,dItemCol,'ITEM_CODE','SKU','item_code')||'').trim();
+    const ic=normSku(colVal(r,dItemCol,'ITEM_CODE','SKU','item_code'));
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{}};
     byD[day].disc+=disc;
     if(byD[day].city[city])byD[day].city[city].disc=(byD[day].city[city].disc||0)+disc;
-    if(ic&&byD[day].sku[ic])byD[day].sku[ic].disc=(byD[day].sku[ic].disc||0)+disc;
+    if(ic&&byD[day].sku[ic]){byD[day].sku[ic].disc=(byD[day].sku[ic].disc||0)+disc;drSkuMatched++;}
+    else if(ic){drSkuMissed++;}
   });
   const daysFound=Object.keys(byD).sort((a,b)=>a-b);
-  window._imLastResult={parsed:srParsed,dateFails:srFail,daysFound,discColUsed:dDiscCol};
-  window._imLastCols={sampleKeys:sk.slice(0,10)};
+  window._imLastResult={parsed:srParsed,dateFails:srFail,daysFound,discColUsed:dDiscCol,itemColUsed:dItemCol,skuDiscMatched:drSkuMatched,skuDiscMissed:drSkuMissed};
+  window._imLastCols={sampleKeys:sk.slice(0,10),discKeys:dk.slice(0,10)};
   if(sr.length>0&&!daysFound.length){
     alert(`⚠ Instamart: 0 valid dates found in ${sr.length} rows.\nDate column tried: "${sDateCol}"\nSample keys: ${sk.slice(0,8).join(', ')}`);
   }
