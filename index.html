@@ -2172,22 +2172,28 @@ function renderCategory(){
   // Bar chart by platform
   mkChart('catBarChart','bar',{labels:cats.map(c=>c[0]),datasets:PN.map(p=>({label:p,data:cats.map(c=>Math.round((c[1][p]||0)/1000)),backgroundColor:PC[p]+'cc'}))},{scales:{x:{stacked:true},y:{stacked:true,ticks:{callback:v=>'₹'+v+'K'}}}});
 
-  // Category table — vs SDLW + vs March
+  // Category table — vs SDLW + vs prior month (period-matched)
   const platTotPeriod={};
   PN.forEach(p=>{
     platTotPeriod[p]=(DB.april[p].sku||[]).filter(r=>dayFilter(r.day)).reduce((s,r)=>s+r.gmv,0);
   });
+  // Build period day-set from same filter so prior-month sums over identical day range
+  // e.g. May 1-24 MTD ⇒ Apr 1-24 MTD; Today (May 24) ⇒ Apr 24; Last 7 ⇒ same 7 days in Apr
+  const _periodDays=[];
+  const _mDaysCur=getMonthDays();
+  for(let d=1;d<=_mDaysCur;d++){if(dayFilter(d))_periodDays.push(d);}
   const marchCatEst={};
-  const td2=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
   PN.forEach(p=>{
-    const marchPlat=mGmv(p,td2);
-    if(!marchPlat||!platTotPeriod[p])return;
+    // Sum prior-month GMV across same day range (apples-to-apples)
+    const priorPlatSum=_periodDays.reduce((s,d)=>s+(mGmv(p,d)||0),0);
+    if(!priorPlatSum||!platTotPeriod[p])return;
+    // Distribute proportionally using current period's category mix per platform
     const platSkus=(DB.april[p].sku||[]).filter(r=>dayFilter(r.day));
     platSkus.forEach(r=>{
       const info=skuLookup(p,r.sku_code);
       const cat=normCat(info.cat)||'Unknown';
       const catShare=r.gmv/platTotPeriod[p];
-      marchCatEst[cat]=(marchCatEst[cat]||0)+(catShare*marchPlat);
+      marchCatEst[cat]=(marchCatEst[cat]||0)+(catShare*priorPlatSum);
     });
   });
 
