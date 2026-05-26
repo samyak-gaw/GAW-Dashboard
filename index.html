@@ -883,8 +883,8 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     </div>
     <div class="card">
       <h3>📊 City GMV Mix — Today</h3>
-      <div id="cityMixChart" style="height:220px;position:relative;margin-bottom:12px"></div>
-      <div id="cityShareTable" style="font-size:11px"></div>
+      <div class="ch280" style="height:220px"><canvas id="cityMixChart"></canvas></div>
+      <div id="cityShareTable" style="font-size:11px;margin-top:12px"></div>
     </div>
   </div>
 
@@ -3283,8 +3283,20 @@ function procIM(){
   const sr=window._imS||[],dr=window._imD||[];
   const byD={};
   // Normalize SKU IDs: IM Discounts file ships ITEM_CODE as float-text (e.g. "35763.00000").
-  // Sales side may arrive clean. Force both passes to the same canonical integer-string form.
-  const normSku=v=>{const s=String(v==null?'':v).trim();if(!s)return'';const n=parseFloat(s);return(!isNaN(n)&&/^-?\d+(\.\d+)?$/.test(s))?String(Math.round(n)):s;};
+  // Sales may arrive as int or float. Force both passes to the same canonical integer-string form.
+  // Handles: "35763", "35763.0", "35763.00000", "  35763 ", 35763 (number), 35763.0 (number).
+  // Leaves non-numeric SKU codes (e.g. Amazon ASINs "B0F1Y...") untouched.
+  const normSku=v=>{
+    if(v==null||v==='')return'';
+    let s=String(v).trim();
+    if(!s)return'';
+    // Pure numeric (with optional decimal) → integer string
+    if(/^-?\d+(\.\d+)?$/.test(s)){
+      const n=parseFloat(s);
+      if(!isNaN(n))return String(Math.round(n));
+    }
+    return s;
+  };
   // Sales rows
   const ss=sr[0]||{};const sk=Object.keys(ss);
   const sDateCol=sk.find(k=>/ordered.?date/i.test(k)||/order.?date/i.test(k))||'ORDERED_DATE';
@@ -3331,6 +3343,18 @@ function procIM(){
   const daysFound=Object.keys(byD).sort((a,b)=>a-b);
   window._imLastResult={parsed:srParsed,dateFails:srFail,daysFound,discColUsed:dDiscCol,itemColUsed:dItemCol,skuDiscMatched:drSkuMatched,skuDiscMissed:drSkuMissed};
   window._imLastCols={sampleKeys:sk.slice(0,10),discKeys:dk.slice(0,10)};
+  // Diagnostic: visible in browser console after upload
+  console.log('[IM] procIM result:',{
+    salesRowsParsed:srParsed,
+    salesDateFails:srFail,
+    salesItemCol:sItemCol,
+    discItemCol:dItemCol,
+    discColUsed:dDiscCol,
+    skuDiscRowsMatched:drSkuMatched,
+    skuDiscRowsMissed:drSkuMissed,
+    daysFound:daysFound.length,
+    sampleDay24Skus:(byD['24']?Object.entries(byD['24'].sku).slice(0,3).map(([k,v])=>({sku:k,gmv:v.gmv,disc:v.disc})):'no day 24')
+  });
   if(sr.length>0&&!daysFound.length){
     alert(`⚠ Instamart: 0 valid dates found in ${sr.length} rows.\nDate column tried: "${sDateCol}"\nSample keys: ${sk.slice(0,8).join(', ')}`);
   }
