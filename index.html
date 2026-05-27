@@ -396,6 +396,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div class="tab" onclick="showTab('bigbasket')"><span class="tab-dot" style="background:#84c225"></span>BigBasket</div>
   <div class="tab" onclick="showTab('category')"><span class="tab-dot" style="background:#2980b9"></span>Category & SKU</div>
   <div class="tab" onclick="showTab('projections')"><span class="tab-dot" style="background:#16a085"></span>Projections</div>
+  <div class="tab" onclick="showTab('availability')"><span class="tab-dot" style="background:#1a3a6e"></span>📦 Availability</div>
   <div class="tab" onclick="showTab('snapshot')">📋 Snapshots & Alerts</div>
   <div class="tab" onclick="showTab('cityintel')">🏙 City Intel</div>
   <div class="tab" onclick="showTab('cloudsync')">☁️ Cloud Sync</div>
@@ -618,6 +619,90 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div id="projWowChange"></div>
   <div class="g3" id="projPlatCards"></div>
   <div class="card"><h3>📈 Cumulative GMV vs Target — All Platforms <span style="font-size:11px;font-weight:400;color:var(--muted)">(Regression + DRR projections)</span></h3><div class="ch400"><canvas id="projChart"></canvas></div></div>
+</div>
+
+<!-- AVAILABILITY TAB (Stage 2) -->
+<div id="availability" class="content">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:18px;font-weight:800;color:#1a1a2e">📦 Availability</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">OSA · DS Listing · DOI · Lost GMV · <span id="availMonth">May</span> 2026 MTD</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--muted)">View:</span>
+      <button id="availViewPlatforms" class="exp-btn" onclick="availSetView('platforms')" style="background:#1a3a6e;color:#fff;font-size:11px">Platforms</button>
+      <button id="availViewActions" class="exp-btn" onclick="availSetView('actions')" style="background:#f0f3fa;color:#1a1a2e;font-size:11px">Action Lists</button>
+    </div>
+  </div>
+
+  <div id="availMissingDataBanner" style="display:none"></div>
+
+  <!-- LEVEL 1: Platform overview cards (default visible) -->
+  <div id="availPlatformsView">
+    <div class="g3" id="availPlatformCards" style="margin-bottom:24px"></div>
+
+    <!-- 4 Actionable Sections (always visible below platform cards) -->
+    <div class="card" style="margin-bottom:16px">
+      <h3>🚨 Critical Alerts <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">Top 10 SKU × Platform by Lost GMV</span></h3>
+      <div id="availCriticalAlerts"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>📉 Trending Degradation <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">OSA dropped ≥5pp vs prior 7 days</span></h3>
+      <div id="availTrendingDegradation"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>🔁 Cross-Platform Comparison <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">Same SKU varies &gt;20pp across platforms</span></h3>
+      <div id="availCrossPlatform"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h3>⚡ Restock Urgency Queue <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">Sorted by (100−OSA%) × DRR × MRP</span></h3>
+      <div id="availRestockQueue"></div>
+    </div>
+  </div>
+
+  <!-- LEVEL 2: SKU × Platform drilldown (hidden initially) -->
+  <div id="availSkuView" style="display:none">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+      <button class="exp-btn" onclick="availBackToPlatforms()" style="font-size:11px">← Back to platforms</button>
+      <div style="font-size:14px;font-weight:700;color:#1a1a2e" id="availSkuViewTitle">Platform name</div>
+    </div>
+    <div class="card">
+      <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <input id="availSkuSearch" placeholder="🔍 Search SKU or category…" oninput="availRenderSkuTable()" style="flex:1;min-width:200px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#f0f3fa;color:#1a1a2e">
+        <select id="availSkuSort" onchange="availRenderSkuTable()" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <option value="lost_gmv">Sort: Lost GMV ▼</option>
+          <option value="osa_asc">Sort: OSA % ▲ (worst first)</option>
+          <option value="osa_desc">Sort: OSA % ▼ (best first)</option>
+          <option value="doi_asc">Sort: DOI ▲ (low stock first)</option>
+          <option value="name">Sort: Name (A–Z)</option>
+        </select>
+      </div>
+      <div id="availSkuTable"></div>
+    </div>
+  </div>
+
+  <!-- LEVEL 3: SKU × City drilldown (hidden initially) -->
+  <div id="availCityView" style="display:none">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+      <button class="exp-btn" onclick="availBackToSku()" style="font-size:11px">← Back to SKUs</button>
+      <div style="font-size:14px;font-weight:700;color:#1a1a2e" id="availCityViewTitle">SKU name</div>
+    </div>
+    <div class="card">
+      <div id="availCityTable"></div>
+    </div>
+  </div>
+
+  <!-- ACTION LISTS view (collapsed/expanded city-level views for actionable workflows) -->
+  <div id="availActionsView" style="display:none">
+    <div class="card" style="margin-bottom:16px">
+      <h3>📋 Action Lists — Operational Tasks</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Filter and export task lists for ops teams.</div>
+      <div id="availActionLists"></div>
+    </div>
+  </div>
 </div>
 
 <!-- SNAPSHOTS & ALERTS (merged) -->
@@ -1188,6 +1273,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     <div onclick="closeMore();showTab('bigbasket')" style="padding:12px;background:#f0f9e6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🧺</div>BigBasket</div>
     <div onclick="closeMore();showTab('category')" style="padding:12px;background:#f0f3fa;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🗂</div>Category</div>
     <div onclick="closeMore();showTab('projections')" style="padding:12px;background:#f0f3fa;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">📈</div>Projections</div>
+    <div onclick="closeMore();showTab('availability')" style="padding:12px;background:#e6ebf5;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">📦</div>Availability</div>
     <div class="upload-nav-btn" onclick="closeMore();showTab('upload')" style="padding:12px;background:#e6f7ec;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">📤</div>Upload</div>
     <div onclick="closeMore();showTab('cityintel')" style="padding:12px;background:#e6f0fd;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🏙</div>City Intel</div>
   </div>
@@ -2770,7 +2856,7 @@ function renderAll(){
     amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),
     flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),
     bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),
-    category:renderCategory,projections:renderProjections,
+    category:renderCategory,projections:renderProjections,availability:renderAvailability,
     snapshot:renderSnapshot,cityintel:renderCityIntel,upload:updateUploadDiag,
   };
   if(tabRenderMap[activeId])tabRenderMap[activeId]();
@@ -2787,6 +2873,7 @@ function renderAll(){
       ()=>{if(activeId!=='bigbasket')renderPlatform('BigBasket','bb',DB.targets.BigBasket);},
       ()=>{if(activeId!=='category')renderCategory();},
       ()=>{if(activeId!=='projections')renderProjections();},
+      ()=>{if(activeId!=='availability')renderAvailability();},
     ];
     deferred.forEach(fn=>{try{fn();}catch(e){console.warn('renderAll deferred:',e.message);}});
   });
@@ -2853,7 +2940,7 @@ function showTab(t){
   const el=document.getElementById(t);if(el)el.classList.add('active');
   document.querySelectorAll('.tab').forEach(c=>{if(c.getAttribute('onclick')?.includes("'"+t+"'"))c.classList.add('active');});
   updateBottomNav(t);
-  const fns={overview:renderOverview,blinkit:()=>renderPlatform('Blinkit','bl',DB.targets.Blinkit),instamart:()=>renderPlatform('Instamart','im',DB.targets.Instamart),zepto:()=>renderPlatform('Zepto','zp',DB.targets.Zepto),amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),category:renderCategory,projections:renderProjections,snapshot:renderSnapshot,cityintel:renderCityIntel,upload:updateUploadDiag};
+  const fns={overview:renderOverview,blinkit:()=>renderPlatform('Blinkit','bl',DB.targets.Blinkit),instamart:()=>renderPlatform('Instamart','im',DB.targets.Instamart),zepto:()=>renderPlatform('Zepto','zp',DB.targets.Zepto),amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),category:renderCategory,projections:renderProjections,availability:renderAvailability,snapshot:renderSnapshot,cityintel:renderCityIntel,upload:updateUploadDiag};
   if(fns[t])fns[t]();
   // Flush any charts that were deferred because their canvas was hidden at render time
   const tabEl=document.getElementById(t);
@@ -4027,6 +4114,494 @@ function exportCSV(){
     csv+=`${p},${r.day},${r.gmv},${r.units},${r.disc||0},${dp},${vM}\n`;
   }));
   const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='gaw_'+getViewingMonth().toLowerCase().replace('-','_')+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+}
+
+// ══════════════════════════════════════════════
+// AVAILABILITY TAB (Stage 2) — Render functions
+// ══════════════════════════════════════════════
+const _AVAIL_PLATFORMS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket'];
+
+// Compute MTD aggregates per platform per SKU (avg OSA_LS, avg DS, lost GMV, DOI)
+function _availComputeMTD(){
+  const mk=getViewingMonth();
+  const availM=(DB.avail||{})[mk]||{};
+  const sohM=(DB.soh||{})[mk]||{};
+  const result={};
+  _AVAIL_PLATFORMS.forEach(plat=>{
+    result[plat]={skus:{}, summary:{wt_osa_ls:null, ds_listing:null, doi:null, lost_gmv:0, active_skus:0, has_data:false}};
+    const platAvail=availM[plat]||{};
+    const platSoh=(sohM[plat]||{}).data||{};
+    const aprilPlatData=(DB.april[plat]&&DB.april[plat].sku)||[];
+    // Per-SKU MTD aggregation
+    Object.keys(platAvail).forEach(sku=>{
+      const days=platAvail[sku]||{};
+      const dayKeys=Object.keys(days);
+      if(!dayKeys.length)return;
+      // Average OSA_LS and DS across days (only days with non-null values)
+      let osaSum=0,osaCnt=0,dsSum=0,dsCnt=0;
+      const byCity={};
+      dayKeys.forEach(d=>{
+        const dd=days[d];
+        if(dd.wt_osa_ls!=null){osaSum+=dd.wt_osa_ls;osaCnt++;}
+        if(dd.ds_listing!=null){dsSum+=dd.ds_listing;dsCnt++;}
+        Object.keys(dd.by_city||{}).forEach(city=>{
+          const cv=dd.by_city[city];
+          if(!byCity[city])byCity[city]={osaSum:0,osaCnt:0,dsSum:0,dsCnt:0};
+          if(cv.wt_osa_ls!=null){byCity[city].osaSum+=cv.wt_osa_ls;byCity[city].osaCnt++;}
+          if(cv.ds_listing!=null){byCity[city].dsSum+=cv.ds_listing;byCity[city].dsCnt++;}
+        });
+      });
+      const avgOsa=osaCnt?osaSum/osaCnt:null;
+      const avgDs=dsCnt?dsSum/dsCnt:null;
+      // MTD GMV for this SKU
+      const mtdGmv=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&dayFilter(r.day)).reduce((s,r)=>s+r.gmv,0);
+      const mtdUnits=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&dayFilter(r.day)).reduce((s,r)=>s+r.units,0);
+      // Lost GMV: prefer platform-reported (IM only), else compute (1-OSA/100)/(OSA/100) * MTD GMV
+      let lostGmv=0;
+      const sohRec=platSoh[sku];
+      if(plat==='Instamart'&&sohRec&&sohRec.platform_loss){
+        lostGmv=sohRec.platform_loss;
+      }else if(avgOsa!=null&&avgOsa>0&&avgOsa<100){
+        lostGmv=mtdGmv*(100-avgOsa)/avgOsa;
+      }
+      // DOI: total SOH / DRR (DRR = MTD units / MTD days elapsed)
+      const totalSoh=sohRec?sohRec.total:0;
+      const mtdDaysElapsed=Object.keys(aprilPlatData.reduce((m,r)=>{if(dayFilter(r.day))m[r.day]=1;return m;},{})).length||1;
+      const drr=mtdUnits/mtdDaysElapsed;
+      const doi=drr>0?totalSoh/drr:null;
+      // Build per-city detail
+      const cityDetail={};
+      Object.keys(byCity).forEach(city=>{
+        cityDetail[city]={
+          wt_osa_ls:byCity[city].osaCnt?byCity[city].osaSum/byCity[city].osaCnt:null,
+          ds_listing:byCity[city].dsCnt?byCity[city].dsSum/byCity[city].dsCnt:null,
+          soh:sohRec&&sohRec.by_city?(sohRec.by_city[city]||0):0
+        };
+      });
+      result[plat].skus[sku]={
+        wt_osa_ls:avgOsa,
+        ds_listing:avgDs,
+        mtd_gmv:mtdGmv,
+        mtd_units:mtdUnits,
+        drr,
+        soh:totalSoh,
+        doi,
+        lost_gmv:lostGmv,
+        days_data:dayKeys.length,
+        by_city:cityDetail,
+        by_facility:sohRec?(sohRec.by_facility||{}):{}
+      };
+    });
+    // Platform-level summary
+    const skuList=Object.values(result[plat].skus);
+    if(skuList.length){
+      // Weighted by MTD GMV (more meaningful than simple average)
+      const gmvTotal=skuList.reduce((s,k)=>s+k.mtd_gmv,0);
+      if(gmvTotal>0){
+        result[plat].summary.wt_osa_ls=skuList.reduce((s,k)=>s+(k.wt_osa_ls||0)*k.mtd_gmv,0)/gmvTotal;
+        result[plat].summary.ds_listing=skuList.reduce((s,k)=>s+(k.ds_listing||0)*k.mtd_gmv,0)/gmvTotal;
+      }else{
+        // Simple avg fallback
+        const osaList=skuList.filter(k=>k.wt_osa_ls!=null).map(k=>k.wt_osa_ls);
+        const dsList=skuList.filter(k=>k.ds_listing!=null).map(k=>k.ds_listing);
+        result[plat].summary.wt_osa_ls=osaList.length?osaList.reduce((a,b)=>a+b,0)/osaList.length:null;
+        result[plat].summary.ds_listing=dsList.length?dsList.reduce((a,b)=>a+b,0)/dsList.length:null;
+      }
+      const doiList=skuList.filter(k=>k.doi!=null).map(k=>k.doi);
+      result[plat].summary.doi=doiList.length?doiList.reduce((a,b)=>a+b,0)/doiList.length:null;
+      result[plat].summary.lost_gmv=skuList.reduce((s,k)=>s+k.lost_gmv,0);
+      result[plat].summary.active_skus=skuList.length;
+      result[plat].summary.has_data=true;
+    }
+  });
+  return result;
+}
+window._availMTD=null;  // cache
+
+function _availColor(pct,kind){
+  if(pct==null)return '#9aa1a8';
+  if(kind==='osa'){
+    if(pct>=90)return '#1a7a3a';
+    if(pct>=75)return '#d4860a';
+    return '#c0392b';
+  }
+  if(kind==='ds'){
+    if(pct>=95)return '#1a7a3a';
+    if(pct>=85)return '#d4860a';
+    return '#c0392b';
+  }
+  if(kind==='doi'){
+    if(pct>=14)return '#1a7a3a';
+    if(pct>=7)return '#d4860a';
+    return '#c0392b';
+  }
+  return '#1a1a2e';
+}
+function _availFmtPct(v){return v==null?'—':(Math.round(v*10)/10)+'%';}
+function _availFmtRupees(v){return v==null||v===0?'₹0':'₹'+Math.round(v).toLocaleString('en-IN');}
+function _availFmtDays(v){return v==null?'—':Math.round(v)+'d';}
+
+function renderAvailability(){
+  // Compute fresh MTD
+  window._availMTD=_availComputeMTD();
+  // Update month label
+  const mEl=document.getElementById('availMonth');if(mEl)mEl.textContent=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];
+  // Show data-missing banner if no platforms have data
+  const platformsWithData=_AVAIL_PLATFORMS.filter(p=>window._availMTD[p].summary.has_data);
+  const banner=document.getElementById('availMissingDataBanner');
+  if(!platformsWithData.length){
+    banner.style.display='block';
+    banner.innerHTML=`<div style="padding:14px;background:#fff4e0;border:1px solid #d4860a;border-radius:8px;margin-bottom:20px;font-size:13px;color:#8a4a00">⚠ <b>No availability data yet for ${MONTH_LABEL(getViewingMonth())}.</b> Upload OSA reports, SOH snapshots, and Dark Store counts in the <b>📤 Upload Data</b> tab.</div>`;
+  }else{
+    banner.style.display='none';
+  }
+  _availRenderPlatformCards();
+  _availRenderCriticalAlerts();
+  _availRenderTrendingDegradation();
+  _availRenderCrossPlatform();
+  _availRenderRestockQueue();
+}
+
+function _availRenderPlatformCards(){
+  const host=document.getElementById('availPlatformCards');
+  const mtd=window._availMTD;
+  const colorMap={Zepto:'#7b2d8b',Blinkit:'#d4860a',Instamart:'#c0392b',Flipkart:'#2874f0',BigBasket:'#84c225'};
+  const cards=_AVAIL_PLATFORMS.map(plat=>{
+    const s=mtd[plat].summary;
+    const c=colorMap[plat];
+    if(!s.has_data){
+      return `<div class="card" style="opacity:.5"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px">${plat}</b></div><div style="font-size:11px;color:var(--muted)">No data yet — upload OSA + SOH files</div></div>`;
+    }
+    const osaCol=_availColor(s.wt_osa_ls,'osa');
+    const dsCol=_availColor(s.ds_listing,'ds');
+    const doiCol=_availColor(s.doi,'doi');
+    return `<div class="card chart-clickable" onclick="availDrillToPlatform('${plat}')" style="cursor:pointer">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px;color:#1a1a2e">${plat}</b></div>
+        <span style="font-size:10px;color:var(--muted)">${s.active_skus} SKUs</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Wt. OSA (LS)</div><div style="font-size:20px;font-weight:800;color:${osaCol}">${_availFmtPct(s.wt_osa_ls)}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DS Listing</div><div style="font-size:20px;font-weight:800;color:${dsCol}">${_availFmtPct(s.ds_listing)}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Avg</div><div style="font-size:20px;font-weight:800;color:${doiCol}">${_availFmtDays(s.doi)}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Lost GMV (MTD)</div><div style="font-size:20px;font-weight:800;color:#c0392b">${_availFmtRupees(s.lost_gmv)}</div></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:6px">Click to drill into SKUs →</div>
+    </div>`;
+  }).join('');
+  host.innerHTML=cards;
+}
+
+function _availRenderCriticalAlerts(){
+  const host=document.getElementById('availCriticalAlerts');
+  const mtd=window._availMTD;
+  // Flatten all SKU×Platform combos, sort by lost GMV desc
+  const all=[];
+  _AVAIL_PLATFORMS.forEach(plat=>{
+    Object.keys(mtd[plat].skus).forEach(sku=>{
+      const k=mtd[plat].skus[sku];
+      if(k.lost_gmv>0){
+        const info=skuLookup(plat,sku);
+        all.push({plat,sku,name:info.name,cat:info.cat,...k});
+      }
+    });
+  });
+  all.sort((a,b)=>b.lost_gmv-a.lost_gmv);
+  const top=all.slice(0,10);
+  if(!top.length){host.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No critical alerts — all SKUs healthy or no data.</div>';return;}
+  const rows=top.map((r,i)=>{
+    const sev=r.wt_osa_ls!=null?(r.wt_osa_ls<60?'🔴 Critical':(r.wt_osa_ls<80?'🟡 Watch':'🟢 OK')):'—';
+    return `<tr style="cursor:pointer" onclick="availDrillToSku('${r.plat}','${r.sku}')">
+      <td style="padding:8px 10px;font-size:11px;color:var(--muted)">#${i+1}</td>
+      <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
+      <td style="padding:8px 10px;font-size:12px;color:#1a3a6e;font-weight:600">${r.plat}</td>
+      <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.wt_osa_ls)}</td>
+      <td style="padding:8px 10px;font-size:12px;color:#c0392b;font-weight:700">${_availFmtRupees(r.lost_gmv)}</td>
+      <td style="padding:8px 10px;font-size:11px">${sev}</td>
+    </tr>`;
+  }).join('');
+  host.innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Rank</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Platform</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Severity</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function _availRenderTrendingDegradation(){
+  const host=document.getElementById('availTrendingDegradation');
+  const mk=getViewingMonth();
+  const availM=(DB.avail||{})[mk]||{};
+  // For each SKU×Platform, compare avg OSA last 7 days vs prior 7 days
+  const td=latestDay()||1;
+  const recent7=[];
+  const prev7=[];
+  for(let i=0;i<7;i++){
+    if(td-i>0)recent7.push(String(td-i));
+    if(td-i-7>0)prev7.push(String(td-i-7));
+  }
+  const issues=[];
+  _AVAIL_PLATFORMS.forEach(plat=>{
+    const platAvail=availM[plat]||{};
+    Object.keys(platAvail).forEach(sku=>{
+      const days=platAvail[sku]||{};
+      const recAvg=_avgAcrossDays(days,recent7);
+      const prevAvg=_avgAcrossDays(days,prev7);
+      if(recAvg!=null&&prevAvg!=null){
+        const drop=prevAvg-recAvg;
+        if(drop>=5){
+          const info=skuLookup(plat,sku);
+          issues.push({plat,sku,name:info.name,cat:info.cat,prevAvg,recAvg,drop});
+        }
+      }
+    });
+  });
+  issues.sort((a,b)=>b.drop-a.drop);
+  if(!issues.length){host.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No trending degradation detected — all SKUs stable.</div>';return;}
+  const rows=issues.slice(0,15).map(r=>`<tr style="cursor:pointer" onclick="availDrillToSku('${r.plat}','${r.sku}')">
+    <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
+    <td style="padding:8px 10px;font-size:12px;color:#1a3a6e;font-weight:600">${r.plat}</td>
+    <td style="padding:8px 10px;font-size:12px">${_availFmtPct(r.prevAvg)}</td>
+    <td style="padding:8px 10px;font-size:12px">${_availFmtPct(r.recAvg)}</td>
+    <td style="padding:8px 10px;font-size:12px;color:#c0392b;font-weight:700">▼ ${r.drop.toFixed(1)}pp</td>
+  </tr>`).join('');
+  host.innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Platform</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Prev 7d OSA</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Recent 7d</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Drop</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function _avgAcrossDays(daysMap,dayList){
+  let sum=0,cnt=0;
+  dayList.forEach(d=>{
+    const dd=daysMap[d];
+    if(dd&&dd.wt_osa_ls!=null){sum+=dd.wt_osa_ls;cnt++;}
+  });
+  return cnt?sum/cnt:null;
+}
+
+function _availRenderCrossPlatform(){
+  const host=document.getElementById('availCrossPlatform');
+  const mtd=window._availMTD;
+  // Map SKU name → platform → OSA (since same product has different IDs per platform)
+  const byName={};
+  _AVAIL_PLATFORMS.forEach(plat=>{
+    Object.keys(mtd[plat].skus).forEach(sku=>{
+      const info=skuLookup(plat,sku);
+      const name=info.name;
+      if(!byName[name])byName[name]={cat:info.cat,plats:{}};
+      byName[name].plats[plat]={osa:mtd[plat].skus[sku].wt_osa_ls,sku};
+    });
+  });
+  // Find SKUs where range across platforms > 20pp
+  const flagged=[];
+  Object.keys(byName).forEach(name=>{
+    const plats=byName[name].plats;
+    const osaVals=_AVAIL_PLATFORMS.map(p=>plats[p]?plats[p].osa:null).filter(v=>v!=null);
+    if(osaVals.length<2)return;
+    const max=Math.max(...osaVals),min=Math.min(...osaVals);
+    const range=max-min;
+    if(range>=20)flagged.push({name,cat:byName[name].cat,plats,range,max,min});
+  });
+  flagged.sort((a,b)=>b.range-a.range);
+  if(!flagged.length){host.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No cross-platform variance detected — SKUs perform similarly across platforms.</div>';return;}
+  // Heatmap-style table
+  const head=`<thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted);min-width:180px">SKU</th>${_AVAIL_PLATFORMS.map(p=>`<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)">${p}</th>`).join('')}<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead>`;
+  const rows=flagged.slice(0,15).map(r=>{
+    const cells=_AVAIL_PLATFORMS.map(p=>{
+      const v=r.plats[p];
+      if(!v||v.osa==null)return `<td style="padding:8px;font-size:11px;color:var(--muted);text-align:center;background:#f8f9fb">—</td>`;
+      const bg=v.osa>=80?'#e6f7ec':v.osa>=60?'#fff4e0':'#fdecea';
+      const fg=v.osa>=80?'#1a7a3a':v.osa>=60?'#8a4a00':'#c0392b';
+      return `<td onclick="availDrillToSku('${p}','${v.sku}')" style="padding:8px;font-size:11px;text-align:center;background:${bg};color:${fg};font-weight:700;cursor:pointer">${_availFmtPct(v.osa)}</td>`;
+    }).join('');
+    return `<tr><td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>${cells}<td style="padding:8px;font-size:12px;text-align:center;color:#c0392b;font-weight:700">${r.range.toFixed(0)}pp</td></tr>`;
+  }).join('');
+  host.innerHTML=`<table style="width:100%;border-collapse:collapse">${head}<tbody>${rows}</tbody></table>`;
+}
+
+function _availRenderRestockQueue(){
+  const host=document.getElementById('availRestockQueue');
+  const mtd=window._availMTD;
+  const all=[];
+  _AVAIL_PLATFORMS.forEach(plat=>{
+    Object.keys(mtd[plat].skus).forEach(sku=>{
+      const k=mtd[plat].skus[sku];
+      if(k.wt_osa_ls==null||k.wt_osa_ls>=95)return; // already healthy
+      if(k.drr<=0)return;
+      const info=skuLookup(plat,sku);
+      const mrp=info.mrp||0;
+      const urgency=(100-k.wt_osa_ls)*k.drr*mrp;
+      if(urgency<=0)return;
+      const reorderUnits=Math.ceil(k.drr*14); // 14-day cover target
+      all.push({plat,sku,name:info.name,cat:info.cat,urgency,osa:k.wt_osa_ls,drr:k.drr,doi:k.doi,soh:k.soh,reorderUnits});
+    });
+  });
+  all.sort((a,b)=>b.urgency-a.urgency);
+  const top=all.slice(0,15);
+  if(!top.length){host.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No restock urgencies — all stock levels healthy.</div>';return;}
+  const rows=top.map((r,i)=>`<tr style="cursor:pointer" onclick="availDrillToSku('${r.plat}','${r.sku}')">
+    <td style="padding:8px 10px;font-size:11px;color:var(--muted)">#${i+1}</td>
+    <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
+    <td style="padding:8px 10px;font-size:12px;color:#1a3a6e;font-weight:600">${r.plat}</td>
+    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.osa,'osa')};font-weight:700">${_availFmtPct(r.osa)}</td>
+    <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr)}u/day</td>
+    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi)}</td>
+    <td style="padding:8px 10px;font-size:12px;color:#1a3a6e;font-weight:700">${Math.round(r.reorderUnits).toLocaleString('en-IN')}u</td>
+  </tr>`).join('');
+  host.innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Rank</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Platform</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Reorder (14d)</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── DRILLDOWNS ──
+let _availCurrentPlat=null;
+let _availCurrentSku=null;
+
+function availDrillToPlatform(plat){
+  _availCurrentPlat=plat;
+  document.getElementById('availPlatformsView').style.display='none';
+  document.getElementById('availSkuView').style.display='block';
+  document.getElementById('availCityView').style.display='none';
+  document.getElementById('availSkuViewTitle').textContent=plat+' — SKU Detail';
+  document.getElementById('availSkuSearch').value='';
+  availRenderSkuTable();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function availRenderSkuTable(){
+  const plat=_availCurrentPlat;
+  if(!plat)return;
+  const mtd=window._availMTD[plat]||{skus:{}};
+  const search=(document.getElementById('availSkuSearch')?.value||'').toLowerCase().trim();
+  const sortBy=document.getElementById('availSkuSort')?.value||'lost_gmv';
+  let list=Object.keys(mtd.skus).map(sku=>{
+    const info=skuLookup(plat,sku);
+    return{sku,name:info.name,cat:info.cat,mrp:info.mrp||0,...mtd.skus[sku]};
+  });
+  if(search)list=list.filter(r=>(r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search));
+  list.sort((a,b)=>{
+    if(sortBy==='lost_gmv')return b.lost_gmv-a.lost_gmv;
+    if(sortBy==='osa_asc')return (a.wt_osa_ls??101)-(b.wt_osa_ls??101);
+    if(sortBy==='osa_desc')return (b.wt_osa_ls??-1)-(a.wt_osa_ls??-1);
+    if(sortBy==='doi_asc')return (a.doi??99999)-(b.doi??99999);
+    if(sortBy==='name')return a.name.localeCompare(b.name);
+    return 0;
+  });
+  if(!list.length){document.getElementById('availSkuTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No SKUs match — try clearing the search.</div>';return;}
+  const rows=list.map(r=>`<tr style="cursor:pointer" onclick="availDrillToSku('${plat}','${r.sku}')">
+    <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
+    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.wt_osa_ls)}</td>
+    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.ds_listing,'ds')};font-weight:700">${_availFmtPct(r.ds_listing)}</td>
+    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi)}</td>
+    <td style="padding:8px 10px;font-size:12px">${Math.round(r.soh||0).toLocaleString('en-IN')}</td>
+    <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr||0)}u/day</td>
+    <td style="padding:8px 10px;font-size:12px;color:#c0392b;font-weight:700">${_availFmtRupees(r.lost_gmv)}</td>
+  </tr>`).join('');
+  document.getElementById('availSkuTable').innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function availDrillToSku(plat,sku){
+  _availCurrentPlat=plat;
+  _availCurrentSku=sku;
+  document.getElementById('availPlatformsView').style.display='none';
+  document.getElementById('availSkuView').style.display='none';
+  document.getElementById('availCityView').style.display='block';
+  const info=skuLookup(plat,sku);
+  document.getElementById('availCityViewTitle').textContent=`${info.name} × ${plat}`;
+  _availRenderCityTable();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function _availRenderCityTable(){
+  const plat=_availCurrentPlat,sku=_availCurrentSku;
+  const data=window._availMTD[plat]?.skus[sku];
+  if(!data){document.getElementById('availCityTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px">No data.</div>';return;}
+  const dsc=(DB.dark_store_counts||{})[plat]||{};
+  const cities=Object.keys(data.by_city||{}).sort();
+  if(!cities.length){document.getElementById('availCityTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px">No city-level data for this SKU.</div>';return;}
+  const info=skuLookup(plat,sku);
+  const rows=cities.map(c=>{
+    const cd=data.by_city[c];
+    const totalStores=dsc[c]?dsc[c].dark_stores:null;
+    const listedStores=dsc[c]?dsc[c].dark_stores_listed:null;
+    const storesStr=totalStores?`${listedStores||'—'}/${totalStores}`:'—';
+    return `<tr>
+      <td style="padding:8px 10px;font-size:12px"><b>${c}</b></td>
+      <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(cd.wt_osa_ls)}</td>
+      <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.ds_listing,'ds')};font-weight:700">${_availFmtPct(cd.ds_listing)}</td>
+      <td style="padding:8px 10px;font-size:12px">${storesStr}</td>
+      <td style="padding:8px 10px;font-size:12px">${Math.round(cd.soh||0).toLocaleString('en-IN')}</td>
+    </tr>`;
+  }).join('');
+  // Summary card on top
+  const summary=`<div style="padding:12px;background:#f0f3fa;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Wt. OSA (LS)</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.wt_osa_ls,'osa')}">${_availFmtPct(data.wt_osa_ls)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DS Listing</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.ds_listing,'ds')}">${_availFmtPct(data.ds_listing)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DOI</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.doi,'doi')}">${_availFmtDays(data.doi)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Total SOH</div><div style="font-size:16px;font-weight:800">${Math.round(data.soh||0).toLocaleString('en-IN')}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DRR</div><div style="font-size:16px;font-weight:800">${Math.round(data.drr||0)}u/d</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Lost GMV (MTD)</div><div style="font-size:16px;font-weight:800;color:#c0392b">${_availFmtRupees(data.lost_gmv)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">MRP</div><div style="font-size:16px;font-weight:800">${info.mrp?'₹'+info.mrp:'—'}</div></div>
+  </div>`;
+  document.getElementById('availCityTable').innerHTML=summary+`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Stores (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function availBackToPlatforms(){
+  document.getElementById('availPlatformsView').style.display='block';
+  document.getElementById('availSkuView').style.display='none';
+  document.getElementById('availCityView').style.display='none';
+  _availCurrentPlat=null;_availCurrentSku=null;
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function availBackToSku(){
+  if(_availCurrentPlat){
+    document.getElementById('availPlatformsView').style.display='none';
+    document.getElementById('availSkuView').style.display='block';
+    document.getElementById('availCityView').style.display='none';
+    _availCurrentSku=null;
+    window.scrollTo({top:0,behavior:'smooth'});
+  }else{availBackToPlatforms();}
+}
+function availSetView(v){
+  // Reserved for future Action Lists view toggle
+  if(v==='actions'){
+    document.getElementById('availPlatformsView').style.display='none';
+    document.getElementById('availActionsView').style.display='block';
+    document.getElementById('availViewPlatforms').style.background='#f0f3fa';
+    document.getElementById('availViewPlatforms').style.color='#1a1a2e';
+    document.getElementById('availViewActions').style.background='#1a3a6e';
+    document.getElementById('availViewActions').style.color='#fff';
+    _availRenderActionLists();
+  }else{
+    document.getElementById('availPlatformsView').style.display='block';
+    document.getElementById('availActionsView').style.display='none';
+    document.getElementById('availSkuView').style.display='none';
+    document.getElementById('availCityView').style.display='none';
+    document.getElementById('availViewPlatforms').style.background='#1a3a6e';
+    document.getElementById('availViewPlatforms').style.color='#fff';
+    document.getElementById('availViewActions').style.background='#f0f3fa';
+    document.getElementById('availViewActions').style.color='#1a1a2e';
+  }
+}
+function _availRenderActionLists(){
+  const host=document.getElementById('availActionLists');
+  const mtd=window._availMTD;
+  const tasks=[];
+  _AVAIL_PLATFORMS.forEach(plat=>{
+    Object.keys(mtd[plat].skus).forEach(sku=>{
+      const k=mtd[plat].skus[sku];
+      if(k.wt_osa_ls==null)return;
+      const info=skuLookup(plat,sku);
+      // Generate action recommendations based on data
+      Object.keys(k.by_city||{}).forEach(city=>{
+        const cv=k.by_city[city];
+        if(cv.wt_osa_ls!=null&&cv.wt_osa_ls<70){
+          tasks.push({type:'restock',plat,sku,city,name:info.name,osa:cv.wt_osa_ls,action:`Restock ${plat} · ${city} — OSA ${_availFmtPct(cv.wt_osa_ls)}`});
+        }
+        if(cv.ds_listing!=null&&cv.ds_listing<60){
+          tasks.push({type:'listing',plat,sku,city,name:info.name,ds:cv.ds_listing,action:`Improve DS Listing on ${plat} · ${city} — only ${_availFmtPct(cv.ds_listing)} stores listed`});
+        }
+      });
+    });
+  });
+  if(!tasks.length){host.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No actionable tasks — all SKUs healthy.</div>';return;}
+  const rows=tasks.slice(0,30).map((t,i)=>`<tr>
+    <td style="padding:8px 10px;font-size:11px;color:var(--muted)">#${i+1}</td>
+    <td style="padding:8px 10px;font-size:11px">${t.type==='restock'?'🔄 Restock':'📋 Listing'}</td>
+    <td style="padding:8px 10px;font-size:12px"><b>${t.name}</b></td>
+    <td style="padding:8px 10px;font-size:12px">${t.action}</td>
+  </tr>`).join('');
+  host.innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">#</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Type</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Action</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // ══════════════════════════════════════════════
