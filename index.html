@@ -3895,43 +3895,60 @@ function _sohBB(rows){
 
 function _sohAmazon(rows){
   // Amazon SOH format is flexible — auto-detect ASIN col + qty col.
-  // Common Amazon export columns: ASIN, FNSKU, Sellable Inventory, Total Inventory, FC Stock, etc.
-  const sk=Object.keys(rows[0]||{});
+  // SPECIAL CASE: Amazon Vendor Central exports include a metadata banner as row 1
+  // (e.g. "Programme=[Retail], Distributor View=[Manufacturing], ...").
+  // Real headers are then in row 1 (e.g. "ASIN, Product Title, ..."), data from row 2.
+  // Detect and unshift the banner row.
+  let sk=Object.keys(rows[0]||{});
+  const looksLikeBanner=sk.some(k=>/^Programme=/i.test(k)||/=\[/i.test(k));
+  if(looksLikeBanner&&rows.length>=2){
+    // First row's VALUES are the real headers
+    const realHeaders=Object.values(rows[0]);
+    const newRows=[];
+    for(let i=1;i<rows.length;i++){
+      const vals=Object.values(rows[i]);
+      const obj={};
+      for(let j=0;j<realHeaders.length;j++){
+        const h=String(realHeaders[j]||'').trim();
+        if(h)obj[h]=vals[j];
+      }
+      newRows.push(obj);
+    }
+    rows=newRows;
+    sk=Object.keys(rows[0]||{});
+    console.log('[SOH Amazon] Detected Vendor Central banner format. Real headers:',sk);
+  }
   const asinCol=sk.find(k=>/^asin$/i.test(k))||sk.find(k=>/asin/i.test(k))||sk.find(k=>/fnsku/i.test(k));
   if(!asinCol){
-    // No ASIN/FNSKU column found — fail gracefully
-    alert('Amazon SOH: no ASIN or FNSKU column detected.\nSample columns found: '+sk.slice(0,8).join(', ')+'\n\nExpected: column named ASIN, FNSKU, or similar.');
+    alert('Amazon SOH: no ASIN column detected.\nColumns: '+sk.slice(0,10).join(', '));
     return{data:{},skuCount:0,totalUnits:0,unmatchedSku:0,citiesCovered:0};
   }
-  // Qty column: prefer "Sellable Inventory", "Available", "FC Stock", "Total Inventory", "Quantity"
-  const qtyCandidates=['Sellable Inventory','Available Inventory','Sellable','Available','FC Stock','Total Inventory','Quantity','Qty','Stock','Units'];
+  // Qty column priority (most accurate first): Sellable On Hand Units > Sellable Inventory > ...
+  const qtyCandidates=['Sellable On Hand Units','Sellable On-Hand Units','Sellable Inventory','Sellable On-Hand Inventory','Available Inventory','Sellable','Available','FC Stock','Total Inventory','Quantity','Qty','Stock','Units'];
   let qtyCol=null;
   for(const c of qtyCandidates){if(sk.includes(c)){qtyCol=c;break;}}
+  if(!qtyCol)qtyCol=sk.find(k=>/sellable.*units?/i.test(k))||sk.find(k=>/inventory|stock|available|^qty$|quantity/i.test(k)&&!/value|revenue|gmv|sales|unsellable/i.test(k));
   if(!qtyCol){
-    // Fuzzy: any column with "inventory", "qty", "stock", "available"
-    qtyCol=sk.find(k=>/inventory|stock|available|^qty$|quantity/i.test(k)&&!/value|revenue|gmv|sales/i.test(k));
-  }
-  if(!qtyCol){
-    alert('Amazon SOH: no quantity column detected.\nColumns: '+sk.join(', ')+'\n\nExpected one of: Sellable Inventory, Available, FC Stock, Quantity, etc.');
+    alert('Amazon SOH: no quantity column detected.\nColumns: '+sk.join(', '));
     return{data:{},skuCount:0,totalUnits:0,unmatchedSku:0,citiesCovered:0};
   }
-  // Optional FC / Warehouse column for facility-level breakdown
   const fcCol=sk.find(k=>/fulfillment.?center|^fc$|warehouse|node/i.test(k));
+  // Parse Indian-formatted numbers: "1,064" → 1064, "₹3,15,681.82" → 315681.82
+  const parseINR=v=>{if(v==null||v==='')return 0;const s=String(v).replace(/[₹,\s]/g,'').replace(/[^\d.-]/g,'');return parseFloat(s)||0;};
   const data={};let unmatched=0,totalU=0;const facs=new Set();
   rows.forEach(r=>{
     const asin=String(r[asinCol]||'').trim();
     if(!asin)return;
     if(!DB.sku_master.Amazon?.[asin]&&!SEED.sku_master.Amazon?.[asin]){unmatched++;return;}
-    const qty=parseFloat(r[qtyCol])||0;
+    const qty=parseINR(r[qtyCol]);
     const fc=fcCol?String(r[fcCol]||'Unknown').trim():'Default';
     if(!data[asin])data[asin]={total:0,by_city:{},by_facility:{}};
     data[asin].total+=qty;
-    // Amazon has no city dimension typically — bucket all under "All India"
     data[asin].by_city['All India']=(data[asin].by_city['All India']||0)+qty;
     data[asin].by_facility[fc]=(data[asin].by_facility[fc]||0)+qty;
     totalU+=qty;facs.add(fc);
   });
-  return{data,skuCount:Object.keys(data).length,totalUnits:totalU,unmatchedSku:unmatched,citiesCovered:facs.size,asinCol,qtyCol,fcCol};
+  return{data,skuCount:Object.keys(data).length,totalUnits:totalU,unmatchedSku:unmatched,citiesCovered:facs.size,asinCol,qtyCol,fcCol,bannerStripped:looksLikeBanner};
 }
 
 function _sohFK(rows){
