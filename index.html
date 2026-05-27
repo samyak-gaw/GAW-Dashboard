@@ -933,7 +933,13 @@ body{padding-bottom:env(safe-area-inset-bottom)}
         <input class="file-input" id="bbSohFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'bbSoh')">
       </div>
     </div>
-    <div></div>
+    <div>
+      <div class="upload-zone" ondragover="dov(event,'azSohZone')" ondragleave="dlv('azSohZone')" ondrop="dop(event,'azSoh')" id="azSohZone" onclick="document.getElementById('azSohFile').click()" style="min-height:80px;padding:14px">
+        <div class="up-icon" style="font-size:22px">📦</div><div class="up-title" style="font-size:13px">Amazon SOH</div>
+        <div class="up-sub" id="azSohSub" style="font-size:11px">ASIN × WH Qty (auto-detect cols)</div>
+        <input class="file-input" id="azSohFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'azSoh')">
+      </div>
+    </div>
   </div>
 
   <!-- Dark Store Count — Zepto / Blinkit / IM only -->
@@ -3103,6 +3109,7 @@ function processFile(file,type){
         else if(type==='imSoh')ok=procSoh('Instamart',rows);
         else if(type==='fkSoh')ok=procSoh('Flipkart',rows);
         else if(type==='bbSoh')ok=procSoh('BigBasket',rows);
+        else if(type==='azSoh')ok=procSoh('Amazon',rows);
         // Dark Store Count files
         else if(type==='zpDsc')ok=procDsc('Zepto',rows);
         else if(type==='blDsc')ok=procDsc('Blinkit',rows);
@@ -3693,8 +3700,12 @@ function procAvail(platform,rows){
   const sk=Object.keys(rows[0]||{});
   const dCol=sk.find(k=>k==='Date')||sk.find(k=>/^date$/i.test(k))||'Date';
   // For Q-comm platforms, primary SKU id is "Item ID"; for FK/BB it's "Product ID"
+  // BUG FIX: Must iterate candidates in priority order (not use sk.find which returns first match in sk).
+  // Files often contain BOTH columns; picking wrong one = 0 matches.
   const skuColCandidates=(platform==='Flipkart'||platform==='BigBasket')?['Product ID','Item ID']:['Item ID','Product ID'];
-  const skuCol=sk.find(k=>skuColCandidates.includes(k))||skuColCandidates[0];
+  let skuCol=null;
+  for(const cand of skuColCandidates){if(sk.includes(cand)){skuCol=cand;break;}}
+  if(!skuCol)skuCol=skuColCandidates[0];
   const cityCol=sk.find(k=>k==='City')||sk.find(k=>/^city$/i.test(k))||'City';
   // OSA in LS column — handle both "Wt. OSA in LS" (Q-comm) and "Wt. OSA% in LS" (BB/FK)
   const osaLsCol=sk.find(k=>/wt\.?\s*osa%?\s*in\s*ls/i.test(k))||sk.find(k=>/wt\.?\s*osa\s*in\s*ls/i.test(k))||'Wt. OSA in LS';
@@ -3776,6 +3787,7 @@ function procSoh(platform,rows){
     else if(platform==='Instamart')res=_sohIM(rows);
     else if(platform==='BigBasket')res=_sohBB(rows);
     else if(platform==='Flipkart')res=_sohFK(rows);
+    else if(platform==='Amazon')res=_sohAmazon(rows);
     else{alert('Unknown platform for SOH: '+platform);return false;}
   }catch(e){console.error('[SOH '+platform+'] threw:',e);alert('SOH parser error: '+e.message);return false;}
   if(!res||!res.skuCount){alert(platform+' SOH: 0 SKUs parsed. Check column headers.');return false;}
@@ -3879,6 +3891,47 @@ function _sohBB(rows){
     totalU+=u;cities.add(city);
   });
   return{data,skuCount:Object.keys(data).length,totalUnits:totalU,unmatchedSku:unmatched,citiesCovered:cities.size};
+}
+
+function _sohAmazon(rows){
+  // Amazon SOH format is flexible — auto-detect ASIN col + qty col.
+  // Common Amazon export columns: ASIN, FNSKU, Sellable Inventory, Total Inventory, FC Stock, etc.
+  const sk=Object.keys(rows[0]||{});
+  const asinCol=sk.find(k=>/^asin$/i.test(k))||sk.find(k=>/asin/i.test(k))||sk.find(k=>/fnsku/i.test(k));
+  if(!asinCol){
+    // No ASIN/FNSKU column found — fail gracefully
+    alert('Amazon SOH: no ASIN or FNSKU column detected.\nSample columns found: '+sk.slice(0,8).join(', ')+'\n\nExpected: column named ASIN, FNSKU, or similar.');
+    return{data:{},skuCount:0,totalUnits:0,unmatchedSku:0,citiesCovered:0};
+  }
+  // Qty column: prefer "Sellable Inventory", "Available", "FC Stock", "Total Inventory", "Quantity"
+  const qtyCandidates=['Sellable Inventory','Available Inventory','Sellable','Available','FC Stock','Total Inventory','Quantity','Qty','Stock','Units'];
+  let qtyCol=null;
+  for(const c of qtyCandidates){if(sk.includes(c)){qtyCol=c;break;}}
+  if(!qtyCol){
+    // Fuzzy: any column with "inventory", "qty", "stock", "available"
+    qtyCol=sk.find(k=>/inventory|stock|available|^qty$|quantity/i.test(k)&&!/value|revenue|gmv|sales/i.test(k));
+  }
+  if(!qtyCol){
+    alert('Amazon SOH: no quantity column detected.\nColumns: '+sk.join(', ')+'\n\nExpected one of: Sellable Inventory, Available, FC Stock, Quantity, etc.');
+    return{data:{},skuCount:0,totalUnits:0,unmatchedSku:0,citiesCovered:0};
+  }
+  // Optional FC / Warehouse column for facility-level breakdown
+  const fcCol=sk.find(k=>/fulfillment.?center|^fc$|warehouse|node/i.test(k));
+  const data={};let unmatched=0,totalU=0;const facs=new Set();
+  rows.forEach(r=>{
+    const asin=String(r[asinCol]||'').trim();
+    if(!asin)return;
+    if(!DB.sku_master.Amazon?.[asin]&&!SEED.sku_master.Amazon?.[asin]){unmatched++;return;}
+    const qty=parseFloat(r[qtyCol])||0;
+    const fc=fcCol?String(r[fcCol]||'Unknown').trim():'Default';
+    if(!data[asin])data[asin]={total:0,by_city:{},by_facility:{}};
+    data[asin].total+=qty;
+    // Amazon has no city dimension typically — bucket all under "All India"
+    data[asin].by_city['All India']=(data[asin].by_city['All India']||0)+qty;
+    data[asin].by_facility[fc]=(data[asin].by_facility[fc]||0)+qty;
+    totalU+=qty;facs.add(fc);
+  });
+  return{data,skuCount:Object.keys(data).length,totalUnits:totalU,unmatchedSku:unmatched,citiesCovered:facs.size,asinCol,qtyCol,fcCol};
 }
 
 function _sohFK(rows){
@@ -4882,7 +4935,32 @@ async function githubPush(manual=false){
       headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},
       body:JSON.stringify(body)
     });
-    if(!putRes.ok){
+    // Auto-retry once on 409 Conflict (stale SHA from rapid back-to-back pushes).
+    // Common with bulk uploads — GitHub eventual consistency means freshly-fetched SHA can race.
+    if(putRes.status===409){
+      logGH('PUT 409 conflict — refetching SHA and retrying once…');
+      // Wait briefly to let GitHub settle, then refetch SHA
+      await new Promise(r=>setTimeout(r,800));
+      const reGet=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path,{
+        headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Cache-Control':'no-cache'}
+      });
+      if(reGet.ok){
+        const d2=await reGet.json();
+        body.sha=d2.sha;
+        const retryRes=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path,{
+          method:'PUT',
+          headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},
+          body:JSON.stringify(body)
+        });
+        if(!retryRes.ok){
+          const txt=await retryRes.text().catch(()=>'');
+          throw new Error('PUT retry failed: HTTP '+retryRes.status+' — '+txt.slice(0,120));
+        }
+        logGH('Retry OK');
+      }else{
+        throw new Error('SHA refetch failed: HTTP '+reGet.status);
+      }
+    }else if(!putRes.ok){
       const txt=await putRes.text().catch(()=>'');
       throw new Error('PUT failed: HTTP '+putRes.status+' — '+txt.slice(0,120));
     }
