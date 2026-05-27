@@ -1472,6 +1472,11 @@ let SELECTED_DAY=null;
 //   _delta.zepto_disc_pending = bool   (legacy flag; respected for back-compat)
 // ══════════════════════════════════════════════
 const DELTA_KEY = 'gaw_delta_v3';
+// Stage 2: split-out large data slots to avoid localStorage quota.
+// Each kept in its own key so the main delta stays small.
+const AVAIL_KEY = 'gaw_avail_v1';
+const SOH_KEY   = 'gaw_soh_v1';
+const DSC_KEY   = 'gaw_dsc_v1';
 let _delta = {
   months: {},
   frozen: {},
@@ -1716,18 +1721,44 @@ function initDB() {
       _delta = {};
     }
   }
+  // Load split-out heavy slots
+  try {
+    const av = localStorage.getItem(AVAIL_KEY);
+    if (av) _delta.avail = JSON.parse(av);
+  } catch(e){ console.warn('avail load failed:', e); }
+  try {
+    const so = localStorage.getItem(SOH_KEY);
+    if (so) _delta.soh = JSON.parse(so);
+  } catch(e){ console.warn('soh load failed:', e); }
+  try {
+    const ds = localStorage.getItem(DSC_KEY);
+    if (ds) _delta.dark_store_counts = JSON.parse(ds);
+  } catch(e){ console.warn('dsc load failed:', e); }
   _migrateLegacyDelta();
   _buildDB();
   console.log('✅ DB initialised — active:', getActiveMonth(), '· viewing:', getViewingMonth());
 }
 
-// Only save the small delta — never the full DB
+// Save the small delta to one key, large data slots to separate keys (avoids quota).
 function saveDB() {
-  try {
-    localStorage.setItem(DELTA_KEY, JSON.stringify(_delta));
-  } catch(e) {
-    console.error('saveDB quota error:', e);
-    alert('❌ Storage error: ' + e.message);
+  // Extract heavy slots so the main delta stays small
+  const heavyAvail = _delta.avail || {};
+  const heavySoh = _delta.soh || {};
+  const heavyDsc = _delta.dark_store_counts || {};
+  // Build trimmed delta for the main key
+  const trimmedDelta = Object.assign({}, _delta, { avail: {}, soh: {}, dark_store_counts: {} });
+  let errors = [];
+  try { localStorage.setItem(DELTA_KEY, JSON.stringify(trimmedDelta)); }
+  catch(e){ errors.push('main: '+e.message); }
+  try { localStorage.setItem(AVAIL_KEY, JSON.stringify(heavyAvail)); }
+  catch(e){ errors.push('avail: '+e.message); }
+  try { localStorage.setItem(SOH_KEY, JSON.stringify(heavySoh)); }
+  catch(e){ errors.push('soh: '+e.message); }
+  try { localStorage.setItem(DSC_KEY, JSON.stringify(heavyDsc)); }
+  catch(e){ errors.push('dsc: '+e.message); }
+  if(errors.length){
+    console.error('saveDB quota errors:', errors);
+    alert('⚠ Storage warning (some slots couldn\'t save):\n'+errors.join('\n')+'\n\nGitHub cloud sync will still capture full data.');
   }
   _buildDB(); // keep in-memory DB in sync after every save
 }
@@ -1753,6 +1784,9 @@ function resetData() {
       viewing_month: null
     };
     try { localStorage.removeItem(DELTA_KEY); } catch(e) {}
+    try { localStorage.removeItem(AVAIL_KEY); } catch(e) {}
+    try { localStorage.removeItem(SOH_KEY); } catch(e) {}
+    try { localStorage.removeItem(DSC_KEY); } catch(e) {}
     saveDB();
     renderAll();
     alert('Reset done — targets, SKU master, availability, SOH, dark store counts, and frozen months preserved.');
@@ -3836,22 +3870,41 @@ function procAvail(platform,rows){
   });
 
   // Commit aggregated data to _delta.avail (replaces existing days for this platform/sku — MTD upload model)
+  // COMPACT FORM (to avoid localStorage quota): daily[d]={wt_osa_ls, ds_listing} (SKU-level, no city)
+  // PLUS by_city = MTD-averaged across all days (single snapshot per city, not per-day-per-city).
   if(!_delta.avail)_delta.avail={};
   Object.keys(agg).forEach(mk=>{
     if(!_delta.avail[mk])_delta.avail[mk]={};
     if(!_delta.avail[mk][platform])_delta.avail[mk][platform]={};
     Object.keys(agg[mk]).forEach(sku=>{
-      if(!_delta.avail[mk][platform][sku])_delta.avail[mk][platform][sku]={};
-      Object.keys(agg[mk][sku]).forEach(d=>{
-        const s=agg[mk][sku][d];
-        const avgLs=s.osaLs_samples.length?(s.osaLs_samples.reduce((a,b)=>a+b,0)/s.osaLs_samples.length):null;
-        const avgDs=s.ds_samples.length?(s.ds_samples.reduce((a,b)=>a+b,0)/s.ds_samples.length):null;
-        _delta.avail[mk][platform][sku][d]={
-          wt_osa_ls:avgLs!==null?Math.round(avgLs*100)/100:null,
-          ds_listing:avgDs!==null?Math.round(avgDs*100)/100:null,
-          by_city:s.cities
+      // Re-aggregate over all days for this SKU to build compact form
+      const allDays=agg[mk][sku];
+      const daily={};
+      const cityAgg={}; // city → {osaSum, osaCnt, dsSum, dsCnt}
+      Object.keys(allDays).forEach(d=>{
+        const s=allDays[d];
+        const dailyOsa=s.osaLs_samples.length?(s.osaLs_samples.reduce((a,b)=>a+b,0)/s.osaLs_samples.length):null;
+        const dailyDs=s.ds_samples.length?(s.ds_samples.reduce((a,b)=>a+b,0)/s.ds_samples.length):null;
+        daily[d]={
+          wt_osa_ls:dailyOsa!==null?Math.round(dailyOsa*100)/100:null,
+          ds_listing:dailyDs!==null?Math.round(dailyDs*100)/100:null
+        };
+        // Accumulate city-level across days
+        Object.keys(s.cities||{}).forEach(c=>{
+          const cv=s.cities[c];
+          if(!cityAgg[c])cityAgg[c]={osaSum:0,osaCnt:0,dsSum:0,dsCnt:0};
+          if(cv.wt_osa_ls!=null){cityAgg[c].osaSum+=cv.wt_osa_ls;cityAgg[c].osaCnt++;}
+          if(cv.ds_listing!=null){cityAgg[c].dsSum+=cv.ds_listing;cityAgg[c].dsCnt++;}
+        });
+      });
+      const by_city={};
+      Object.keys(cityAgg).forEach(c=>{
+        by_city[c]={
+          wt_osa_ls:cityAgg[c].osaCnt?Math.round((cityAgg[c].osaSum/cityAgg[c].osaCnt)*100)/100:null,
+          ds_listing:cityAgg[c].dsCnt?Math.round((cityAgg[c].dsSum/cityAgg[c].dsCnt)*100)/100:null
         };
       });
+      _delta.avail[mk][platform][sku]={daily,by_city};
     });
   });
 
@@ -4132,27 +4185,31 @@ function _availComputeMTD(){
     const platAvail=availM[plat]||{};
     const platSoh=(sohM[plat]||{}).data||{};
     const aprilPlatData=(DB.april[plat]&&DB.april[plat].sku)||[];
-    // Per-SKU MTD aggregation
+    // Per-SKU MTD aggregation (NEW COMPACT SHAPE: skuData={daily:{d:{osa,ds}}, by_city:{c:{osa,ds}}})
     Object.keys(platAvail).forEach(sku=>{
-      const days=platAvail[sku]||{};
+      const skuData=platAvail[sku]||{};
+      const days=skuData.daily||{};
       const dayKeys=Object.keys(days);
       if(!dayKeys.length)return;
-      // Average OSA_LS and DS across days (only days with non-null values)
+      // Average OSA_LS and DS across days (SKU-level)
       let osaSum=0,osaCnt=0,dsSum=0,dsCnt=0;
-      const byCity={};
       dayKeys.forEach(d=>{
         const dd=days[d];
         if(dd.wt_osa_ls!=null){osaSum+=dd.wt_osa_ls;osaCnt++;}
         if(dd.ds_listing!=null){dsSum+=dd.ds_listing;dsCnt++;}
-        Object.keys(dd.by_city||{}).forEach(city=>{
-          const cv=dd.by_city[city];
-          if(!byCity[city])byCity[city]={osaSum:0,osaCnt:0,dsSum:0,dsCnt:0};
-          if(cv.wt_osa_ls!=null){byCity[city].osaSum+=cv.wt_osa_ls;byCity[city].osaCnt++;}
-          if(cv.ds_listing!=null){byCity[city].dsSum+=cv.ds_listing;byCity[city].dsCnt++;}
-        });
       });
       const avgOsa=osaCnt?osaSum/osaCnt:null;
       const avgDs=dsCnt?dsSum/dsCnt:null;
+      // by_city is already MTD-averaged at upload time
+      const cityDetail={};
+      Object.keys(skuData.by_city||{}).forEach(c=>{
+        const cv=skuData.by_city[c];
+        cityDetail[c]={
+          wt_osa_ls:cv.wt_osa_ls,
+          ds_listing:cv.ds_listing,
+          soh:(platSoh[sku]&&platSoh[sku].by_city)?(platSoh[sku].by_city[c]||0):0
+        };
+      });
       // MTD GMV for this SKU
       const mtdGmv=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&dayFilter(r.day)).reduce((s,r)=>s+r.gmv,0);
       const mtdUnits=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&dayFilter(r.day)).reduce((s,r)=>s+r.units,0);
@@ -4169,15 +4226,6 @@ function _availComputeMTD(){
       const mtdDaysElapsed=Object.keys(aprilPlatData.reduce((m,r)=>{if(dayFilter(r.day))m[r.day]=1;return m;},{})).length||1;
       const drr=mtdUnits/mtdDaysElapsed;
       const doi=drr>0?totalSoh/drr:null;
-      // Build per-city detail
-      const cityDetail={};
-      Object.keys(byCity).forEach(city=>{
-        cityDetail[city]={
-          wt_osa_ls:byCity[city].osaCnt?byCity[city].osaSum/byCity[city].osaCnt:null,
-          ds_listing:byCity[city].dsCnt?byCity[city].dsSum/byCity[city].dsCnt:null,
-          soh:sohRec&&sohRec.by_city?(sohRec.by_city[city]||0):0
-        };
-      });
       result[plat].skus[sku]={
         wt_osa_ls:avgOsa,
         ds_listing:avgDs,
@@ -4339,9 +4387,11 @@ function _availRenderTrendingDegradation(){
   _AVAIL_PLATFORMS.forEach(plat=>{
     const platAvail=availM[plat]||{};
     Object.keys(platAvail).forEach(sku=>{
-      const days=platAvail[sku]||{};
-      const recAvg=_avgAcrossDays(days,recent7);
-      const prevAvg=_avgAcrossDays(days,prev7);
+      // NEW SHAPE: skuRec={daily:{day:{osa,ds}}, by_city:{...}}
+      const skuRec=platAvail[sku]||{};
+      const daily=skuRec.daily||{};
+      const recAvg=_avgAcrossDays(daily,recent7);
+      const prevAvg=_avgAcrossDays(daily,prev7);
       if(recAvg!=null&&prevAvg!=null){
         const drop=prevAvg-recAvg;
         if(drop>=5){
