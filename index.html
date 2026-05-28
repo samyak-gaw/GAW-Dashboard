@@ -4267,6 +4267,10 @@ function _availComputeMTD(){
   const mk=getViewingMonth();
   const availM=(DB.avail||{})[mk]||{};
   const sohM=(DB.soh||{})[mk]||{};
+  // MTD filter: include every day from 1 up to the latest day with data (or selected day).
+  // Availability/SOH are month-to-date snapshots, so MTD = full month elapsed.
+  const _mtdLatest=(SELECTED_DAY!==null?SELECTED_DAY:latestDay())||getMonthDays();
+  const _mtdDay=d=>(d>=1&&d<=_mtdLatest);
   const result={};
   _AVAIL_PLATFORMS.forEach(plat=>{
     result[plat]={skus:{}, summary:{wt_osa_ls:null, ds_listing:null, doi:null, lost_gmv:0, active_skus:0, has_data:false}};
@@ -4299,8 +4303,8 @@ function _availComputeMTD(){
         };
       });
       // MTD GMV for this SKU
-      const mtdGmv=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&dayFilter(r.day)).reduce((s,r)=>s+r.gmv,0);
-      const mtdUnits=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&dayFilter(r.day)).reduce((s,r)=>s+r.units,0);
+      const mtdGmv=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&_mtdDay(r.day)).reduce((s,r)=>s+r.gmv,0);
+      const mtdUnits=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&_mtdDay(r.day)).reduce((s,r)=>s+r.units,0);
       // Lost GMV: prefer platform-reported (IM only), else compute (1-OSA/100)/(OSA/100) * MTD GMV
       let lostGmv=0;
       const sohRec=platSoh[sku];
@@ -4311,7 +4315,7 @@ function _availComputeMTD(){
       }
       // DOI: total SOH / DRR (DRR = MTD units / MTD days elapsed)
       const totalSoh=sohRec?sohRec.total:0;
-      const mtdDaysElapsed=Object.keys(aprilPlatData.reduce((m,r)=>{if(dayFilter(r.day))m[r.day]=1;return m;},{})).length||1;
+      const mtdDaysElapsed=Object.keys(aprilPlatData.reduce((m,r)=>{if(_mtdDay(r.day))m[r.day]=1;return m;},{})).length||1;
       const drr=mtdUnits/mtdDaysElapsed;
       const doi=drr>0?totalSoh/drr:null;
       result[plat].skus[sku]={
