@@ -4045,6 +4045,9 @@ function _sohIM(rows){
   const dohCol=sk.find(k=>k==='DaysOnHand')||'DaysOnHand';
   const lossCol=sk.find(k=>k==='PotentialGmvLoss')||'PotentialGmvLoss';
   const data={};let unmatched=0,totalU=0,totalLoss=0;const cities=new Set();
+  // Placeholder DOH values that mean "no sales velocity" (not real days-on-hand).
+  // IM uses 365 / 810 (and similar large round numbers) as no-movement sentinels.
+  const isPlaceholderDOH=v=>(v>=365);
   rows.forEach(r=>{
     const sku=_normSkuId(r[skuCol]);if(!sku)return;
     if(!DB.sku_master.Instamart?.[sku]&&!SEED.sku_master.Instamart?.[sku]){unmatched++;return;}
@@ -4053,12 +4056,23 @@ function _sohIM(rows){
     const qty=parseFloat(r[qtyCol])||0;
     const doh=parseFloat(r[dohCol]);
     const loss=parseFloat(r[lossCol])||0;
-    if(!data[sku])data[sku]={total:0,by_city:{},by_facility:{},platform_loss:0};
+    if(!data[sku])data[sku]={total:0,by_city:{},by_facility:{},platform_loss:0,_dohWSum:0,_dohWQty:0};
     data[sku].total+=qty;
     data[sku].by_city[city]=(data[sku].by_city[city]||0)+qty;
     data[sku].by_facility[facility]={qty,doh:isNaN(doh)?null:doh,city,platform_loss:loss};
     data[sku].platform_loss+=loss;
+    // Accumulate weighted DOH (weight = WH qty), EXCLUDING placeholder/no-velocity rows
+    if(!isNaN(doh)&&!isPlaceholderDOH(doh)&&qty>0){
+      data[sku]._dohWSum+=doh*qty;
+      data[sku]._dohWQty+=qty;
+    }
     totalU+=qty;totalLoss+=loss;cities.add(city);
+  });
+  // Finalize native DOH per SKU (weighted average, or null if all rows were placeholders)
+  Object.keys(data).forEach(sku=>{
+    const d=data[sku];
+    d.native_doh=(d._dohWQty>0)?(d._dohWSum/d._dohWQty):null;
+    delete d._dohWSum;delete d._dohWQty;
   });
   return{data,skuCount:Object.keys(data).length,totalUnits:totalU,unmatchedSku:unmatched,citiesCovered:cities.size,platformReportedLoss:totalLoss};
 }
@@ -4313,11 +4327,31 @@ function _availComputeMTD(){
       }else if(avgOsa!=null&&avgOsa>0&&avgOsa<100){
         lostGmv=mtdGmv*(100-avgOsa)/avgOsa;
       }
-      // DOI: total SOH / DRR (DRR = MTD units / MTD days elapsed)
+      // DOI computation:
+      //  - IM provides native DaysOnHand (weighted avg, placeholders excluded) → use directly
+      //  - Other platforms: compute SOH / DRR
+      //  - Zero-velocity (DRR≈0 with stock): DOI = null, flagged 'no velocity' in UI
       const totalSoh=sohRec?sohRec.total:0;
       const mtdDaysElapsed=Object.keys(aprilPlatData.reduce((m,r)=>{if(_mtdDay(r.day))m[r.day]=1;return m;},{})).length||1;
       const drr=mtdUnits/mtdDaysElapsed;
-      const doi=drr>0?totalSoh/drr:null;
+      let doi=null;
+      let doiFlag=null; // null | 'no_velocity' | 'capped'
+      if(plat==='Instamart'&&sohRec&&sohRec.native_doh!=null){
+        // Use IM's own DaysOnHand (already weighted, placeholders removed)
+        doi=sohRec.native_doh;
+      }else if(drr>0.05&&totalSoh>0){
+        // Compute for non-IM platforms
+        doi=totalSoh/drr;
+      }else if(totalSoh>0&&drr<=0.05){
+        // Has stock but effectively no sales → exclude from DOI, flag it
+        doi=null;
+        doiFlag='no_velocity';
+      }
+      // Cap display at 90 days for computed (non-native) values to avoid absurd numbers
+      if(doi!=null&&doi>90){
+        doi=90;
+        doiFlag='capped';
+      }
       result[plat].skus[sku]={
         wt_osa_ls:avgOsa,
         ds_listing:avgDs,
@@ -4326,6 +4360,7 @@ function _availComputeMTD(){
         drr,
         soh:totalSoh,
         doi,
+        doi_flag:doiFlag,
         lost_gmv:lostGmv,
         days_data:dayKeys.length,
         by_city:cityDetail,
@@ -4347,8 +4382,15 @@ function _availComputeMTD(){
         result[plat].summary.wt_osa_ls=osaList.length?osaList.reduce((a,b)=>a+b,0)/osaList.length:null;
         result[plat].summary.ds_listing=dsList.length?dsList.reduce((a,b)=>a+b,0)/dsList.length:null;
       }
-      const doiList=skuList.filter(k=>k.doi!=null).map(k=>k.doi);
-      result[plat].summary.doi=doiList.length?doiList.reduce((a,b)=>a+b,0)/doiList.length:null;
+      // Summary DOI: median of SKUs with valid DOI (excludes no-velocity & nulls).
+      // Median is more robust than mean against the few capped/high values.
+      const doiList=skuList.filter(k=>k.doi!=null).map(k=>k.doi).sort((a,b)=>a-b);
+      if(doiList.length){
+        const mid=Math.floor(doiList.length/2);
+        result[plat].summary.doi=doiList.length%2?doiList[mid]:(doiList[mid-1]+doiList[mid])/2;
+      }else{
+        result[plat].summary.doi=null;
+      }
       result[plat].summary.lost_gmv=skuList.reduce((s,k)=>s+k.lost_gmv,0);
       result[plat].summary.active_skus=skuList.length;
       result[plat].summary.has_data=true;
@@ -4379,7 +4421,12 @@ function _availColor(pct,kind){
 }
 function _availFmtPct(v){return v==null?'—':(Math.round(v*10)/10)+'%';}
 function _availFmtRupees(v){return v==null||v===0?'₹0':'₹'+Math.round(v).toLocaleString('en-IN');}
-function _availFmtDays(v){return v==null?'—':Math.round(v)+'d';}
+function _availFmtDays(v,flag){
+  if(flag==='no_velocity')return '<span style="color:#9aa1a8;font-size:11px">— no velocity</span>';
+  if(v==null)return '—';
+  if(flag==='capped'||v>=90)return '90+d';
+  return Math.round(v)+'d';
+}
 
 function renderAvailability(){
   // Compute fresh MTD
@@ -4423,7 +4470,7 @@ function _availRenderPlatformCards(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Wt. OSA (LS)</div><div style="font-size:20px;font-weight:800;color:${osaCol}">${_availFmtPct(s.wt_osa_ls)}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DS Listing</div><div style="font-size:20px;font-weight:800;color:${dsCol}">${_availFmtPct(s.ds_listing)}</div></div>
-        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Avg</div><div style="font-size:20px;font-weight:800;color:${doiCol}">${_availFmtDays(s.doi)}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Median</div><div style="font-size:20px;font-weight:800;color:${doiCol}">${_availFmtDays(s.doi,s.doi>=90?'capped':null)}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Lost GMV (MTD)</div><div style="font-size:20px;font-weight:800;color:#c0392b">${_availFmtRupees(s.lost_gmv)}</div></div>
       </div>
       <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:6px">Click to drill into SKUs →</div>
@@ -4579,7 +4626,7 @@ function _availRenderRestockQueue(){
     <td style="padding:8px 10px;font-size:12px;color:#1a3a6e;font-weight:600">${r.plat}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.osa,'osa')};font-weight:700">${_availFmtPct(r.osa)}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr)}u/day</td>
-    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi)}</td>
+    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
     <td style="padding:8px 10px;font-size:12px;color:#1a3a6e;font-weight:700">${Math.round(r.reorderUnits).toLocaleString('en-IN')}u</td>
   </tr>`).join('');
   host.innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Rank</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Platform</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Reorder (14d)</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -4624,7 +4671,7 @@ function availRenderSkuTable(){
     <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.wt_osa_ls)}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.ds_listing,'ds')};font-weight:700">${_availFmtPct(r.ds_listing)}</td>
-    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi)}</td>
+    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.soh||0).toLocaleString('en-IN')}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr||0)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:#c0392b;font-weight:700">${_availFmtRupees(r.lost_gmv)}</td>
@@ -4669,7 +4716,7 @@ function _availRenderCityTable(){
   const summary=`<div style="padding:12px;background:#f0f3fa;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Wt. OSA (LS)</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.wt_osa_ls,'osa')}">${_availFmtPct(data.wt_osa_ls)}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DS Listing</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.ds_listing,'ds')}">${_availFmtPct(data.ds_listing)}</div></div>
-    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DOI</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.doi,'doi')}">${_availFmtDays(data.doi)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DOI</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.doi,'doi')}">${_availFmtDays(data.doi,data.doi_flag)}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Total SOH</div><div style="font-size:16px;font-weight:800">${Math.round(data.soh||0).toLocaleString('en-IN')}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DRR</div><div style="font-size:16px;font-weight:800">${Math.round(data.drr||0)}u/d</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Lost GMV (MTD)</div><div style="font-size:16px;font-weight:800;color:#c0392b">${_availFmtRupees(data.lost_gmv)}</div></div>
