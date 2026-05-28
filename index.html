@@ -626,7 +626,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
     <div>
       <div style="font-size:18px;font-weight:800;color:#1a1a2e">📦 Availability</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">OSA · DS Listing · DOI · Lost GMV · <span id="availMonth">May</span> 2026 MTD</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Wt. OSA in LS · DS Listing · DOI · Lost GMV · GMV-weighted · Today + <span id="availMonth">May</span> MTD</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--muted)">View:</span>
@@ -4297,7 +4297,7 @@ function _availComputeMTD(){
       const days=skuData.daily||{};
       const dayKeys=Object.keys(days);
       if(!dayKeys.length)return;
-      // Average OSA_LS and DS across days (SKU-level)
+      // Average OSA_LS and DS across days (SKU-level MTD)
       let osaSum=0,osaCnt=0,dsSum=0,dsCnt=0;
       dayKeys.forEach(d=>{
         const dd=days[d];
@@ -4306,6 +4306,15 @@ function _availComputeMTD(){
       });
       const avgOsa=osaCnt?osaSum/osaCnt:null;
       const avgDs=dsCnt?dsSum/dsCnt:null;
+      // SINGLE-DAY (latest available day ≤ _mtdLatest) OSA + DS for this SKU.
+      // Matches GobbleCube's "for <date>" headline number.
+      let dayOsa=null,dayDs=null,_latestDayWithData=-1;
+      dayKeys.forEach(d=>{
+        const dn=parseInt(d,10);
+        if(dn<=_mtdLatest&&dn>_latestDayWithData&&days[d]&&days[d].wt_osa_ls!=null){
+          _latestDayWithData=dn;dayOsa=days[d].wt_osa_ls;dayDs=days[d].ds_listing;
+        }
+      });
       // by_city is already MTD-averaged at upload time (or computed by normalizer)
       const cityDetail={};
       Object.keys(skuData.by_city||{}).forEach(c=>{
@@ -4355,6 +4364,8 @@ function _availComputeMTD(){
       result[plat].skus[sku]={
         wt_osa_ls:avgOsa,
         ds_listing:avgDs,
+        day_osa_ls:dayOsa,
+        day_ds_listing:dayDs,
         mtd_gmv:mtdGmv,
         mtd_units:mtdUnits,
         drr,
@@ -4367,23 +4378,31 @@ function _availComputeMTD(){
         by_facility:sohRec?(sohRec.by_facility||{}):{}
       };
     });
-    // Platform-level summary
+    // Platform-level summary — GMV-weighted (only SKUs with both OSA data AND GMV contribute).
+    // Most accurate: a SKU's influence on platform OSA scales with its sales volume.
     const skuList=Object.values(result[plat].skus);
     if(skuList.length){
-      // Weighted by MTD GMV (more meaningful than simple average)
-      const gmvTotal=skuList.reduce((s,k)=>s+k.mtd_gmv,0);
-      if(gmvTotal>0){
-        result[plat].summary.wt_osa_ls=skuList.reduce((s,k)=>s+(k.wt_osa_ls||0)*k.mtd_gmv,0)/gmvTotal;
-        result[plat].summary.ds_listing=skuList.reduce((s,k)=>s+(k.ds_listing||0)*k.mtd_gmv,0)/gmvTotal;
-      }else{
-        // Simple avg fallback
-        const osaList=skuList.filter(k=>k.wt_osa_ls!=null).map(k=>k.wt_osa_ls);
-        const dsList=skuList.filter(k=>k.ds_listing!=null).map(k=>k.ds_listing);
-        result[plat].summary.wt_osa_ls=osaList.length?osaList.reduce((a,b)=>a+b,0)/osaList.length:null;
-        result[plat].summary.ds_listing=dsList.length?dsList.reduce((a,b)=>a+b,0)/dsList.length:null;
-      }
-      // Summary DOI: median of SKUs with valid DOI (excludes no-velocity & nulls).
-      // Median is more robust than mean against the few capped/high values.
+      result[plat].summary.active_skus=skuList.length;
+      result[plat].summary.has_data=true;
+      // --- MTD GMV-weighted OSA & DS ---
+      // Weight = MTD GMV, but only count SKUs that have a non-null metric (avoids diluting with blanks).
+      const _wavg=(metricKey)=>{
+        let wSum=0,w=0;
+        skuList.forEach(k=>{
+          const v=k[metricKey];
+          const g=k.mtd_gmv||0;
+          if(v!=null&&g>0){wSum+=v*g;w+=g;}
+        });
+        if(w>0)return wSum/w;
+        // Fallback: simple mean of non-null values (when no GMV data yet)
+        const vals=skuList.map(k=>k[metricKey]).filter(v=>v!=null);
+        return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+      };
+      result[plat].summary.wt_osa_ls=_wavg('wt_osa_ls');
+      result[plat].summary.ds_listing=_wavg('ds_listing');
+      result[plat].summary.day_osa_ls=_wavg('day_osa_ls');
+      result[plat].summary.day_ds_listing=_wavg('day_ds_listing');
+      // --- DOI: median of valid (excludes no-velocity & nulls), robust to outliers ---
       const doiList=skuList.filter(k=>k.doi!=null).map(k=>k.doi).sort((a,b)=>a-b);
       if(doiList.length){
         const mid=Math.floor(doiList.length/2);
@@ -4392,8 +4411,6 @@ function _availComputeMTD(){
         result[plat].summary.doi=null;
       }
       result[plat].summary.lost_gmv=skuList.reduce((s,k)=>s+k.lost_gmv,0);
-      result[plat].summary.active_skus=skuList.length;
-      result[plat].summary.has_data=true;
     }
   });
   return result;
@@ -4462,18 +4479,19 @@ function _availRenderPlatformCards(){
     const osaCol=_availColor(s.wt_osa_ls,'osa');
     const dsCol=_availColor(s.ds_listing,'ds');
     const doiCol=_availColor(s.doi,'doi');
+    const dayOsaCol=_availColor(s.day_osa_ls,'osa');
     return `<div class="card chart-clickable" onclick="availDrillToPlatform('${plat}')" style="cursor:pointer">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px;color:#1a1a2e">${plat}</b></div>
         <span style="font-size:10px;color:var(--muted)">${s.active_skus} SKUs</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
-        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Wt. OSA (LS)</div><div style="font-size:20px;font-weight:800;color:${osaCol}">${_availFmtPct(s.wt_osa_ls)}</div></div>
-        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DS Listing</div><div style="font-size:20px;font-weight:800;color:${dsCol}">${_availFmtPct(s.ds_listing)}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Wt. OSA (LS) — Today</div><div style="font-size:20px;font-weight:800;color:${dayOsaCol}">${_availFmtPct(s.day_osa_ls)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">MTD: <b style="color:${osaCol}">${_availFmtPct(s.wt_osa_ls)}</b></div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DS Listing — Today</div><div style="font-size:20px;font-weight:800;color:${_availColor(s.day_ds_listing,'ds')}">${_availFmtPct(s.day_ds_listing)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">MTD: <b style="color:${dsCol}">${_availFmtPct(s.ds_listing)}</b></div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Median</div><div style="font-size:20px;font-weight:800;color:${doiCol}">${_availFmtDays(s.doi,s.doi>=90?'capped':null)}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Lost GMV (MTD)</div><div style="font-size:20px;font-weight:800;color:#c0392b">${_availFmtRupees(s.lost_gmv)}</div></div>
       </div>
-      <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:6px">Click to drill into SKUs →</div>
+      <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:6px">GMV-weighted · Click to drill into SKUs →</div>
     </div>`;
   }).join('');
   host.innerHTML=cards;
@@ -4669,6 +4687,7 @@ function availRenderSkuTable(){
   if(!list.length){document.getElementById('availSkuTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No SKUs match — try clearing the search.</div>';return;}
   const rows=list.map(r=>`<tr style="cursor:pointer" onclick="availDrillToSku('${plat}','${r.sku}')">
     <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
+    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.day_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.day_osa_ls)}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.wt_osa_ls)}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.ds_listing,'ds')};font-weight:700">${_availFmtPct(r.ds_listing)}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
@@ -4676,7 +4695,7 @@ function availRenderSkuTable(){
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr||0)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:#c0392b;font-weight:700">${_availFmtRupees(r.lost_gmv)}</td>
   </tr>`).join('');
-  document.getElementById('availSkuTable').innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('availSkuTable').innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA Today</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA MTD</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function availDrillToSku(plat,sku){
