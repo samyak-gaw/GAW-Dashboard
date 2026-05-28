@@ -629,6 +629,10 @@ body{padding-bottom:env(safe-area-inset-bottom)}
       <div style="font-size:12px;color:var(--muted);margin-top:2px">Wt. OSA in LS · DS Listing · DOI · Lost GMV · GMV-weighted · Today + <span id="availMonth">May</span> MTD</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--muted)">Window:</span>
+      <button id="availWinToday" class="exp-btn" onclick="availSetWindow('today')" style="background:#1a3a6e;color:#fff;font-size:11px">Today</button>
+      <button id="availWinMtd" class="exp-btn" onclick="availSetWindow('mtd')" style="background:#f0f3fa;color:#1a1a2e;font-size:11px">MTD Avg</button>
+      <span style="width:1px;height:18px;background:var(--border);margin:0 4px"></span>
       <span style="font-size:11px;color:var(--muted)">View:</span>
       <button id="availViewPlatforms" class="exp-btn" onclick="availSetView('platforms')" style="background:#1a3a6e;color:#fff;font-size:11px">Platforms</button>
       <button id="availViewActions" class="exp-btn" onclick="availSetView('actions')" style="background:#f0f3fa;color:#1a1a2e;font-size:11px">Action Lists</button>
@@ -1789,9 +1793,32 @@ function initDB() {
 }
 
 // Save the small delta to one key, large data slots to separate keys (avoids quota).
+// AVAIL is the heaviest slot; we trim per-day detail to the last 14 days before persisting
+// (only Trending needs daily; MTD avg + by_city + latest-day are kept in full).
+function _trimAvailForStorage(avail){
+  if(!avail)return {};
+  const out={};
+  Object.keys(avail).forEach(mk=>{
+    out[mk]={};
+    Object.keys(avail[mk]||{}).forEach(plat=>{
+      out[mk][plat]={};
+      Object.keys(avail[mk][plat]||{}).forEach(sku=>{
+        const rec=avail[mk][plat][sku]||{};
+        const daily=rec.daily||{};
+        // Keep only the latest 14 day-keys
+        const dayNums=Object.keys(daily).map(d=>parseInt(d,10)).filter(n=>!isNaN(n)).sort((a,b)=>b-a);
+        const keep=new Set(dayNums.slice(0,14).map(String));
+        const trimmedDaily={};
+        Object.keys(daily).forEach(d=>{if(keep.has(d))trimmedDaily[d]=daily[d];});
+        out[mk][plat][sku]={daily:trimmedDaily,by_city:rec.by_city||{}};
+      });
+    });
+  });
+  return out;
+}
 function saveDB() {
   // Extract heavy slots so the main delta stays small
-  const heavyAvail = _delta.avail || {};
+  const heavyAvail = _trimAvailForStorage(_delta.avail || {});
   const heavySoh = _delta.soh || {};
   const heavyDsc = _delta.dark_store_counts || {};
   // Build trimmed delta for the main key
@@ -1804,10 +1831,14 @@ function saveDB() {
   try { localStorage.setItem(SOH_KEY, JSON.stringify(heavySoh)); }
   catch(e){ errors.push('soh: '+e.message); }
   try { localStorage.setItem(DSC_KEY, JSON.stringify(heavyDsc)); }
-  catch(e){ errors.push('dsc: '+e.message); }
+  catch(e){
+    // DSC is least critical; if it won't fit, drop it from storage silently (cloud still has it)
+    errors.push('dsc: '+e.message);
+  }
   if(errors.length){
-    console.error('saveDB quota errors:', errors);
-    alert('⚠ Storage warning (some slots couldn\'t save):\n'+errors.join('\n')+'\n\nGitHub cloud sync will still capture full data.');
+    // Quota errors are non-fatal: in-memory data is intact and GitHub cloud sync carries the
+    // full dataset. Log quietly instead of alarming the user with a modal on every upload.
+    console.warn('[saveDB] localStorage quota — some slots not persisted locally (cloud sync unaffected):', errors);
   }
   _buildDB(); // keep in-memory DB in sync after every save
 }
@@ -4236,6 +4267,32 @@ function exportCSV(){
 // AVAILABILITY TAB (Stage 2) — Render functions
 // ══════════════════════════════════════════════
 const _AVAIL_PLATFORMS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket'];
+// Display window for OSA/DS metrics: 'today' (latest day) or 'mtd' (month-to-date avg).
+// Lost GMV and DOI are always MTD/period concepts and don't change with this toggle.
+let _availWindow='today';
+function availSetWindow(w){
+  _availWindow=(w==='mtd')?'mtd':'today';
+  const t=document.getElementById('availWinToday'), m=document.getElementById('availWinMtd');
+  if(t&&m){
+    const on='background:#1a3a6e;color:#fff;font-size:11px', off='background:#f0f3fa;color:#1a1a2e;font-size:11px';
+    t.style.cssText=(_availWindow==='today'?on:off);
+    m.style.cssText=(_availWindow==='mtd'?on:off);
+  }
+  // Re-render the currently visible level
+  _availRenderPlatformCards();
+  _availRenderCriticalAlerts();
+  _availRenderTrendingDegradation();
+  _availRenderCrossPlatform();
+  _availRenderRestockQueue();
+  if(_availCurrentPlat&&document.getElementById('availSkuView').style.display!=='none')availRenderSkuTable();
+  if(_availCurrentSku&&document.getElementById('availCityView').style.display!=='none')_availRenderCityTable();
+}
+// Helpers to pick the right metric based on window toggle
+function _availOsa(k){return _availWindow==='mtd'?k.wt_osa_ls:k.day_osa_ls;}
+function _availDs(k){return _availWindow==='mtd'?k.ds_listing:k.day_ds_listing;}
+function _availSummaryOsa(s){return _availWindow==='mtd'?s.wt_osa_ls:s.day_osa_ls;}
+function _availSummaryDs(s){return _availWindow==='mtd'?s.ds_listing:s.day_ds_listing;}
+function _availWinLabel(){return _availWindow==='mtd'?'MTD':'Today';}
 
 // Normalize SKU record to new compact shape regardless of source format.
 // Old shape: skuRec[<day>] = {wt_osa_ls, ds_listing, by_city: {...}}
@@ -4476,18 +4533,20 @@ function _availRenderPlatformCards(){
     if(!s.has_data){
       return `<div class="card" style="opacity:.5"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px">${plat}</b></div><div style="font-size:11px;color:var(--muted)">No data yet — upload OSA + SOH files</div></div>`;
     }
-    const osaCol=_availColor(s.wt_osa_ls,'osa');
-    const dsCol=_availColor(s.ds_listing,'ds');
+    const primaryOsa=_availSummaryOsa(s), secondaryOsa=(_availWindow==='mtd'?s.day_osa_ls:s.wt_osa_ls);
+    const primaryDs=_availSummaryDs(s), secondaryDs=(_availWindow==='mtd'?s.day_ds_listing:s.ds_listing);
+    const osaCol=_availColor(primaryOsa,'osa');
+    const dsCol=_availColor(primaryDs,'ds');
     const doiCol=_availColor(s.doi,'doi');
-    const dayOsaCol=_availColor(s.day_osa_ls,'osa');
+    const winLbl=_availWinLabel(), otherLbl=(_availWindow==='mtd'?'Today':'MTD');
     return `<div class="card chart-clickable" onclick="availDrillToPlatform('${plat}')" style="cursor:pointer">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px;color:#1a1a2e">${plat}</b></div>
         <span style="font-size:10px;color:var(--muted)">${s.active_skus} SKUs</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
-        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Wt. OSA (LS) — Today</div><div style="font-size:20px;font-weight:800;color:${dayOsaCol}">${_availFmtPct(s.day_osa_ls)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">MTD: <b style="color:${osaCol}">${_availFmtPct(s.wt_osa_ls)}</b></div></div>
-        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DS Listing — Today</div><div style="font-size:20px;font-weight:800;color:${_availColor(s.day_ds_listing,'ds')}">${_availFmtPct(s.day_ds_listing)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">MTD: <b style="color:${dsCol}">${_availFmtPct(s.ds_listing)}</b></div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Wt. OSA (LS) — ${winLbl}</div><div style="font-size:20px;font-weight:800;color:${osaCol}">${_availFmtPct(primaryOsa)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">${otherLbl}: <b>${_availFmtPct(secondaryOsa)}</b></div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DS Listing — ${winLbl}</div><div style="font-size:20px;font-weight:800;color:${dsCol}">${_availFmtPct(primaryDs)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">${otherLbl}: <b>${_availFmtPct(secondaryDs)}</b></div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Median</div><div style="font-size:20px;font-weight:800;color:${doiCol}">${_availFmtDays(s.doi,s.doi>=90?'capped':null)}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Lost GMV (MTD)</div><div style="font-size:20px;font-weight:800;color:#c0392b">${_availFmtRupees(s.lost_gmv)}</div></div>
       </div>
@@ -4689,7 +4748,7 @@ function availRenderSkuTable(){
     <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.day_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.day_osa_ls)}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.wt_osa_ls)}</td>
-    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.ds_listing,'ds')};font-weight:700">${_availFmtPct(r.ds_listing)}</td>
+    <td style="padding:8px 10px;font-size:12px;color:${_availColor(_availDs(r),'ds')};font-weight:700">${_availFmtPct(_availDs(r))}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.soh||0).toLocaleString('en-IN')}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr||0)}u/day</td>
@@ -4731,16 +4790,18 @@ function _availRenderCityTable(){
       <td style="padding:8px 10px;font-size:12px">${Math.round(cd.soh||0).toLocaleString('en-IN')}</td>
     </tr>`;
   }).join('');
-  // Summary card on top
+  // Summary card on top — OSA/DS reflect the active window toggle; city rows are MTD-averaged (data shape).
+  const _sumOsa=_availSummaryOsa(data), _sumDs=_availSummaryDs(data), _wl=_availWinLabel();
   const summary=`<div style="padding:12px;background:#f0f3fa;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
-    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Wt. OSA (LS)</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.wt_osa_ls,'osa')}">${_availFmtPct(data.wt_osa_ls)}</div></div>
-    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DS Listing</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.ds_listing,'ds')}">${_availFmtPct(data.ds_listing)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Wt. OSA (LS) — ${_wl}</div><div style="font-size:16px;font-weight:800;color:${_availColor(_sumOsa,'osa')}">${_availFmtPct(_sumOsa)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DS Listing — ${_wl}</div><div style="font-size:16px;font-weight:800;color:${_availColor(_sumDs,'ds')}">${_availFmtPct(_sumDs)}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DOI</div><div style="font-size:16px;font-weight:800;color:${_availColor(data.doi,'doi')}">${_availFmtDays(data.doi,data.doi_flag)}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Total SOH</div><div style="font-size:16px;font-weight:800">${Math.round(data.soh||0).toLocaleString('en-IN')}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DRR</div><div style="font-size:16px;font-weight:800">${Math.round(data.drr||0)}u/d</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Lost GMV (MTD)</div><div style="font-size:16px;font-weight:800;color:#c0392b">${_availFmtRupees(data.lost_gmv)}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">MRP</div><div style="font-size:16px;font-weight:800">${info.mrp?'₹'+info.mrp:'—'}</div></div>
-  </div>`;
+  </div>
+  <div style="font-size:10px;color:var(--muted);margin-bottom:8px">City rows below show MTD averages.</div>`;
   document.getElementById('availCityTable').innerHTML=summary+`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Stores (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
