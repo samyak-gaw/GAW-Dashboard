@@ -4470,6 +4470,7 @@ function _availComputeMTD(){
         lost_gmv:lostGmv,
         days_data:dayKeys.length,
         by_city:cityDetail,
+        soh_by_city:(sohRec&&sohRec.by_city)?sohRec.by_city:{},
         by_facility:sohRec?(sohRec.by_facility||{}):{}
       };
     });
@@ -5012,7 +5013,8 @@ function _availRenderSohSkuTable(){
     const info=skuLookup(plat,sku);
     const k=pd.skus[sku];
     const dts=_sohDaysToStockout(k.soh,k.drr);
-    const nCities=Object.keys(k.by_city||{}).filter(c=>(k.by_city[c]||0)>0||typeof k.by_city[c]==='object').length;
+    const sohCities=k.soh_by_city||{};
+    const nCities=Object.keys(sohCities).filter(c=>(sohCities[c]||0)>0).length;
     return {sku,name:info.name,cat:info.cat,soh:k.soh||0,doi:k.doi,doi_flag:k.doi_flag,drr:k.drr||0,dts,nCities};
   }).filter(r=>r.soh>0||r.drr>0); // only SKUs with stock or sales
   if(search)list=list.filter(r=>(r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search));
@@ -5055,8 +5057,9 @@ function _availRenderSohCityTable(){
   const drr=k.drr||0;
   // City-level DRR proportion: split platform DRR by each city's SOH share as a proxy
   // (we have city SOH but not city-level sales velocity, so approximate days-to-stockout per city).
-  const byCity=k.by_city||{};
-  const cities=Object.keys(byCity).sort((a,b)=>(byCity[b]||0)-(byCity[a]||0));
+  // Use the SOH file's own by_city (raw numbers) — NOT the OSA-derived cityDetail (objects).
+  const byCity=k.soh_by_city||{};
+  const cities=Object.keys(byCity).filter(c=>(byCity[c]||0)>0).sort((a,b)=>(byCity[b]||0)-(byCity[a]||0));
   // Facility data (if platform provides it): k.by_facility = {facName:{...}} or {facName:units}
   const byFac=k.by_facility||{};
   const hasFac=Object.keys(byFac).length>0;
