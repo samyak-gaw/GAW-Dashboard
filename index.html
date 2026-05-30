@@ -1422,7 +1422,7 @@ const CAT_NORM={
   'Ice Popsicle':'Popsicle','ice popsicle':'Popsicle',
 };
 function normCat(c){const s=String(c||'').trim();return CAT_NORM[s]||CAT_NORM[s.toLowerCase()]||s;}
-const DNCR=new Set(['delhi','gurgaon','gurugram','noida','noida 1','rohtak','meerut','faridabad','ghaziabad','hapur','bahadurgarh','sonipat','panipat','karnal','agra','mathura','aligarh','chandigarh','amritsar','ludhiana','jalandhar','patiala']);
+const DNCR=new Set(['delhi','gurgaon','gurugram','tcigurgaon','noida','noida 1','rohtak','meerut','faridabad','ghaziabad','dasna','kundli','farukhnagar','farrukhnagar','hapur','bahadurgarh','sonipat','panipat','karnal','agra','mathura','aligarh','chandigarh','amritsar','ludhiana','jalandhar','patiala']);
 const CALIAS={bengaluru:'Bangalore',banglore:'Bangalore',mysore:'Bangalore',mysuru:'Bangalore',
 'navi mumbai':'Mumbai',thane:'Mumbai','cochin':'Kochi',ernakulam:'Kochi',
 'gurugram':'Delhi NCR',noida:'Delhi NCR',ghaziabad:'Delhi NCR',faridabad:'Delhi NCR',
@@ -4086,6 +4086,39 @@ function _sohBlinkit(rows){
   const beCol=sk.find(k=>k==='backend_inv_qty')||sk.find(k=>/backend.?inv/i.test(k))||'backend_inv_qty';
   const feCol=sk.find(k=>k==='frontend_inv_qty')||sk.find(k=>/frontend.?inv/i.test(k))||'frontend_inv_qty';
   const data={};let unmatched=0,totalU=0;const fac=new Set();
+  // Robust city extractor for Blinkit facility names. Real-world patterns:
+  //   "CPC - Gurgaon3 (HP)"        → Gurgaon
+  //   "CPC-NOIDA2-FRZ(HP)"          → NOIDA
+  //   "CPC - Delhi Mundka (HP)"     → Delhi
+  //   "Faridabad - Feeder Warehouse"→ Faridabad
+  //   "Noida N1 - Feeder Warehouse" → Noida
+  //   "Mumbai M10 - Feeder Warehouse"→ Mumbai
+  //   "Super Store Dasna 2"         → Dasna
+  //   "SS Hyderabad Devar PC5"      → Hyderabad
+  //   "CPC-BLR8-FRZ(HP)"            → BLR (mapped to Bangalore via alias below)
+  //   "CC-DTS-CHITEGAON1"           → Rest (edge case)
+  // Also normalize Blinkit-only abbreviations that aren't in CALIAS
+  const BL_ALIAS={blr:'Bangalore',hyd:'Hyderabad',del:'Delhi',mum:'Mumbai',chn:'Chennai',
+    kol:'Kolkata',pun:'Pune',ahm:'Ahmedabad',agra:'Agra',mundka:'Delhi'};
+  function extractCity(fname){
+    if(!fname)return'Unknown';
+    let f=String(fname).trim();
+    // Strip leading prefixes — both "CPC -" / "CPC-" / "Super Store " / "SS " / "CC-DTS-"
+    f=f.replace(/^(CPC\s*-\s*|CPC-|Super\s+Store\s+|SS\s+|CC-DTS-)/i,'');
+    // Take the first chunk before space, dash, paren, or trailing digits
+    // e.g. "Gurgaon3 (HP)" → "Gurgaon3" → "Gurgaon"
+    //      "NOIDA2-FRZ(HP)" → "NOIDA2" → "NOIDA"
+    //      "Delhi Mundka (HP)" → "Delhi"
+    let firstToken=f.split(/[\s\-\(]/)[0]||f;
+    // Strip trailing digits (Gurgaon3 → Gurgaon, NOIDA2 → NOIDA, M10 → M)
+    let stripped=firstToken.replace(/\d+$/,'').trim();
+    // If stripping left nothing, fall back to firstToken
+    if(!stripped)stripped=firstToken;
+    // Try Blinkit-specific alias first (BLR, HYD, etc.)
+    const low=stripped.toLowerCase();
+    if(BL_ALIAS[low])return BL_ALIAS[low];
+    return stripped;
+  }
   rows.forEach(r=>{
     const sku=_normSkuId(r[skuCol]);if(!sku)return;
     if(!DB.sku_master.Blinkit?.[sku]&&!SEED.sku_master.Blinkit?.[sku]){unmatched++;return;}
@@ -4093,13 +4126,12 @@ function _sohBlinkit(rows){
     const be=parseFloat(r[beCol])||0;
     const fe=parseFloat(r[feCol])||0;
     const u=be+fe;
-    // Extract city from facility name (best-effort — usually starts with city e.g. "Kundli - Feeder Warehouse")
-    const cityRaw=facility.split('-')[0].trim()||'Unknown';
+    const cityRaw=extractCity(facility);
     const city=nCity(cityRaw);
     if(!data[sku])data[sku]={total:0,by_city:{},by_facility:{}};
     data[sku].total+=u;
     data[sku].by_city[city]=(data[sku].by_city[city]||0)+u;
-    data[sku].by_facility[facility]={be,fe,total:u};
+    data[sku].by_facility[facility]={be,fe,total:u,city};
     totalU+=u;fac.add(facility);
   });
   return{data,skuCount:Object.keys(data).length,totalUnits:totalU,unmatchedSku:unmatched,citiesCovered:fac.size};
