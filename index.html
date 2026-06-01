@@ -415,8 +415,6 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     <button class="exp-btn" onclick="exportPDF()">📄 Save as PDF</button>
     <button class="exp-btn" onclick="exportCSV()">📊 Export CSV</button>
     <button class="exp-btn" onclick="downloadReadOnly()" style="background:#1a3a6e;color:#fff;border-color:#1a3a6e">📤 Download Read-Only Snapshot</button>
-    <button class="exp-btn admin-only-btn" onclick="downloadMonthlyReviewHTML()" style="background:#1a7a3a;color:#fff;border-color:#1a7a3a;display:none">📋 Monthly Review (HTML)</button>
-    <button class="exp-btn admin-only-btn" onclick="downloadMonthlyReviewXLSX()" style="background:#1a7a3a;color:#fff;border-color:#1a7a3a;display:none">📊 Monthly Review (Excel)</button>
     <span style="font-size:11px;color:var(--muted)">Exports current active tab view</span>
   </div>
   <div id="ovKpis" class="kpi-row"></div>
@@ -627,6 +625,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     <div>
       <div style="font-size:18px;font-weight:800;color:#1a1a2e">📦 Availability</div>
       <div style="font-size:12px;color:var(--muted);margin-top:2px">Wt. OSA in LS · DS Listing · DOI · Lost GMV · GMV-weighted · Today + <span id="availMonth">May</span> MTD</div>
+      <div id="availUpdatedAt" style="font-size:11px;color:#1a7a3a;margin-top:4px;font-weight:700"></div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--muted)">Window:</span>
@@ -1547,6 +1546,7 @@ function _migrateLegacyDelta() {
   if (!_delta.frozen)            _delta.frozen           = {};
   if (!_delta.sku_master)        _delta.sku_master       = {};
   if (!_delta.avail)             _delta.avail            = {};
+  if (!_delta.avail_meta)        _delta.avail_meta       = {};   // {platform:tsMs, _last:tsMs} — availability upload timestamps (synced to viewers)
   if (!_delta.soh)               _delta.soh              = {};
   if (!_delta.dark_store_counts) _delta.dark_store_counts= {};
   if (!_delta.targets_by_month)  _delta.targets_by_month = {};
@@ -4026,6 +4026,11 @@ function procAvail(platform,rows){
     });
   });
 
+  // Record availability upload timestamp (per-platform + overall) — syncs to viewers via GitHub
+  if(!_delta.avail_meta)_delta.avail_meta={};
+  _delta.avail_meta[platform]=Date.now();
+  _delta.avail_meta._last=Date.now();
+
   saveDB();
   _buildDB();
   window._availLastResult={platform,parsed,bundlesSkipped,unmatchedSku,noDate,dateCol:dCol,skuCol,cityCol,osaLsCol,dsCol,bundleCol,unmatchedSamples};
@@ -4578,6 +4583,23 @@ function renderAvailability(){
   window._availMTD=_availComputeMTD();
   // Update month label
   const mEl=document.getElementById('availMonth');if(mEl)mEl.textContent=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];
+  // Availability data last-updated stamp (latest across platforms; per-platform detail on hover)
+  const updEl=document.getElementById('availUpdatedAt');
+  if(updEl){
+    const meta=(_delta&&_delta.avail_meta)||{};
+    const fmtTs=ms=>new Date(ms).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const platTs=Object.keys(meta).filter(k=>k!=='_last'&&typeof meta[k]==='number');
+    const latest=platTs.length?Math.max(...platTs.map(k=>meta[k])):(typeof meta._last==='number'?meta._last:null);
+    if(latest){
+      const detail=platTs.sort((a,b)=>meta[b]-meta[a]).map(k=>`${k}: ${fmtTs(meta[k])}`).join(' · ');
+      updEl.innerHTML=`🕒 Availability data last updated: ${fmtTs(latest)}`;
+      updEl.title=detail;
+    }else{
+      updEl.innerHTML='🕒 Availability data last updated: — (no availability upload yet)';
+      updEl.style.color='var(--muted)';
+      updEl.title='';
+    }
+  }
   // Show data-missing banner if no platforms have data
   const platformsWithData=_AVAIL_PLATFORMS.filter(p=>window._availMTD[p].summary.has_data);
   const banner=document.getElementById('availMissingDataBanner');
@@ -5311,10 +5333,11 @@ function renderSnapshot(){
       skuMap[key].gmv+=r.gmv;skuMap[key].units+=r.units;
     });
   });
-  const topSkus=Object.values(skuMap).sort((a,b)=>b.gmv-a.gmv).slice(0,10);
-  const topTot=topSkus.reduce((s,r)=>s+r.gmv,0);
+  const _allSku=Object.values(skuMap).sort((a,b)=>b.gmv-a.gmv);
+  const grandTot=_allSku.reduce((s,r)=>s+r.gmv,0); // share denominator = ALL SKUs, not top 10
+  const topSkus=_allSku.slice(0,10);
   document.getElementById('snapSkuBody').innerHTML=topSkus.map((r,i)=>{
-    const share=topTot>0?((r.gmv/topTot)*100).toFixed(1):0;
+    const share=grandTot>0?((r.gmv/grandTot)*100).toFixed(1):0;
     const bW=topSkus[0]&&topSkus[0].gmv>0?Math.round((r.gmv/topSkus[0].gmv)*80):0;
     return`<tr><td style="font-weight:700;color:var(--muted)">${i+1}</td><td>${r.name}</td><td><span class="pill">${r.cat}</span></td><td>${fC(r.gmv)}</td><td>${fN(r.units)}</td><td><span class="sbar-bg"><span class="sbar-fill" style="width:${bW}%;background:#1a3a6e"></span></span> ${share}%</td></tr>`;
   }).join('')||'<tr><td colspan="6" style="color:var(--muted);padding:16px">No data</td></tr>';
@@ -5696,150 +5719,6 @@ function _buildMonthlyData(){
   return{platSummary,dailyRows,catRows,topSkus,cityRows,lastDay,totalCatGmv,totalSkuGmv,allDays};
 }
 
-function downloadMonthlyReviewHTML(){
-  if(!window._GAW_IS_ADMIN){alert('Admin access required.');return;}
-  const d=_buildMonthlyData();
-  const date=new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
-  const fmtC=v=>v>=10000000?'₹'+(v/10000000).toFixed(2)+'Cr':v>=100000?'₹'+(v/100000).toFixed(2)+'L':'₹'+Math.round(v).toLocaleString('en-IN');
-  const fmtN=v=>v>=100000?(v/100000).toFixed(1)+'L':v>=1000?(v/1000).toFixed(1)+'K':Math.round(v);
-  const badge=(v,good=0)=>{const f=parseFloat(v);if(isNaN(f))return`<span style="color:#6b7a99">—</span>`;const c=f>=good?'#1a7a3a':f>=-10?'#c07700':'#c0392b';return`<span style="color:${c};font-weight:700">${f>=0?'▲':'▼'}${Math.abs(f)}%</span>`;};
-  const PC2={Zepto:'#7b2d8b',Blinkit:'#d4860a',Instamart:'#c0392b',Amazon:'#ff9900',Flipkart:'#2874f0',BigBasket:'#84c225'};
-
-  let html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>GAW Monthly Review — ${MONTH_LABEL(getViewingMonth())}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a1a2e;font-size:13px}
-.hdr{background:#1a1a2e;color:#fff;padding:24px 32px;display:flex;justify-content:space-between;align-items:center}
-.hdr h1{font-size:20px;font-weight:800}.hdr h1 span{color:#d4860a}
-.hdr .meta{font-size:12px;opacity:.65;margin-top:4px}
-.wrap{max-width:1200px;margin:0 auto;padding:28px 24px}
-.sec-hdr{font-size:11px;font-weight:800;color:#6b7a99;text-transform:uppercase;letter-spacing:1px;margin:28px 0 12px;padding-left:12px;border-left:4px solid #d4860a}
-.kpi-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:24px}
-.kpi{background:#fff;border:1px solid #e0e5ef;border-radius:10px;padding:16px 18px;flex:1;min-width:150px;border-top:3px solid #d4860a}
-.kpi .lbl{font-size:10px;color:#6b7a99;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
-.kpi .val{font-size:20px;font-weight:800}
-.kpi .sub{font-size:11px;color:#6b7a99;margin-top:4px}
-table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e0e5ef;margin-bottom:24px}
-th{background:#f0f3fa;color:#6b7a99;font-weight:700;padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
-td{padding:8px 12px;border-bottom:1px solid #f0f3fa;color:#2a2a3e;vertical-align:middle}
-tr:last-child td{border-bottom:none}tr:hover td{background:#f8f9fe}
-.tag{display:inline-block;padding:1px 7px;border-radius:6px;font-size:10px;font-weight:700}
-.prog-bg{background:#f0f3fa;border-radius:4px;height:7px;overflow:hidden;width:100px;display:inline-block;vertical-align:middle;margin-left:6px}
-.prog-fill{height:100%;border-radius:4px}
-.footer{text-align:center;padding:20px;color:#6b7a99;font-size:11px;border-top:1px solid #e0e5ef;margin-top:20px}
-@media print{body{background:#fff}.hdr{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style></head><body>
-<div class="hdr">
-  <div><h1>Get A Way <span>Desserts</span> — Monthly Review</h1><div class="meta">${MONTH_LABEL(getViewingMonth())} · Day ${d.lastDay} of ${getMonthDays()} · Generated ${date} · Confidential</div></div>
-  <div style="font-size:32px">🍦</div>
-</div>
-<div class="wrap">`;
-
-  // ── Top KPIs ──
-  const totMtd=d.platSummary.reduce((s,r)=>s+r.mtdGmv,0);
-  const totTgt=d.platSummary.reduce((s,r)=>s+r.target,0);
-  const totDisc=d.platSummary.reduce((s,r)=>s+r.mtdDisc,0);
-  const totMarch=d.platSummary.reduce((s,r)=>s+r.marchGmv,0);
-  html+=`<div class="sec-hdr">📊 Month-to-Date Summary — ${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} 1–${d.lastDay}</div>
-<div class="kpi-row">
-  <div class="kpi"><div class="lbl">MTD GMV</div><div class="val">${fmtC(totMtd)}</div><div class="sub">${(totMtd/totTgt*100).toFixed(1)}% of ${fmtC(totTgt)} target</div></div>
-  <div class="kpi"><div class="lbl">Total Units</div><div class="val">${fmtN(d.platSummary.reduce((s,r)=>s+r.mtdUnits,0))}</div><div class="sub">All platforms</div></div>
-  <div class="kpi"><div class="lbl">Total Discount</div><div class="val">${fmtC(totDisc)}</div><div class="sub">${totMtd>0?(totDisc/totMtd*100).toFixed(1):0}% blended</div></div>
-  <div class="kpi"><div class="lbl">vs March MTD</div><div class="val">${badge((totMtd-totMarch)/totMarch*100,0)}</div><div class="sub">March total: ${fmtC(totMarch)}</div></div>
-  <div class="kpi"><div class="lbl">Days Tracked</div><div class="val">${d.lastDay}/${getMonthDays()}</div><div class="sub">${getMonthDays()-d.lastDay} days remaining</div></div>
-</div>`;
-
-  // ── Platform breakdown ──
-  html+=`<div class="sec-hdr">🛒 Platform Breakdown</div>
-<table><thead><tr><th>Platform</th><th>MTD GMV</th><th>Target</th><th>Progress</th><th>Cur DRR</th><th>Req DRR</th><th>Proj. End</th><th>Status</th></tr></thead><tbody>`;
-  d.platSummary.forEach(r=>{
-    const pct2=parseFloat(r.progress);const pe=r.projEnd>=r.target;
-    const barW=Math.min(pct2,100);const barC=pct2>=80?'#1a7a3a':pct2>=50?'#c07700':'#c0392b';
-    html+=`<tr>
-      <td><span class="tag" style="background:${PC2[r.p]}22;color:${PC2[r.p]}">${r.p}</span></td>
-      <td><b>${fmtC(r.mtdGmv)}</b></td><td>${fmtC(r.target)}</td>
-      <td><b>${r.progress}%</b><span class="prog-bg"><span class="prog-fill" style="width:${barW}%;background:${barC}"></span></span></td>
-      <td>${fmtC(r.curDRR)}</td>
-      <td style="color:${r.reqDRR>r.curDRR?'#c0392b':'#1a7a3a'};font-weight:700">${fmtC(r.reqDRR)}</td>
-      <td style="color:${pe?'#1a7a3a':'#c07700'};font-weight:700">${fmtC(r.projEnd)}</td>
-      <td><span style="font-size:11px;font-weight:700;color:${pe?'#1a7a3a':'#c0392b'}">${pe?'On Track ✅':'Behind ⚠'}</span></td>
-    </tr>`;
-  });
-  html+=`</tbody></table>`;
-
-  // ── Daily GMV ──
-  html+=`<div class="sec-hdr">📅 Daily GMV — All Platforms Combined</div>
-<table><thead><tr><th>Date</th><th>Total GMV</th><th>Units</th><th>Disc %</th>${PN.map(p=>`<th style="color:${PC2[p]}">${p}</th>`).join('')}</tr></thead><tbody>`;
-  const _mrAbbr=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];
-  d.dailyRows.forEach(r=>{
-    html+=`<tr><td><b>${_mrAbbr} ${r.day}</b></td><td>${fmtC(r.gmv)}</td><td>${fmtN(r.units)}</td><td>${r.discPct}%</td>${PN.map(p=>r[p]!=null?`<td>${fmtC(r[p])}</td>`:`<td style="color:#ccc">—</td>`).join('')}</tr>`;
-  });
-  html+=`</tbody></table>`;
-
-  // ── Category breakdown ──
-  html+=`<div class="sec-hdr">🗂 Category Mix — MTD</div>
-<table><thead><tr><th>Category</th><th>MTD GMV</th><th>Units</th><th>Share</th></tr></thead><tbody>`;
-  d.catRows.forEach(r=>{ html+=`<tr><td><b>${r.cat}</b></td><td>${fmtC(r.gmv)}</td><td>${fmtN(r.units)}</td><td>${r.share}%</td></tr>`; });
-  html+=`</tbody></table>`;
-
-  // ── Top SKUs ──
-  html+=`<div class="sec-hdr">🏷 Top 20 SKUs — MTD</div>
-<table><thead><tr><th>#</th><th>SKU</th><th>Category</th><th>MTD GMV</th><th>Units</th><th>Discount</th><th>Share</th></tr></thead><tbody>`;
-  d.topSkus.forEach((r,i)=>{
-    const share=d.totalSkuGmv>0?(r.gmv/d.totalSkuGmv*100).toFixed(1):0;
-    html+=`<tr><td style="color:#6b7a99">${i+1}</td><td><b>${r.name}</b></td><td>${r.cat}</td><td>${fmtC(r.gmv)}</td><td>${fmtN(r.units)}</td><td>${fmtC(r.disc||0)}</td><td>${share}%</td></tr>`;
-  });
-  html+=`</tbody></table>`;
-
-  // ── City breakdown ──
-  html+=`<div class="sec-hdr">🏙 City GMV — MTD (All Platforms)</div>
-<table><thead><tr><th>City</th><th>MTD GMV</th><th>Units</th></tr></thead><tbody>`;
-  d.cityRows.forEach(r=>{ html+=`<tr><td><b>${r.city}</b></td><td>${fmtC(r.gmv)}</td><td>${fmtN(r.units)}</td></tr>`; });
-  html+=`</tbody></table>`;
-
-  html+=`<div class="footer">Get A Way Desserts · ${MONTH_LABEL(getViewingMonth())} Monthly Review · Confidential · Generated ${date}</div></div></body></html>`;
-
-  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
-  const a=document.createElement('a');
-  a.download='GAW_Monthly_Review_'+getViewingMonth().replace('-','')+'_Day'+d.lastDay+'.html';
-  a.href=URL.createObjectURL(blob);a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-}
-
-function downloadMonthlyReviewXLSX(){
-  if(!window._GAW_IS_ADMIN){alert('Admin access required.');return;}
-  if(typeof XLSX==='undefined'){alert('XLSX library not loaded.');return;}
-  const d=_buildMonthlyData();
-  const wb=XLSX.utils.book_new();
-
-  // Sheet 1: Platform Summary
-  const ps=[['Platform','MTD GMV','MTD Units','MTD Discount','Target','Progress %','Cur DRR','Req DRR','Projected End','Days Tracked','Status']];
-  d.platSummary.forEach(r=>ps.push([r.p,r.mtdGmv,r.mtdUnits,Math.round(r.mtdDisc),r.target,parseFloat(r.progress),r.curDRR,r.reqDRR,r.projEnd,r.daysTracked,r.projEnd>=r.target?'On Track':'Behind']));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ps),'Platform Summary');
-
-  // Sheet 2: Daily GMV
-  const dh=['Date','Total GMV','Units','Discount','Disc %',...PN];
-  const dr2=[dh];
-  const _ab=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];d.dailyRows.forEach(r=>dr2.push([`${_ab} ${r.day}`,r.gmv,r.units,Math.round(r.disc),parseFloat(r.discPct),...PN.map(p=>r[p]!=null?r[p]:'')]));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(dr2),'Daily GMV');
-
-  // Sheet 3: Category Mix
-  const ch=[['Category','MTD GMV','Units','Share %']];
-  d.catRows.forEach(r=>ch.push([r.cat,r.gmv,r.units,parseFloat(r.share)]));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ch),'Category Mix');
-
-  // Sheet 4: Top SKUs
-  const sh=[['Rank','SKU','Category','MTD GMV','Units','Discount','Share %']];
-  const totSkuGmv=d.totalSkuGmv;
-  d.topSkus.forEach((r,i)=>sh.push([i+1,r.name,r.cat,r.gmv,r.units,Math.round(r.disc||0),totSkuGmv>0?parseFloat((r.gmv/totSkuGmv*100).toFixed(1)):0]));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sh),'Top SKUs');
-
-  // Sheet 5: City MTD
-  const cth=[['City','MTD GMV','Units']];
-  d.cityRows.forEach(r=>cth.push([r.city,r.gmv,r.units]));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cth),'City GMV');
-
-  XLSX.writeFile(wb,'GAW_Monthly_Review_'+getViewingMonth().replace('-','')+'_Day'+d.lastDay+'.xlsx');
-}
 
 
 // ── JSONBin removed — GitHub is the only sync method ─────────────────
