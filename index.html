@@ -1857,7 +1857,7 @@ function _trimAvailForStorage(avail){
 function saveDB() {
   // Extract heavy slots so the main delta stays small
   const heavyAvail = _trimAvailForStorage(_delta.avail || {});
-  const heavySoh = _delta.soh || {};
+  const heavySoh = _trimSohForStorage(_delta.soh || {});
   const heavyDsc = _delta.dark_store_counts || {};
   // Build trimmed delta for the main key
   const trimmedDelta = Object.assign({}, _delta, { avail: {}, soh: {}, dark_store_counts: {} });
@@ -1867,7 +1867,13 @@ function saveDB() {
   try { localStorage.setItem(AVAIL_KEY, JSON.stringify(heavyAvail)); }
   catch(e){ errors.push('avail: '+e.message); }
   try { localStorage.setItem(SOH_KEY, JSON.stringify(heavySoh)); }
-  catch(e){ errors.push('soh: '+e.message); }
+  catch(e){
+    // If even trimmed SOH won't fit, retry with facility detail fully dropped (city-level only).
+    try {
+      const minimalSoh=_trimSohForStorage(_delta.soh||{}, true);
+      localStorage.setItem(SOH_KEY, JSON.stringify(minimalSoh));
+    } catch(e2){ errors.push('soh: '+e2.message); }
+  }
   try { localStorage.setItem(DSC_KEY, JSON.stringify(heavyDsc)); }
   catch(e){
     // DSC is least critical; if it won't fit, drop it from storage silently (cloud still has it)
@@ -1879,6 +1885,30 @@ function saveDB() {
     console.warn('[saveDB] localStorage quota — some slots not persisted locally (cloud sync unaffected):', errors);
   }
   _buildDB(); // keep in-memory DB in sync after every save
+}
+// Trim SOH for localStorage: keep full by_facility ONLY for the active month; for older months
+// keep totals + by_city (drop by_facility). If forceMinimal=true, drop by_facility everywhere.
+// In-memory _delta.soh and cloud sync always retain the full data — this only affects local persistence.
+function _trimSohForStorage(soh, forceMinimal){
+  if(!soh)return {};
+  const activeMk=(typeof getActiveMonth==='function')?getActiveMonth():null;
+  const out={};
+  Object.keys(soh).forEach(mk=>{
+    out[mk]={};
+    Object.keys(soh[mk]||{}).forEach(plat=>{
+      const rec=soh[mk][plat]||{};
+      const keepFac=!forceMinimal && mk===activeMk;
+      if(keepFac){ out[mk][plat]=rec; return; }
+      // Strip by_facility from each SKU to save space
+      const slimData={};
+      Object.keys(rec.data||{}).forEach(sku=>{
+        const k=rec.data[sku]||{};
+        slimData[sku]=Object.assign({},k,{by_facility:{}});
+      });
+      out[mk][plat]=Object.assign({},rec,{data:slimData});
+    });
+  });
+  return out;
 }
 
 function resetData() {
