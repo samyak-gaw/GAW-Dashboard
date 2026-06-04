@@ -627,6 +627,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     <div>
       <div style="font-size:18px;font-weight:800;color:#1a1a2e">📦 Availability</div>
       <div style="font-size:12px;color:var(--muted);margin-top:2px">Wt. OSA in LS · DS Listing · DOI · Lost GMV · GMV-weighted · Today + <span id="availMonth">May</span> MTD</div>
+      <div id="availDataFreshness" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--muted)">Window:</span>
@@ -4114,6 +4115,10 @@ function procAvail(platform,rows){
     });
   });
 
+  // Stamp when this platform's availability data was last refreshed (for viewer freshness display).
+  if(!_delta.avail_meta)_delta.avail_meta={};
+  _delta.avail_meta[platform]={last_updated:new Date().toISOString()};
+
   saveDB();
   _buildDB();
   window._availLastResult={platform,parsed,bundlesSkipped,unmatchedSku,noDate,dateCol:dCol,skuCol,cityCol,osaLsCol,dsCol,bundleCol,unmatchedSamples};
@@ -4682,6 +4687,36 @@ function renderAvailability(){
   _availRenderRestockQueue();
   // Pre-render SOH platform cards so the view is ready the moment the toggle is clicked.
   _availRenderSohPlatformCards();
+  _availRenderDataFreshness();
+}
+
+// Shows viewers when the availability/SOH data was last refreshed — so they know if it's current.
+// Reads OSA timestamps from _delta.avail_meta and SOH timestamps from _delta.soh[mk][plat].last_updated.
+function _availRenderDataFreshness(){
+  const el=document.getElementById('availDataFreshness');
+  if(!el)return;
+  const mk=getViewingMonth();
+  // newest OSA timestamp across platforms
+  let osaT=0;
+  Object.values((_delta.avail_meta)||{}).forEach(m=>{const t=Date.parse(m.last_updated||0)||0;if(t>osaT)osaT=t;});
+  // newest SOH timestamp across platforms in this month
+  let sohT=0;
+  Object.values(((_delta.soh)||{})[mk]||{}).forEach(rec=>{const t=Date.parse(rec.last_updated||0)||0;if(t>sohT)sohT=t;});
+  const newest=Math.max(osaT,sohT);
+  if(!newest){ el.innerHTML=''; return; }
+  const d=new Date(newest);
+  const now=Date.now();
+  const mins=Math.floor((now-newest)/60000);
+  let rel;
+  if(mins<1)rel='just now';
+  else if(mins<60)rel=mins+' min ago';
+  else if(mins<1440)rel=Math.floor(mins/60)+'h ago';
+  else rel=Math.floor(mins/1440)+'d ago';
+  const stamp=d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
+  // Stale warning if older than 36h
+  const stale=(now-newest)>36*3600*1000;
+  const dot=stale?'#c0392b':'#1a7a3a';
+  el.innerHTML=`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:${dot};display:inline-block"></span>Availability &amp; SOH data as of <b>${stamp}</b> · ${rel}${stale?' <span style="color:#c0392b">(may be stale)</span>':''}</span>`;
 }
 
 function _availRenderPlatformCards(){
@@ -6210,6 +6245,16 @@ function _applyGHPayload(payload,logFn,manual){
       const ct=Date.parse(cloudRec.last_updated||0)||0;
       if(lt>=ct) merged.dark_store_counts[plat]=localRec;
     });
+
+    // avail_meta: platform → {last_updated} freshness stamps — keep newest
+    if(_delta.avail_meta){
+      if(!merged.avail_meta)merged.avail_meta={};
+      Object.keys(_delta.avail_meta).forEach(plat=>{
+        const lt=Date.parse((_delta.avail_meta[plat]||{}).last_updated||0)||0;
+        const ct=Date.parse((merged.avail_meta[plat]||{}).last_updated||0)||0;
+        if(lt>=ct)merged.avail_meta[plat]=_delta.avail_meta[plat];
+      });
+    }
 
     _delta = merged;
     _migrateLegacyDelta();  // re-run scaffolding in case the merged result is missing keys
