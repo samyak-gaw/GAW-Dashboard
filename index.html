@@ -1372,6 +1372,32 @@ function daysInMonth(monthKey){
   return new Date(y, m, 0).getDate();  // last day of month m
 }
 
+// ── Flipkart dynamic BF (Brand-Funded) discount ──────────────────────────────
+// Flipkart gives no daily discount report (only a month-end debit note), but the BF rate
+// is a deterministic day-of-week rule. So we DERIVE daily BF spend = Flipkart GMV × rate.
+// Weekday (Mon–Thu) = 30%, Weekend (Fri–Sun) = 32%. Editable here if the policy changes.
+// FK-funded portion is excluded (not our cost). Effective from June 2026 onward only.
+const FK_BF_DISC = { weekday: 0.30, weekend: 0.32, effectiveFrom: 'Jun-2026' };
+// Returns true if (monthKey, day) falls on Fri/Sat/Sun.
+function _fkIsWeekend(monthKey, day){
+  const m = MONTH_NUM_FROM_KEY(monthKey), y = YEAR_FROM_KEY(monthKey);
+  const dow = new Date(y, m-1, day).getDay(); // 0=Sun..6=Sat
+  return dow===0 || dow===5 || dow===6;       // Sun, Fri, Sat
+}
+// Derived BF discount amount for a Flipkart day given its GMV.
+function _fkBfDisc(monthKey, day, gmv){
+  if(!gmv || gmv<=0) return 0;
+  const rate = _fkIsWeekend(monthKey, day) ? FK_BF_DISC.weekend : FK_BF_DISC.weekday;
+  return Math.round(gmv * rate * 100) / 100;
+}
+// Is this month at/after the effective month for the dynamic-discount rule?
+function _fkDiscActive(monthKey){
+  const em = FK_BF_DISC.effectiveFrom;
+  const mk = MONTH_NUM_FROM_KEY(monthKey) + YEAR_FROM_KEY(monthKey)*12;
+  const me = MONTH_NUM_FROM_KEY(em) + YEAR_FROM_KEY(em)*12;
+  return mk >= me;
+}
+
 function priorMonthKey(monthKey){
   const m = MONTH_NUM_FROM_KEY(monthKey);
   const y = YEAR_FROM_KEY(monthKey);
@@ -1653,6 +1679,19 @@ function _buildMonthData(monthKey) {
       const n = Number(day);
       if (dayMap[n]) dayMap[n].disc = disc;
     });
+
+    // Flipkart dynamic BF discount: derive daily disc = GMV × weekday/weekend rate.
+    // Flipkart has no daily discount feed, so we compute it from the deterministic BF rule.
+    // Applies only to Flipkart, only for months at/after the effective month (Jun-2026),
+    // and only where the day has GMV. A manual disc_override (if ever set) still wins.
+    if (p === 'Flipkart' && _fkDiscActive(monthKey)) {
+      const hasOverride = (d) => (deltaP.disc_overrides || {})[d] !== undefined;
+      Object.values(dayMap).forEach(d => {
+        if (d && d.day && d.gmv > 0 && !hasOverride(d.day) && !hasOverride(String(d.day))) {
+          d.disc = _fkBfDisc(monthKey, d.day, d.gmv);
+        }
+      });
+    }
 
     result[p] = {
       daily:   Object.values(dayMap).sort((a,b) => a.day - b.day).filter(d=>d.day>=1&&d.day<=dMaxDays),
