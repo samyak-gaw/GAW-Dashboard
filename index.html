@@ -6070,6 +6070,65 @@ function _applyGHPayload(payload,logFn,manual){
       if(!merged.targets_by_month[m]) merged.targets_by_month[m] = v;
     });
 
+    // ── CRITICAL: preserve local-only availability / SOH / dark-store data ──────────
+    // These slots are NOT day-keyed like sales, so the per-day merge above doesn't cover them.
+    // Without this, a stale cloud copy (e.g. when auto-push is failing/racing) silently
+    // overwrites a fresh local OSA/SOH upload. Strategy: cloud is base, but any month→platform
+    // (or month→platform→sku for avail) bucket present locally but missing/stale in cloud is kept.
+    // Local wins at the platform level when local has data the cloud lacks for the active month,
+    // ensuring a just-uploaded month is never clobbered by an older cloud snapshot.
+    function _mergeKeepLocal(localObj, mergedObj, depth){
+      // depth 1 = month level, 2 = platform level; below that, local wins wholesale per platform
+      localObj = localObj || {};
+      Object.keys(localObj).forEach(k=>{
+        if(depth>1 && mergedObj[k]==null){
+          // cloud missing this whole branch → take local entirely
+          mergedObj[k]=localObj[k];
+        } else if(depth>1){
+          _mergeKeepLocal(localObj[k], mergedObj[k], depth-1);
+        } else {
+          // platform level: if local has entries cloud doesn't, or local bucket is non-empty
+          // and cloud's is empty, prefer local. Otherwise keep cloud (source of truth once synced).
+          const localBucket=localObj[k]||{};
+          const cloudBucket=mergedObj[k];
+          if(cloudBucket==null || Object.keys(cloudBucket).length===0){
+            mergedObj[k]=localBucket;
+          } else if(Object.keys(localBucket).length>Object.keys(cloudBucket).length){
+            // local has more SKUs/cities than cloud (fresh upload not yet pushed) → local wins
+            mergedObj[k]=localBucket;
+          }
+          // else: cloud already has equal/more → trust cloud (it's been synced)
+        }
+      });
+    }
+    // avail: month → platform → sku  (preserve at platform granularity)
+    Object.keys(_delta.avail||{}).forEach(mk=>{
+      if(!merged.avail[mk]){ merged.avail[mk]=_delta.avail[mk]; return; }
+      _mergeKeepLocal(_delta.avail[mk], merged.avail[mk], 1);
+    });
+    // soh: month → platform → {data,...}  (preserve whole platform record if local newer)
+    Object.keys(_delta.soh||{}).forEach(mk=>{
+      if(!merged.soh[mk]){ merged.soh[mk]=_delta.soh[mk]; return; }
+      Object.keys(_delta.soh[mk]||{}).forEach(plat=>{
+        const localRec=_delta.soh[mk][plat]||{};
+        const cloudRec=merged.soh[mk][plat];
+        if(!cloudRec){ merged.soh[mk][plat]=localRec; return; }
+        // Prefer whichever was updated more recently
+        const lt=Date.parse(localRec.last_updated||0)||0;
+        const ct=Date.parse(cloudRec.last_updated||0)||0;
+        if(lt>=ct) merged.soh[mk][plat]=localRec;
+      });
+    });
+    // dark_store_counts: platform → {...}  (preserve local-only)
+    Object.keys(_delta.dark_store_counts||{}).forEach(plat=>{
+      const localRec=_delta.dark_store_counts[plat]||{};
+      const cloudRec=merged.dark_store_counts[plat];
+      if(!cloudRec){ merged.dark_store_counts[plat]=localRec; return; }
+      const lt=Date.parse(localRec.last_updated||0)||0;
+      const ct=Date.parse(cloudRec.last_updated||0)||0;
+      if(lt>=ct) merged.dark_store_counts[plat]=localRec;
+    });
+
     _delta = merged;
     _migrateLegacyDelta();  // re-run scaffolding in case the merged result is missing keys
     saveDB(); renderAll();
@@ -6148,6 +6207,11 @@ function clearGitHubConfig(){
 async function githubPush(manual=false){
   const token=getGHToken(),user=getGHUser(),repo=getGHRepo(),path=getGHPath();
   if(!token||!user||!repo){if(manual)alert('GitHub sync not configured. Fill in the fields above.');return;}
+  // In-flight mutex: prevents concurrent pushes from racing on the same file SHA (→ 409 spam).
+  // If a push is already running, mark that another is needed and return; the running push
+  // triggers one more when it finishes, collapsing a burst of uploads into ≤2 commits.
+  if(window._ghPushInFlight){ window._ghPushPending=true; return; }
+  window._ghPushInFlight=true;
   setSyncStatus('syncing','Pushing to GitHub…');
   try{
     let sha=null;
@@ -6225,6 +6289,15 @@ async function githubPush(manual=false){
     logGH('Push ERROR: '+e.message);
     setGHStatus('❌ Push failed: '+e.message,false);
     if(manual)alert('❌ GitHub push failed:\n\n'+e.message);
+  }finally{
+    window._ghPushInFlight=false;
+    // If uploads arrived while this push was running, fire exactly one more (debounced)
+    // so the latest data lands without a per-upload commit storm.
+    if(window._ghPushPending){
+      window._ghPushPending=false;
+      clearTimeout(window._ghPushTimer);
+      window._ghPushTimer=setTimeout(()=>githubPush(false),1200);
+    }
   }
 }
 
