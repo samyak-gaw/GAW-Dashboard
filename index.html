@@ -727,9 +727,9 @@ body{padding-bottom:env(safe-area-inset-bottom)}
           <input id="availSohSearch" placeholder="🔍 Search SKU or category…" oninput="_availRenderSohSkuTable()" style="flex:1;min-width:200px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#f0f3fa;color:#1a1a2e">
           <select id="availSohSort" onchange="_availRenderSohSkuTable()" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
             <option value="dts_asc">Sort: Days to stockout ▲ (urgent first)</option>
+            <option value="reorder_desc">Sort: Reorder qty ▼ (biggest PO first)</option>
             <option value="soh_desc">Sort: SOH ▼ (most stock)</option>
             <option value="soh_asc">Sort: SOH ▲ (least stock)</option>
-            <option value="doi_asc">Sort: DOI ▲</option>
             <option value="name">Sort: Name (A–Z)</option>
           </select>
         </div>
@@ -5123,6 +5123,38 @@ function availSohDrillToPlatform(plat){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
+// Best available days-to-stockout per platform:
+//  - Instamart: use its native DaysOnHand (stored as k.doi) — store-weighted, more accurate
+//  - Others: compute SOH ÷ DRR
+// Returns {days:number|null, flag:'no_velocity'|'capped'|null}. days null = no velocity.
+const _SOH_COVER_DAYS=14; // matches the 14-day reorder cover used across the dashboard
+function _sohBestDTS(plat,k){
+  if(plat==='Instamart'&&k.doi!=null){
+    let d=k.doi, flag=k.doi_flag||null;
+    return {days:d, flag};
+  }
+  const drr=k.drr||0, soh=k.soh||0;
+  if(!drr||drr<=0.05)return {days:null, flag:'no_velocity'};
+  if(soh<=0)return {days:0, flag:null};
+  let d=soh/drr, flag=null;
+  if(d>90){d=90; flag='capped';}
+  return {days:d, flag};
+}
+// Reorder qty = units to add to reach the cover target, accounting for stock already held.
+// max(0, DRR×cover − SOH). Zero when already covered. Null when no velocity (can't size).
+function _sohReorderQty(k){
+  const drr=k.drr||0, soh=k.soh||0;
+  if(!drr||drr<=0.05)return null;
+  return Math.max(0, Math.ceil(drr*_SOH_COVER_DAYS - soh));
+}
+// Row background tint by stockout urgency (whole-row cue).
+function _sohRowTint(days){
+  if(days==null)return 'transparent';
+  if(days<3)return 'rgba(192,57,43,.08)';   // red
+  if(days<7)return 'rgba(212,134,10,.08)';  // amber
+  return 'transparent';                       // healthy → no tint (keeps table calm)
+}
+
 function _availRenderSohSkuTable(){
   const plat=_availSohPlat;
   if(!plat)return;
@@ -5132,30 +5164,38 @@ function _availRenderSohSkuTable(){
   let list=Object.keys(pd.skus).map(sku=>{
     const info=skuLookup(plat,sku);
     const k=pd.skus[sku];
-    const dts=_sohDaysToStockout(k.soh,k.drr);
+    const best=_sohBestDTS(plat,k);
+    const reorder=_sohReorderQty(k);
     const sohCities=k.soh_by_city||{};
     const nCities=Object.keys(sohCities).filter(c=>(sohCities[c]||0)>0).length;
-    return {sku,name:info.name,cat:info.cat,soh:k.soh||0,doi:k.doi,doi_flag:k.doi_flag,drr:k.drr||0,dts,nCities};
+    return {sku,name:info.name,cat:info.cat,soh:k.soh||0,dts:best.days,dts_flag:best.flag,drr:k.drr||0,reorder,nCities};
   }).filter(r=>r.soh>0||r.drr>0); // only SKUs with stock or sales
   if(search)list=list.filter(r=>(r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search));
   list.sort((a,b)=>{
     if(sortBy==='dts_asc')return (a.dts??99999)-(b.dts??99999);
     if(sortBy==='soh_desc')return b.soh-a.soh;
     if(sortBy==='soh_asc')return a.soh-b.soh;
-    if(sortBy==='doi_asc')return (a.doi??99999)-(b.doi??99999);
+    if(sortBy==='doi_asc')return (a.dts??99999)-(b.dts??99999);
+    if(sortBy==='reorder_desc')return (b.reorder??-1)-(a.reorder??-1);
     if(sortBy==='name')return a.name.localeCompare(b.name);
     return 0;
   });
   if(!list.length){document.getElementById('availSohSkuTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No SOH data for this platform.</div>';return;}
-  const rows=list.map(r=>`<tr style="cursor:pointer" onclick="availSohDrillToSku('${plat}','${r.sku}')">
+  const rows=list.map(r=>{
+    const tint=_sohRowTint(r.dts);
+    const reorderTxt=(r.reorder==null)?'<span style="color:#9aa1a8">—</span>'
+      :(r.reorder===0)?'<span style="color:#1a7a3a;font-weight:700">✓ covered</span>'
+      :`<span style="color:#1a3a6e;font-weight:700">${r.reorder.toLocaleString('en-IN')}u</span>`;
+    return `<tr style="cursor:pointer;background:${tint}" onclick="availSohDrillToSku('${plat}','${r.sku}')">
     <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
     <td style="padding:8px 10px;font-size:12px;font-weight:700">${Math.round(r.soh).toLocaleString('en-IN')}</td>
-    <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
-    <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(r.dts)};font-weight:700">${_sohFmtDTS(r.dts)}</td>
+    <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(r.dts)};font-weight:700">${_sohFmtDTS(r.dts)}${r.dts_flag==='capped'?'<span style="font-size:9px;color:#9aa1a8">+</span>':''}</td>
+    <td style="padding:8px 10px;font-size:12px">${reorderTxt}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${r.nCities} cities</td>
-  </tr>`).join('');
-  document.getElementById('availSohSkuTable').innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table>`;
+  </tr>`;}).join('');
+  document.getElementById('availSohSkuTable').innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Reorder (14d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table>
+  <div style="font-size:10px;color:var(--muted);margin-top:8px">Days to Stockout: ${plat==='Instamart'?'Instamart native DaysOnHand':'SOH ÷ DRR'}. Reorder (14d) = units to add for 14-day cover, net of current stock. Rows tinted <span style="color:#c0392b">red &lt;3d</span> / <span style="color:#d4860a">amber &lt;7d</span>.</div>`;
 }
 
 function availSohDrillToSku(plat,sku){
@@ -5184,12 +5224,15 @@ function _availRenderSohCityTable(){
   const byFac=k.by_facility||{};
   const hasFac=Object.keys(byFac).length>0;
 
-  // Summary strip
-  const dtsTotal=_sohDaysToStockout(k.soh,drr);
+  // Summary strip — unified Days to Stockout (best source per platform) + reorder qty
+  const best=_sohBestDTS(plat,k);
+  const reorder=_sohReorderQty(k);
+  const reorderTxt=(reorder==null)?'—':(reorder===0)?'✓ covered':reorder.toLocaleString('en-IN')+'u';
+  const reorderCol=(reorder==null)?'#9aa1a8':(reorder===0)?'#1a7a3a':'#1a3a6e';
   const summary=`<div style="padding:12px;background:#f0f3fa;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Total SOH</div><div style="font-size:16px;font-weight:800">${Math.round(k.soh||0).toLocaleString('en-IN')} u</div></div>
-    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DOI</div><div style="font-size:16px;font-weight:800;color:${_availColor(k.doi,'doi')}">${_availFmtDays(k.doi,k.doi_flag)}</div></div>
-    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Days to Stockout</div><div style="font-size:16px;font-weight:800;color:${_sohColorDTS(dtsTotal)}">${_sohFmtDTS(dtsTotal)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Days to Stockout</div><div style="font-size:16px;font-weight:800;color:${_sohColorDTS(best.days)}">${_sohFmtDTS(best.days)}${best.flag==='capped'?'+':''}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Reorder (14d)</div><div style="font-size:16px;font-weight:800;color:${reorderCol}">${reorderTxt}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DRR</div><div style="font-size:16px;font-weight:800">${Math.round(drr)}u/d</div></div>
   </div>`;
 
