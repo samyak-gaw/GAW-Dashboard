@@ -420,6 +420,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     <span style="font-size:11px;color:var(--muted)">Exports current active tab view</span>
   </div>
   <div id="ovKpis" class="kpi-row"></div>
+  <div id="ovWowChange"></div>
   <div id="ovPlatCards" class="g3"></div>
   <div class="g2">
     <div class="card chart-clickable" onclick="expandChart('ovGmvChart','Daily GMV — All Platforms')"><h3>📈 Daily GMV — All Platforms <span class="pill dyn-prior-baseline-pill" style="color:#c0392b;background:#fdecea">vs March Baseline (dashed)</span></h3><div class="ch280"><canvas id="ovGmvChart"></canvas></div><div class="chart-click-hint">🔍 Click to expand</div></div>
@@ -616,7 +617,6 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 <!-- PROJECTIONS -->
 <div id="projections" class="content">
   <div id="projKpis" class="kpi-row"></div>
-  <div id="projWowChange"></div>
   <div class="g3" id="projPlatCards"></div>
   <div class="card"><h3>📈 Cumulative GMV vs Target — All Platforms <span style="font-size:11px;font-weight:400;color:var(--muted)">(Regression + DRR projections)</span></h3><div class="ch400"><canvas id="projChart"></canvas></div></div>
 </div>
@@ -2479,6 +2479,28 @@ function renderOverview(){
     html+='</tbody></table>';
     mtdEl.innerHTML=html;
   }
+
+  // DRR Change WoW card (moved from Projections) — run-rate momentum: MTD-DRR now vs a week ago.
+  const _wowEl=document.getElementById('ovWowChange');
+  if(_wowEl){
+    const _curDRR=Math.round(PN.reduce((s,p)=>{const _d=platLatestDay(p);const _m=getMTD(p).gmv;return s+(_d>0?_m/_d:0);},0));
+    const _lwDay=td>7?td-7:null;
+    const _lwMtd=_lwDay?PN.reduce((s,p)=>{
+      const days=validDays(DB.april[p].daily).filter(r=>r.day<=_lwDay);
+      return s+days.reduce((a,r)=>a+r.gmv,0);
+    },0):null;
+    const _wow=_lwMtd&&_lwMtd>0?{wkDRR:Math.round(_lwMtd/_lwDay),curDRR:_curDRR,pct:parseFloat(pct(_curDRR,Math.round(_lwMtd/_lwDay)))}:null;
+    if(_wow){
+      _wowEl.innerHTML=`<div class="card" style="border-left:4px solid ${_wow.pct>=0?'#1a7a3a':'#c0392b'};margin-bottom:16px">
+        <h3>📊 DRR Change WoW</h3>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px">
+          <div><div style="font-size:11px;color:var(--muted)">Last Week's DRR</div><div style="font-size:18px;font-weight:800">${fC(_wow.wkDRR)}</div></div>
+          <div><div style="font-size:11px;color:var(--muted)">This Week's DRR</div><div style="font-size:18px;font-weight:800">${fC(_wow.curDRR)}</div></div>
+          <div><div style="font-size:11px;color:var(--muted)">Change</div><div style="font-size:22px;font-weight:800;color:${_wow.pct>=0?'#1a7a3a':'#c0392b'}">${_wow.pct>=0?'▲':'▼'}${Math.abs(_wow.pct)}%</div></div>
+        </div>
+      </div>`;
+    } else { _wowEl.innerHTML=''; }
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -3098,30 +3120,7 @@ function renderProjections(){
     scales:{y:{ticks:{callback:v=>'₹'+v+'K'},title:{display:true,text:'Cumulative GMV (₹K)',font:{size:10}}}}
   });
 
-  // WoW projection change card
-  const lastWeekMtdDay=td>7?td-7:null;
-  const lastWeekMtd=lastWeekMtdDay?PN.reduce((s,p)=>{
-    const days=validDays(DB.april[p].daily).filter(r=>r.day<=lastWeekMtdDay);
-    return s+days.reduce((a,r)=>a+r.gmv,0);
-  },0):null;
-  const wowProjChange=lastWeekMtd&&lastWeekMtd>0?{
-    wkDRR:Math.round(lastWeekMtd/lastWeekMtdDay),
-    curDRR:totCurDRR,
-    pct:parseFloat(pct(totCurDRR,Math.round(lastWeekMtd/lastWeekMtdDay)))
-  }:null;
-
-  const wowEl=document.getElementById('projWowChange');
-  if(wowEl&&wowProjChange){
-    wowEl.innerHTML=`<div class="card" style="border-left:4px solid ${wowProjChange.pct>=0?'#1a7a3a':'#c0392b'};margin-bottom:16px">
-      <h3>📊 DRR Change WoW</h3>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px">
-        <div><div style="font-size:11px;color:var(--muted)">Last Week's DRR</div><div style="font-size:18px;font-weight:800">${fC(wowProjChange.wkDRR)}</div></div>
-        <div><div style="font-size:11px;color:var(--muted)">This Week's DRR</div><div style="font-size:18px;font-weight:800">${fC(wowProjChange.curDRR)}</div></div>
-        <div><div style="font-size:11px;color:var(--muted)">Change</div><div style="font-size:22px;font-weight:800;color:${wowProjChange.pct>=0?'#1a7a3a':'#c0392b'}">${wowProjChange.pct>=0?'▲':'▼'}${Math.abs(wowProjChange.pct)}%</div></div>
-        ${regProj?``:''}
-      </div>
-    </div>`;
-  } else if(wowEl){wowEl.innerHTML='';}
+  // (DRR Change WoW card moved to Overview tab — see renderOverview)
 }
 
 // ══════════════════════════════════════════════
