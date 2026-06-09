@@ -1606,6 +1606,7 @@ function listAvailableMonths() {
 }
 
 function _buildDB() {
+  _pmBuiltCache={key:null,data:null};   // invalidate cross-month WoW cache on rebuild
   const VIEW_MONTH = getViewingMonth();
   const monthTargets = (_delta.targets_by_month || {})[VIEW_MONTH];
   const fallbackTargets = (_delta.targets_by_month || {})['Apr-2026'] || SEED.targets;
@@ -2242,6 +2243,14 @@ function getWowPct(p){
   const sdlwR=ed>=8?getForDay(p,ed-7):null;
   return sdlwR?parseFloat(pct(t.gmv,sdlwR.gmv)):null;
 }
+// Cached build of the prior (frozen) month — used for cross-month WoW at SKU level.
+// Keyed by viewing month; invalidated at the top of _buildDB() on every rebuild.
+let _pmBuiltCache={key:null,data:null};
+function priorMonthBuilt(){
+  const k=priorMonthKey(getViewingMonth());
+  if(_pmBuiltCache.key!==k){_pmBuiltCache={key:k,data:_buildMonthData(k)};}
+  return _pmBuiltCache.data;
+}
 
 // ══════════════════════════════════════════════
 // DAY HELPERS — always validate 1–30
@@ -2261,12 +2270,21 @@ function getMTD(p){return validDays(DB.april[p].daily).reduce((a,r)=>({gmv:a.gmv
 function getCityToday(p){const d=effectiveDay(p);return(DB.april[p].city||[]).filter(r=>r.day===d);}
 function getSkuToday(p){
   const d=effectiveDay(p);
+  const sdlwDay=d-7;
+  // Same-SKU GMV exactly 7 days back — crosses into the prior (frozen) month when sdlwDay<1.
+  const _pmDays=daysInMonth(priorMonthKey(getViewingMonth()));
+  const _pmSku=(sdlwDay<1)?(priorMonthBuilt()[p]?.sku||null):null;
   return(DB.april[p].sku||[]).filter(r=>r.day===d).map(r=>{
     const info=skuLookup(p,r.sku_code);
-    // WoW: same SKU 7 days ago
-    const sdlwDay=d-7;
-    const sdlwSku=sdlwDay>=1?(DB.april[p].sku||[]).find(s=>s.day===sdlwDay&&s.sku_code===r.sku_code):null;
-    const wow=sdlwSku&&sdlwSku.gmv>0?parseFloat(pct(r.gmv,sdlwSku.gmv)):null;
+    let sdlwGmv=null;
+    if(sdlwDay>=1){
+      const s=(DB.april[p].sku||[]).find(s=>s.day===sdlwDay&&s.sku_code===r.sku_code);
+      sdlwGmv=s?s.gmv:null;
+    }else if(_pmSku){
+      const pd=_pmDays+sdlwDay; // e.g. Jun day 1 → May day 25 (31-6)
+      if(pd>=1){const s=_pmSku.find(s=>s.day===pd&&s.sku_code===r.sku_code);sdlwGmv=s?s.gmv:null;}
+    }
+    const wow=sdlwGmv&&sdlwGmv>0?parseFloat(pct(r.gmv,sdlwGmv)):null;
     return{...r,sku_name:info.name,category:normCat(info.cat),wow};
   }).sort((a,b)=>b.gmv-a.gmv); // all SKUs, sorted by GMV
 }
@@ -2378,11 +2396,20 @@ function renderOverview(){
     const sdlwDay=effectiveDay(p)-7;
     const sdlwR=sdlwDay>=1?getForDay(p,sdlwDay):null;
     const sdlw=sdlwR?parseFloat(pct(t.gmv,sdlwR.gmv)):null;
-    // WoW (this week avg vs last week avg)
-    const thisWeekDays=Array.from({length:7},(_,i)=>effectiveDay(p)-i).filter(d=>d>=1);
-    const lastWeekDays=thisWeekDays.map(d=>d-7).filter(d=>d>=1);
-    const twAvg=thisWeekDays.reduce((s,d)=>{const r=getForDay(p,d);return s+(r?r.gmv:0);},0)/Math.max(thisWeekDays.filter(d=>getForDay(p,d)).length,1);
-    const lwAvg=lastWeekDays.reduce((s,d)=>{const r=getForDay(p,d);return s+(r?r.gmv:0);},0)/Math.max(lastWeekDays.filter(d=>getForDay(p,d)).length,1);
+    // WoW (this week avg vs last week avg) — prior week crosses into the frozen prior month.
+    const _ed=effectiveDay(p);
+    const _pmKey=priorMonthKey(getViewingMonth());
+    const _pmDays=daysInMonth(_pmKey);
+    const thisWeekDays=Array.from({length:Math.min(_ed,7)},(_,i)=>_ed-i).filter(d=>d>=1);
+    const twSum=thisWeekDays.reduce((s,d)=>{const r=getForDay(p,d);return s+(r?r.gmv:0);},0);
+    const twCnt=thisWeekDays.filter(d=>getForDay(p,d)).length;
+    let lwSum=0,lwCnt=0;
+    thisWeekDays.map(d=>d-7).forEach(d=>{
+      if(d>=1){const r=getForDay(p,d);if(r){lwSum+=r.gmv;lwCnt++;}}
+      else{const pd=_pmDays+d;if(pd>=1){const v=_baselineGmv(p,pd,_pmKey);if(v>0){lwSum+=v;lwCnt++;}}}
+    });
+    const twAvg=twSum/Math.max(twCnt,1);
+    const lwAvg=lwCnt>0?lwSum/lwCnt:0;
     const wow=lwAvg>0?parseFloat(pct(twAvg,lwAvg)):null;
     const vm=mGmv(p,t.day)?parseFloat(pct(t.gmv,mGmv(p,t.day))):null;
     const dp=t.gmv>0?((t.disc||0)/t.gmv*100).toFixed(1):0;
@@ -2758,21 +2785,46 @@ function renderSkuAnalysis(){
     });
   });
 
-  // Build WoW comparison map (same period, 7 days earlier)
+  // Build WoW comparison map — equal-length window shifted exactly 7 days back.
+  // Each current day d maps to prior day (d-7). When d-7 falls below 1 it crosses
+  // into the prior (frozen) month: prior-month day = daysInPriorMonth + (d-7).
+  // This keeps the prior window the SAME length as the current window, so MTD/Last7
+  // no longer divide a multi-day sum by a single leftover day (the +700–1000% bug).
   const wowMap={};
   if(showWow){
-    const wowRange=dayRange?dayRange.map(d=>d-7).filter(d=>d>=1):null;
-    plats.forEach(p=>{
-      const rows=wowRange?(DB.april[p].sku||[]).filter(r=>wowRange.includes(r.day)):(DB.april[p].sku||[]).filter(r=>r.day<=Math.max(td-7,0));
-      rows.forEach(r=>{
-        const info=skuLookup(p,r.sku_code);
-        const cat=normCat(info.cat)||'Unknown';
-        if(catFilter!=='all'&&cat!==catFilter)return;
-        const key=info.name||r.sku_code;
-        if(!wowMap[key])wowMap[key]={gmv:0};
-        wowMap[key].gmv+=r.gmv;
+    // Current-window day list (MTD = every day 1..td that has data)
+    let curDays;
+    if(dayRange){curDays=dayRange.slice();}
+    else{const s=new Set();plats.forEach(p=>(DB.april[p].sku||[]).forEach(r=>{if(r.day>=1&&r.day<=td)s.add(r.day);}));curDays=[...s];}
+    // Prior (frozen) month data + its day count
+    const _priorKey=priorMonthKey(getViewingMonth());
+    const _priorData=_buildMonthData(_priorKey);
+    const _priorDays=daysInMonth(_priorKey);
+    const _priorHasData=plats.some(p=>(_priorData[p]&&_priorData[p].sku&&_priorData[p].sku.length>0));
+    const _crossesBoundary=curDays.some(d=>(d-7)<1);
+    // Safety: if the window needs the prior month but no prior data exists,
+    // leave wowMap empty so every row honestly shows "—" instead of an inflated %.
+    if(!(_crossesBoundary&&!_priorHasData)){
+      plats.forEach(p=>{
+        const curRows=DB.april[p].sku||[];
+        const priorRows=(_priorData[p]&&_priorData[p].sku)?_priorData[p].sku:[];
+        curDays.forEach(d=>{
+          const back=d-7;
+          let srcRows,srcDay;
+          if(back>=1){srcRows=curRows;srcDay=back;}
+          else{srcRows=priorRows;srcDay=_priorDays+back;}
+          if(srcDay<1)return;
+          srcRows.filter(r=>r.day===srcDay).forEach(r=>{
+            const info=skuLookup(p,r.sku_code);
+            const cat=normCat(info.cat)||'Unknown';
+            if(catFilter!=='all'&&cat!==catFilter)return;
+            const key=info.name||r.sku_code;
+            if(!wowMap[key])wowMap[key]={gmv:0};
+            wowMap[key].gmv+=r.gmv;
+          });
+        });
       });
-    });
+    }
   }
 
   const skus=Object.values(skuMap).sort((a,b)=>b.gmv-a.gmv);
