@@ -2907,7 +2907,7 @@ function renderSkuAnalysis(){
       <td>${platTags}</td>
       <td><b>${fC(r.gmv)}</b></td>
       <td>${fN(r.units)}</td>
-      <td>${isSingleDay?fN(r.units):drrVal.toFixed(1)}</td>
+      <td>${isSingleDay?fN(r.units):fN(Math.round(drrVal))}</td>
       <td>${fC(r.disc)}</td>
       <td><span class="${dpCls(dp)}">${dp}%</span></td>
       ${wowCell}
