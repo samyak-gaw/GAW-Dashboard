@@ -608,7 +608,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div class="card" style="margin-top:18px;margin-bottom:20px">
     <h3>📋 Full SKU Table — <span id="skuTableLabel">Today · All Platforms</span></h3>
     <div class="scroll-table"><table class="tbl">
-      <thead><tr><th>#</th><th>SKU</th><th>Category</th><th>Platform(s)</th><th>GMV</th><th>Units</th><th>Avg Price</th><th>Discount</th><th>Disc%</th><th id="skuWowColHead" style="display:none">WoW</th><th>Share</th></tr></thead>
+      <thead><tr><th>#</th><th>SKU</th><th>Category</th><th>Platform(s)</th><th>GMV</th><th>Units</th><th id="skuDrrColHead">DRR /day</th><th>Discount</th><th>Disc%</th><th id="skuWowColHead" style="display:none">WoW</th><th>Share</th></tr></thead>
       <tbody id="skuFullBody"></tbody>
     </table></div>
   </div>
@@ -2854,6 +2854,19 @@ function renderSkuAnalysis(){
   const top15=skus.slice(0,15);
   const platLabel=platFilter==='all'?'All Platforms':platFilter;
 
+  // DRR denominator: count of distinct days with actual data in the selected window.
+  // Single-day windows (Today/Yesterday) have no meaningful run-rate, so the column
+  // falls back to that day's raw units and the header relabels to "Units".
+  const _daysSet=new Set();
+  plats.forEach(p=>{
+    const rows=dayRange?(DB.april[p].sku||[]).filter(r=>dayRange.includes(r.day)):(DB.april[p].sku||[]);
+    rows.forEach(r=>_daysSet.add(r.day));
+  });
+  const daysWithData=Math.max(_daysSet.size,1);
+  const isSingleDay=!!(dayRange&&dayRange.length===1);
+  const drrHead=document.getElementById('skuDrrColHead');
+  if(drrHead)drrHead.textContent=isSingleDay?'Units':'DRR /day';
+
   // Show/hide WoW column header
   const wowHead=document.getElementById('skuWowColHead');
   if(wowHead)wowHead.style.display=showWow?'':'none';
@@ -2880,7 +2893,7 @@ function renderSkuAnalysis(){
   const tbody=document.getElementById('skuFullBody');
   if(tbody)tbody.innerHTML=skus.map((r,i)=>{
     const share=totalGmv>0?((r.gmv/totalGmv)*100).toFixed(1):0;
-    const avgP=r.units>0?Math.round(r.gmv/r.units):0;
+    const drrVal=isSingleDay?r.units:(r.units/daysWithData);
     const dp=r.gmv>0?((r.disc/r.gmv)*100).toFixed(1):0;
     const platTags=[...r.platforms].map(p=>platTag(p)).join(' ');
     const bW=top15[0]&&top15[0].gmv>0?Math.round((r.gmv/top15[0].gmv)*80):0;
@@ -2894,7 +2907,7 @@ function renderSkuAnalysis(){
       <td>${platTags}</td>
       <td><b>${fC(r.gmv)}</b></td>
       <td>${fN(r.units)}</td>
-      <td>₹${avgP.toLocaleString('en-IN')}</td>
+      <td>${isSingleDay?fN(r.units):drrVal.toFixed(1)}</td>
       <td>${fC(r.disc)}</td>
       <td><span class="${dpCls(dp)}">${dp}%</span></td>
       ${wowCell}
