@@ -388,6 +388,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 
 <div class="tabs">
   <div class="tab active" onclick="showTab('overview')"><span class="tab-dot" style="background:#1a7a3a"></span>Overview</div>
+  <div class="tab" onclick="showTab('weekend')"><span class="tab-dot" style="background:#8e44ad"></span>🗓 Weekend</div>
   <div class="tab" onclick="showTab('blinkit')"><span class="tab-dot" style="background:#d4860a"></span>Blinkit</div>
   <div class="tab" onclick="showTab('instamart')"><span class="tab-dot" style="background:#c0392b"></span>Instamart</div>
   <div class="tab" onclick="showTab('zepto')"><span class="tab-dot" style="background:#7b2d8b"></span>Zepto</div>
@@ -436,6 +437,50 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div class="g2">
     <div class="card chart-clickable" onclick="expandChart('ovCityChart','City GMV — Today (All Platforms)',true)"><h3>🏙 City GMV — Today (All Platforms)</h3><div class="ch240"><canvas id="ovCityChart"></canvas></div><div class="chart-click-hint">🔍 Click a city bar to see SKU breakdown</div></div>
     <div class="card"><h3>📋 MTD Summary</h3><div id="mtdSummary"></div></div>
+  </div>
+</div>
+
+<!-- WEEKEND INSIGHTS -->
+<div id="weekend" class="content">
+  <div class="export-bar">
+    <button class="exp-btn" onclick="exportWeekendCSV()" style="background:#8e44ad;color:#fff;border-color:#8e44ad">⬇ Weekend CSV</button>
+    <span id="wkScopeNote" style="font-size:11px;color:var(--muted)">Sat–Sun · all six platforms · Monday cadence</span>
+  </div>
+  <div id="wkEmpty" style="display:none" class="card"><h3>🗓 No weekend data yet</h3><div style="font-size:13px;color:var(--muted);margin-top:6px">No Saturday/Sunday with sales in the current month view. Upload weekend data or switch month.</div></div>
+  <div id="wkBody">
+    <div id="wkKpis" class="kpi-row"></div>
+    <div id="wkActions"></div>
+    <div class="g2">
+      <div class="card chart-clickable" onclick="expandChart('wkTrendChart','Weekend GMV — Rolling Trend (by platform)')"><h3>📊 Weekend GMV — Rolling Trend <span class="pill" style="color:#8e44ad;background:#f3edf9">stacked by platform</span></h3><div class="ch280"><canvas id="wkTrendChart"></canvas></div><div class="chart-click-hint">🔍 Click to expand</div></div>
+      <div class="card chart-clickable" onclick="expandChart('wkElastChart','Weekend Discount % vs Lift % (latest weekend)')"><h3>💸 Discount vs Lift <span class="pill" style="color:var(--muted)">latest weekend · per platform</span></h3><div class="ch280"><canvas id="wkElastChart"></canvas></div><div class="chart-click-hint">🔍 Top-left = cheap lift · bottom-right = wasted spend</div></div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <h3>🏷 Platform — Latest Weekend <span id="wkPlatLabel" class="pill"></span></h3>
+      <div class="scroll-table"><table class="tbl">
+        <thead><tr><th>Platform</th><th>Weekend GMV</th><th>Units</th><th>Disc %</th><th>OSA</th><th>Lift vs Weekday</th><th>WoW vs Last Wknd</th></tr></thead>
+        <tbody id="wkPlatBody"></tbody>
+      </table></div>
+    </div>
+    <div class="g2">
+      <div class="card chart-clickable" onclick="expandChart('wkSatSunChart','Saturday vs Sunday split — latest weekend')"><h3>📅 Saturday vs Sunday <span class="pill" style="color:var(--muted)">which day carries</span></h3><div class="ch240"><canvas id="wkSatSunChart"></canvas></div></div>
+      <div class="card"><h3>🏙 City — Latest Weekend</h3><div class="scroll-table"><table class="tbl"><thead><tr><th>City</th><th>Weekend GMV</th><th>Share</th></tr></thead><tbody id="wkCityBody"></tbody></table></div></div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <h3>🍦 Top Weekend SKUs <span class="pill">latest weekend · all platforms</span></h3>
+      <div class="scroll-table"><table class="tbl">
+        <thead><tr><th>SKU</th><th>Category</th><th>GMV</th><th>Units</th><th>Platforms</th><th>Share</th></tr></thead>
+        <tbody id="wkSkuBody"></tbody>
+      </table></div>
+    </div>
+    <div class="g2">
+      <div class="card"><h3>📈 Rolling Weekends</h3><div class="scroll-table"><table class="tbl"><thead><tr><th>Weekend</th><th>GMV</th><th>Units</th><th>Disc %</th><th>OSA</th><th>Lift</th><th>WoW</th></tr></thead><tbody id="wkRollBody"></tbody></table></div></div>
+      <div class="card"><h3>⚠️ Weekend Supply Watch <span class="pill" style="color:#c0392b;background:#fdecea">low OSA + zero-velocity</span></h3><div id="wkSupplyBody" style="font-size:12.5px;line-height:1.7"></div></div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <h3>🔁 Weekend Regulars <span class="pill" style="color:var(--muted)">top-10 in ≥3 of last weekends</span></h3>
+      <div id="wkRegulars" style="font-size:12.5px;line-height:1.8"></div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:24px">Weekend = Saturday + Sunday. Lift = avg weekend daily GMV vs avg Mon–Fri daily GMV of the same week. WoW = this weekend total vs prior weekend total. OSA = GMV-weighted weekend on-shelf availability (same method as the Availability tab, windowed to Sat–Sun), across 5 platforms (no Amazon). Lost GMV = Σ wknd GMV × (100−OSA)/OSA. Month-end weekends that split across months show only the in-month day in this view.</div>
   </div>
 </div>
 
@@ -1310,6 +1355,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 <div id="moreDrawer" style="display:none;position:fixed;bottom:calc(58px + env(safe-area-inset-bottom));left:0;right:0;background:#fff;border-radius:20px 20px 0 0;border-top:2px solid var(--border);z-index:400;padding:14px 16px 8px;box-shadow:0 -8px 32px rgba(0,0,0,.12)">
   <div style="width:36px;height:4px;background:#e0e5ef;border-radius:2px;margin:0 auto 14px"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div onclick="closeMore();showTab('weekend')" style="padding:12px;background:#f3edf9;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🗓</div>Weekend</div>
     <div onclick="closeMore();showTab('instamart')" style="padding:12px;background:#fdecea;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🔴</div>Instamart</div>
     <div onclick="closeMore();showTab('amazon')" style="padding:12px;background:#fff8e6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">📦</div>Amazon</div>
     <div onclick="closeMore();showTab('flipkart')" style="padding:12px;background:#eaf0fe;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🛒</div>Flipkart</div>
@@ -3139,6 +3185,237 @@ function renderProjections(){
 // ══════════════════════════════════════════════
 // RENDER ALL
 // ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+// WEEKEND INSIGHTS  (Sat–Sun) — Monday cadence
+// Reads the same DB.april[p] {daily,sku,city} as every other tab.
+// ══════════════════════════════════════════════
+function _wkDow(day){ const k=getViewingMonth(); return new Date(YEAR_FROM_KEY(k), MONTH_NUM_FROM_KEY(k)-1, day).getDay(); } // 0=Sun..6=Sat
+function _wkIsWeekday(day){ const d=_wkDow(day); return d>=1&&d<=5; }
+
+// All weekends in the viewing month, chronological. Keyed by Saturday; leading orphan Sunday kept as partial.
+function _wkWeekends(){
+  const M=getMonthDays(); const out=[];
+  if(_wkDow(1)===0) out.push({sat:null,sun:1,days:[1]});
+  for(let d=1;d<=M;d++){
+    if(_wkDow(d)===6){ const sun=(d+1<=M&&_wkDow(d+1)===0)?d+1:null; out.push({sat:d,sun,days:sun?[d,sun]:[d]}); }
+  }
+  const mn=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];
+  out.forEach((w,i)=>{ w.id=i; w.label=(w.sat&&w.sun)?`${mn} ${w.sat}–${w.sun}`:(w.sat?`${mn} ${w.sat}`:`${mn} ${w.sun}`); });
+  return out;
+}
+function _wkPlat(p,w){
+  let gmv=0,units=0,disc=0,dd=0;
+  w.days.forEach(d=>{const r=getForDay(p,d);if(r){gmv+=r.gmv||0;units+=r.units||0;disc+=r.disc||0;if((r.gmv||0)>0)dd++;}});
+  return {gmv,units,disc,daysWithData:dd,discPct:gmv>0?disc/gmv*100:0,dailyAvg:dd>0?gmv/dd:0};
+}
+function _wkAll(w){
+  let gmv=0,units=0,disc=0,dd=0;
+  PN.forEach(p=>{const x=_wkPlat(p,w);gmv+=x.gmv;units+=x.units;disc+=x.disc;dd=Math.max(dd,x.daysWithData);});
+  return {gmv,units,disc,discPct:gmv>0?disc/gmv*100:0,dailyAvg:dd>0?gmv/dd:0,days:dd};
+}
+// Mon–Fri daily-avg baseline for the week leading into a weekend (per platform, or all if p=null)
+function _wkWeekdayBase(w,p){
+  const anchor=w.sat||w.sun; let gmv=0,dd=0;
+  for(let back=1;back<=6 && anchor-back>=1;back++){
+    const d=anchor-back; if(!_wkIsWeekday(d))continue;
+    let dayG=0,has=false;
+    (p?[p]:PN).forEach(pp=>{const r=getForDay(pp,d);if(r){dayG+=r.gmv||0;if((r.gmv||0)>0)has=true;}});
+    if(has){gmv+=dayG;dd++;}
+  }
+  return dd>0?gmv/dd:0;
+}
+function _wkLiftPct(w,p){ const wd=_wkWeekdayBase(w,p); if(!wd)return null; const we=(p?_wkPlat(p,w):_wkAll(w)).dailyAvg; return wd>0?((we-wd)/wd*100):null; }
+function _wkWithData(){ return _wkWeekends().filter(w=>_wkAll(w).gmv>0); }
+
+// Top SKUs across all platforms for a weekend → [{name,cat,gmv,units,plats}]
+function _wkTopSkus(w){
+  const m={};
+  PN.forEach(p=>{
+    (DB.april[p].sku||[]).filter(r=>w.days.includes(r.day)).forEach(r=>{
+      const info=skuLookup(p,r.sku_code); const key=info.name;
+      if(!m[key])m[key]={name:info.name,cat:normCat(info.cat),gmv:0,units:0,plats:new Set()};
+      m[key].gmv+=r.gmv||0; m[key].units+=r.units||0; if((r.gmv||0)>0)m[key].plats.add(p);
+    });
+  });
+  return Object.values(m).map(x=>({...x,plats:x.plats.size})).filter(x=>x.gmv>0).sort((a,b)=>b.gmv-a.gmv);
+}
+function _wkCity(w){
+  const m={};
+  PN.forEach(p=>{(DB.april[p].city||[]).filter(r=>w.days.includes(r.day)).forEach(r=>{const c=r.city_group||'(No City)';m[c]=(m[c]||0)+(r.gmv||0);});});
+  return Object.entries(m).map(([city,gmv])=>({city,gmv})).filter(x=>x.gmv>0).sort((a,b)=>b.gmv-a.gmv);
+}
+
+// Weekend OSA per platform — same GMV-weighted method as Availability tab, windowed to Sat–Sun.
+// Per SKU: mean wt_osa_ls over weekend days; platform = GMV-weighted by weekend GMV (non-null + GMV>0).
+// Returns {osa, wSum, wTot, lostGmv, skusWithOsa, low:[{name,osa,gmv}]} or null if platform has no avail data.
+function _wkOsaPlat(p,w){
+  const mk=getViewingMonth();
+  const platAvail=((DB.avail||{})[mk]||{})[p];
+  if(!platAvail)return null;
+  const gmvBy={};
+  (DB.april[p].sku||[]).filter(r=>w.days.includes(r.day)).forEach(r=>{const c=String(r.sku_code).trim();gmvBy[c]=(gmvBy[c]||0)+(r.gmv||0);});
+  let wSum=0,wTot=0,lost=0,cnt=0; const low=[]; const simple=[];
+  Object.keys(platAvail).forEach(sku=>{
+    const rec=_availNormalizeSkuRec(platAvail[sku]); const days=rec.daily||{};
+    const vals=w.days.map(d=>(days[d]&&days[d].wt_osa_ls!=null)?days[d].wt_osa_ls:null).filter(v=>v!=null);
+    if(!vals.length)return;
+    const skuOsa=vals.reduce((a,b)=>a+b,0)/vals.length;
+    const g=gmvBy[String(sku).trim()]||0;
+    cnt++; simple.push(skuOsa);
+    if(g>0){wSum+=skuOsa*g;wTot+=g; if(skuOsa>0&&skuOsa<100)lost+=g*(100-skuOsa)/skuOsa;}
+    if(skuOsa<75){const info=skuLookup(p,sku);low.push({name:info.name,osa:skuOsa,gmv:g});}
+  });
+  if(!cnt)return null;
+  const osa=wTot>0?(wSum/wTot):(simple.reduce((a,b)=>a+b,0)/simple.length);
+  low.sort((a,b)=>a.osa-b.osa);
+  return {osa,wSum,wTot,lostGmv:lost,skusWithOsa:cnt,low};
+}
+// Combined weekend OSA across the 5 availability platforms — SKU-level GMV-weighted (sums numerators/denominators).
+function _wkOsaAll(w){
+  let wSum=0,wTot=0,lost=0,any=false;
+  _AVAIL_PLATFORMS.forEach(p=>{const r=_wkOsaPlat(p,w);if(!r)return;any=true;wSum+=r.wSum;wTot+=r.wTot;lost+=r.lostGmv;});
+  return {osa:wTot>0?wSum/wTot:null,lostGmv:lost,hasData:any};
+}
+
+function renderWeekend(){
+  const wks=_wkWithData();
+  const empty=document.getElementById('wkEmpty'), body=document.getElementById('wkBody');
+  if(!wks.length){ if(empty)empty.style.display='block'; if(body)body.style.display='none'; return; }
+  if(empty)empty.style.display='none'; if(body)body.style.display='';
+
+  const latest=wks[wks.length-1], prev=wks.length>=2?wks[wks.length-2]:null;
+  const L=_wkAll(latest), P=prev?_wkAll(prev):null;
+  const lift=_wkLiftPct(latest,null);
+  const wow=P&&P.gmv>0?((L.gmv-P.gmv)/P.gmv*100):null;
+  const liftCls=lift===null?'':(lift>=0?'pos':'neg'), wowCls=wow===null?'':(wow>=0?'pos':'neg');
+  const osaL=_wkOsaAll(latest); const osaCol=osaL.osa!=null?_availColor(osaL.osa,'osa'):'#9aa1a8';
+
+  document.getElementById('wkPlatLabel').textContent=latest.label;
+  document.getElementById('wkScopeNote').textContent=`Sat–Sun · ${MONTH_LABEL(getViewingMonth())} · latest ${latest.label}`;
+
+  // KPIs
+  document.getElementById('wkKpis').innerHTML=`
+    <div class="kpi p"><div class="label">Weekend GMV · ${latest.label}</div><div class="value">${fC(L.gmv)}</div><div class="sub">${wow!==null?`<span style="color:${wow>=0?'#1a7a3a':'#c0392b'}">${wow>=0?'▲':'▼'} ${Math.abs(wow).toFixed(1)}% WoW</span>`:'first weekend'}</div></div>
+    <div class="kpi g"><div class="label">Units</div><div class="value">${fN(L.units)}</div><div class="sub">${L.days} day${L.days>1?'s':''} of data</div></div>
+    <div class="kpi r"><div class="label">Blended Discount</div><div class="value">${L.discPct.toFixed(1)}%</div><div class="sub">${fC(L.disc)} spend</div></div>
+    <div class="kpi"><div class="label">Weekend Lift vs Weekday</div><div class="value" style="color:${lift===null?'#1a1a2e':(lift>=0?'#1a7a3a':'#c0392b')}">${lift===null?'—':(lift>=0?'+':'')+lift.toFixed(1)+'%'}</div><div class="sub">avg daily GMV, Sat–Sun vs Mon–Fri</div></div>
+    <div class="kpi"><div class="label">Weekend OSA</div><div class="value" style="color:${osaCol}">${osaL.osa!=null?osaL.osa.toFixed(1)+'%':'—'}</div><div class="sub">${osaL.osa!=null?`<span style="color:#c0392b">${fC(osaL.lostGmv)} lost GMV</span> · 5 platforms`:'upload OSA reports'}</div></div>`;
+
+  // Monday action callout — top 3 signals
+  const acts=[];
+  const plats=PN.map(p=>{const op=_wkOsaPlat(p,latest);return {p,d:_wkPlat(p,latest),lift:_wkLiftPct(latest,p),osa:op?op.osa:null,osaObj:op,
+    wow:(prev&&_wkPlat(p,prev).gmv>0)?((_wkPlat(p,latest).gmv-_wkPlat(p,prev).gmv)/_wkPlat(p,prev).gmv*100):null};}).filter(x=>x.d.gmv>0);
+  const worstWow=plats.filter(x=>x.wow!==null).sort((a,b)=>a.wow-b.wow)[0];
+  if(worstWow&&worstWow.wow<-10)acts.push(`🔻 <b>${worstWow.p}</b> weekend GMV down <b>${Math.abs(worstWow.wow).toFixed(0)}%</b> WoW — investigate availability / promo pullback.`);
+  // Discounting into stockouts — highest-severity promo waste
+  const intoStockout=plats.filter(x=>x.osa!=null&&x.osa<80&&x.d.discPct>25).sort((a,b)=>a.osa-b.osa)[0];
+  if(intoStockout)acts.push(`🚨 <b>${intoStockout.p}</b> running <b>${intoStockout.d.discPct.toFixed(0)}%</b> discount at only <b>${intoStockout.osa.toFixed(0)}% OSA</b> — paying to promote out-of-stock SKUs.`);
+  if(osaL.osa!=null&&osaL.lostGmv>0 && acts.length<3)acts.push(`📉 Weekend OSA <b>${osaL.osa.toFixed(0)}%</b> cost ~<b>${fC(osaL.lostGmv)}</b> in lost weekend GMV — restock the low-OSA list before next weekend.`);
+  const wasteful=plats.filter(x=>x.lift!==null&&x.d.discPct>25&&x.lift<10).sort((a,b)=>b.d.discPct-a.d.discPct)[0];
+  if(wasteful&&acts.length<3)acts.push(`💸 <b>${wasteful.p}</b> at <b>${wasteful.d.discPct.toFixed(0)}%</b> discount but only <b>${wasteful.lift>=0?'+':''}${wasteful.lift.toFixed(0)}%</b> weekend lift — spend not converting.`);
+  const topSku=_wkTopSkus(latest)[0];
+  if(topSku&&acts.length<3)acts.push(`🍦 Top weekend SKU: <b>${topSku.name}</b> — ${fC(topSku.gmv)} across ${topSku.plats} platform${topSku.plats>1?'s':''}. Protect stock.`);
+  const bestLift=plats.filter(x=>x.lift!==null).sort((a,b)=>b.lift-a.lift)[0];
+  if(bestLift&&bestLift.lift>30&&acts.length<3)acts.push(`🚀 <b>${bestLift.p}</b> strongest weekend pull (<b>+${bestLift.lift.toFixed(0)}%</b> vs weekday) — candidate for deeper weekend push.`);
+  document.getElementById('wkActions').innerHTML=acts.length?`<div class="card" style="margin-bottom:20px;border-left:4px solid #8e44ad"><h3>📌 For Monday — top signals</h3><div style="font-size:13px;line-height:1.9">${acts.slice(0,3).map(a=>'• '+a).join('<br>')}</div></div>`:'';
+
+  // Platform table
+  document.getElementById('wkPlatBody').innerHTML=plats.sort((a,b)=>b.d.gmv-a.d.gmv).map(x=>{
+    const osaCell=x.osa!=null?`<span style="color:${_availColor(x.osa,'osa')};font-weight:700">${x.osa.toFixed(1)}%</span>${x.osaObj&&x.osaObj.lostGmv>0?` <span style="color:#c0392b;font-size:10px">−${fC(x.osaObj.lostGmv)}</span>`:''}`:'<span style="color:#9aa1a8">—</span>';
+    return `<tr><td><b style="color:${PC[x.p]}">${x.p}</b></td><td>${fC(x.d.gmv)}</td><td>${fN(x.d.units)}</td><td><span class="${dpCls(x.d.discPct)}">${x.d.discPct.toFixed(1)}%</span></td><td>${osaCell}</td><td style="color:${x.lift===null?'#6b7a99':(x.lift>=0?'#1a7a3a':'#c0392b')}">${x.lift===null?'—':(x.lift>=0?'+':'')+x.lift.toFixed(1)+'%'}</td><td style="color:${x.wow===null?'#6b7a99':(x.wow>=0?'#1a7a3a':'#c0392b')}">${x.wow===null?'—':(x.wow>=0?'▲':'▼')+' '+Math.abs(x.wow).toFixed(1)+'%'}</td></tr>`;
+  }).join('');
+
+  // Rolling trend chart (stacked GMV by platform + weekend OSA line, last up to 6 weekends)
+  const roll=wks.slice(-6);
+  const rollOsa=roll.map(w=>{const o=_wkOsaAll(w);return o.osa!=null?+o.osa.toFixed(1):null;});
+  const hasOsaTrend=rollOsa.some(v=>v!=null);
+  mkChart('wkTrendChart','bar',{
+    labels:roll.map(w=>w.label),
+    datasets:[
+      ...PN.map(p=>({type:'bar',label:p,data:roll.map(w=>Math.round(_wkPlat(p,w).gmv/1000)),backgroundColor:PC[p],stack:'g',yAxisID:'y'})),
+      ...(hasOsaTrend?[{type:'line',label:'Weekend OSA %',data:rollOsa,borderColor:'#1a3a6e',backgroundColor:'#1a3a6e',borderWidth:2.5,tension:0.35,pointRadius:4,fill:false,yAxisID:'y1',spanGaps:true}]:[])
+    ]
+  },{scales:{x:{stacked:true},y:{stacked:true,ticks:{callback:v=>'₹'+v+'K'}},y1:{position:'right',min:0,max:100,grid:{drawOnChartArea:false},ticks:{callback:v=>v+'%'}}}});
+
+  // Discount vs lift scatter (latest weekend, per platform)
+  mkChart('wkElastChart','scatter',{
+    datasets:plats.filter(x=>x.lift!==null).map(x=>({label:x.p,data:[{x:+x.d.discPct.toFixed(1),y:+x.lift.toFixed(1)}],backgroundColor:PC[x.p],pointRadius:7,pointHoverRadius:9}))
+  },{plugins:{tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.x}% disc → ${c.parsed.y>=0?'+':''}${c.parsed.y}% lift`}}},scales:{x:{title:{display:true,text:'Weekend Discount %',color:'#6b7a99'},ticks:{callback:v=>v+'%'}},y:{title:{display:true,text:'Weekend Lift %',color:'#6b7a99'},ticks:{callback:v=>v+'%'}}}});
+
+  // Sat vs Sun split (latest weekend, combined)
+  let satG=0,sunG=0;
+  PN.forEach(p=>{ if(latest.sat){const r=getForDay(p,latest.sat);if(r)satG+=r.gmv||0;} if(latest.sun){const r=getForDay(p,latest.sun);if(r)sunG+=r.gmv||0;} });
+  mkChart('wkSatSunChart','doughnut',{labels:['Saturday','Sunday'],datasets:[{data:[Math.round(satG),Math.round(sunG)],backgroundColor:['#8e44ad','#d4860a']}]},{});
+
+  // City table
+  const cities=_wkCity(latest); const cityTot=cities.reduce((s,c)=>s+c.gmv,0);
+  document.getElementById('wkCityBody').innerHTML=cities.slice(0,12).map(c=>`<tr><td>${c.city}</td><td>${fC(c.gmv)}</td><td>${cityTot>0?(c.gmv/cityTot*100).toFixed(1):0}%</td></tr>`).join('')||'<tr><td colspan="3" style="color:#6b7a99">No city data</td></tr>';
+
+  // Top SKUs
+  const skus=_wkTopSkus(latest); const skuTot=skus.reduce((s,r)=>s+r.gmv,0);
+  document.getElementById('wkSkuBody').innerHTML=skus.slice(0,15).map((r,i)=>`<tr><td><span style="color:var(--muted);font-size:10px">#${i+1}</span> ${r.name}</td><td><span class="pill">${r.cat}</span></td><td>${fC(r.gmv)}</td><td>${fN(r.units)}</td><td>${r.plats}</td><td>${skuTot>0?(r.gmv/skuTot*100).toFixed(1):0}%</td></tr>`).join('');
+
+  // Rolling weekends table
+  document.getElementById('wkRollBody').innerHTML=wks.slice(-8).map((w,i,arr)=>{
+    const a=_wkAll(w); const lf=_wkLiftPct(w,null);
+    const pr=i>0?_wkAll(arr[i-1]):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
+    const o=_wkOsaAll(w); const oCell=o.osa!=null?`<span style="color:${_availColor(o.osa,'osa')};font-weight:700">${o.osa.toFixed(0)}%</span>`:'<span style="color:#9aa1a8">—</span>';
+    return `<tr><td><b>${w.label}</b></td><td>${fC(a.gmv)}</td><td>${fN(a.units)}</td><td>${a.discPct.toFixed(1)}%</td><td>${oCell}</td><td style="color:${lf===null?'#6b7a99':(lf>=0?'#1a7a3a':'#c0392b')}">${lf===null?'—':(lf>=0?'+':'')+lf.toFixed(0)+'%'}</td><td style="color:${ww===null?'#6b7a99':(ww>=0?'#1a7a3a':'#c0392b')}">${ww===null?'—':(ww>=0?'▲':'▼')+Math.abs(ww).toFixed(0)+'%'}</td></tr>`;
+  }).join('');
+
+  // Supply watch — low weekend OSA SKUs + SKUs with weekday sales but zero weekend sales
+  const lowOsa=[];
+  _AVAIL_PLATFORMS.forEach(p=>{const op=_wkOsaPlat(p,latest);if(op&&op.low)op.low.forEach(s=>lowOsa.push({p,...s}));});
+  lowOsa.sort((a,b)=>a.osa-b.osa);
+  const sup=[];
+  PN.forEach(p=>{
+    const wkSkus=new Set((DB.april[p].sku||[]).filter(r=>latest.days.includes(r.day)&&(r.gmv||0)>0).map(r=>r.sku_code));
+    const wdDays=[]; const anchor=latest.sat||latest.sun;
+    for(let b=1;b<=6&&anchor-b>=1;b++){if(_wkIsWeekday(anchor-b))wdDays.push(anchor-b);}
+    const wdMap={};
+    (DB.april[p].sku||[]).filter(r=>wdDays.includes(r.day)).forEach(r=>{wdMap[r.sku_code]=(wdMap[r.sku_code]||0)+(r.units||0);});
+    Object.entries(wdMap).forEach(([code,u])=>{ if(u>=3 && !wkSkus.has(code)){ const info=skuLookup(p,code); sup.push({p,name:info.name,u}); } });
+  });
+  sup.sort((a,b)=>b.u-a.u);
+  let supHtml='';
+  if(lowOsa.length){
+    supHtml+=`<div style="font-weight:700;color:#c0392b;margin-bottom:4px">Low weekend OSA (&lt;75%)</div>`+
+      lowOsa.slice(0,8).map(x=>`• <b style="color:${PC[x.p]}">${x.p}</b> — ${x.name} <span style="color:${_availColor(x.osa,'osa')};font-weight:700">${x.osa.toFixed(0)}%</span>${x.gmv>0?` <span style="color:var(--muted);font-size:11px">${fC(x.gmv)} wknd</span>`:''}`).join('<br>');
+  }
+  if(sup.length){
+    supHtml+=`${lowOsa.length?'<div style="height:8px"></div>':''}<div style="font-weight:700;color:#8e44ad;margin-bottom:4px">Sold weekday, zero weekend</div>`+
+      sup.slice(0,8).map(x=>`• <b style="color:${PC[x.p]}">${x.p}</b> — ${x.name} <span style="color:var(--muted)">(${Math.round(x.u)}u weekday, 0 weekend)</span>`).join('<br>');
+  }
+  if(!supHtml)supHtml='<span style="color:#1a7a3a">✓ No low-OSA or zero-velocity flags this weekend.</span>';
+  document.getElementById('wkSupplyBody').innerHTML=supHtml;
+
+  // Weekend regulars — top-10 in ≥3 of last weekends
+  const recent=wks.slice(-Math.min(wks.length,6)); const freq={};
+  recent.forEach(w=>{_wkTopSkus(w).slice(0,10).forEach(r=>{freq[r.name]=(freq[r.name]||0)+1;});});
+  const reg=Object.entries(freq).filter(([n,c])=>c>=3).sort((a,b)=>b[1]-a[1]);
+  document.getElementById('wkRegulars').innerHTML=reg.length?reg.map(([n,c])=>`<span class="pill" style="background:#f3edf9;color:#8e44ad;margin:2px 4px 2px 0">${n} · ${c}×</span>`).join(' '):'<span style="color:var(--muted)">Not enough weekends yet to establish regulars.</span>';
+}
+
+function exportWeekendCSV(){
+  const wks=_wkWithData(); if(!wks.length){alert('No weekend data to export.');return;}
+  const rows=[['Weekend','Platform','GMV','Units','Discount','Disc %','OSA %','Lost GMV','Lift vs Weekday %','WoW %']];
+  wks.forEach((w,i,arr)=>{
+    PN.forEach(p=>{
+      const d=_wkPlat(p,w); if(d.gmv<=0)return;
+      const lf=_wkLiftPct(w,p); const op=_wkOsaPlat(p,w);
+      const pr=i>0?_wkPlat(p,arr[i-1]):null; const ww=pr&&pr.gmv>0?((d.gmv-pr.gmv)/pr.gmv*100):null;
+      rows.push([w.label,p,Math.round(d.gmv),Math.round(d.units),Math.round(d.disc),d.discPct.toFixed(1),(op&&op.osa!=null)?op.osa.toFixed(1):'',(op&&op.lostGmv)?Math.round(op.lostGmv):'',lf===null?'':lf.toFixed(1),ww===null?'':ww.toFixed(1)]);
+    });
+    const a=_wkAll(w); const lf=_wkLiftPct(w,null); const oa=_wkOsaAll(w);
+    const pr=i>0?_wkAll(arr[i-1]):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
+    rows.push([w.label,'ALL',Math.round(a.gmv),Math.round(a.units),Math.round(a.disc),a.discPct.toFixed(1),oa.osa!=null?oa.osa.toFixed(1):'',oa.lostGmv?Math.round(oa.lostGmv):'',lf===null?'':lf.toFixed(1),ww===null?'':ww.toFixed(1)]);
+  });
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=`GAW_Weekend_${getViewingMonth()}.csv`; a.click(); URL.revokeObjectURL(url);
+}
+
 function renderAll(){
   buildDaySelector();
   // Determine which tab is currently active so we only render its charts immediately.
@@ -3150,6 +3427,7 @@ function renderAll(){
   // Render active tab immediately (canvases guaranteed visible)
   const tabRenderMap={
     overview:renderOverview,
+    weekend:renderWeekend,
     blinkit:()=>renderPlatform('Blinkit','bl',DB.targets.Blinkit),
     instamart:()=>renderPlatform('Instamart','im',DB.targets.Instamart),
     zepto:()=>renderPlatform('Zepto','zp',DB.targets.Zepto),
@@ -3165,6 +3443,7 @@ function renderAll(){
   requestAnimationFrame(()=>{
     const deferred=[
       ()=>{if(activeId!=='overview')renderOverview();},
+      ()=>{if(activeId!=='weekend')renderWeekend();},
       ()=>{if(activeId!=='blinkit')renderPlatform('Blinkit','bl',DB.targets.Blinkit);},
       ()=>{if(activeId!=='instamart')renderPlatform('Instamart','im',DB.targets.Instamart);},
       ()=>{if(activeId!=='zepto')renderPlatform('Zepto','zp',DB.targets.Zepto);},
@@ -3245,7 +3524,7 @@ function showTab(t){
   const el=document.getElementById(t);if(el)el.classList.add('active');
   document.querySelectorAll('.tab').forEach(c=>{if(c.getAttribute('onclick')?.includes("'"+t+"'"))c.classList.add('active');});
   updateBottomNav(t);
-  const fns={overview:renderOverview,blinkit:()=>renderPlatform('Blinkit','bl',DB.targets.Blinkit),instamart:()=>renderPlatform('Instamart','im',DB.targets.Instamart),zepto:()=>renderPlatform('Zepto','zp',DB.targets.Zepto),amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),category:renderCategory,projections:renderProjections,availability:renderAvailability,snapshot:renderSnapshot,cityintel:renderCityIntel,upload:updateUploadDiag};
+  const fns={overview:renderOverview,weekend:renderWeekend,blinkit:()=>renderPlatform('Blinkit','bl',DB.targets.Blinkit),instamart:()=>renderPlatform('Instamart','im',DB.targets.Instamart),zepto:()=>renderPlatform('Zepto','zp',DB.targets.Zepto),amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),category:renderCategory,projections:renderProjections,availability:renderAvailability,snapshot:renderSnapshot,cityintel:renderCityIntel,upload:updateUploadDiag};
   if(fns[t])fns[t]();
   // Flush any charts that were deferred because their canvas was hidden at render time
   const tabEl=document.getElementById(t);
