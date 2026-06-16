@@ -112,6 +112,9 @@ function signOut() {
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>window._origXLSX=window.XLSX;</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js" onerror="window.XLSXStyle=null"></script>
+<script>if(window.XLSX&&window._origXLSX&&window.XLSX!==window._origXLSX){window.XLSXStyle=window.XLSX;window.XLSX=window._origXLSX;}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -389,7 +392,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 <div class="tabs">
   <div class="tab active" onclick="showTab('overview')"><span class="tab-dot" style="background:#1a7a3a"></span>Overview</div>
   <div class="tab" onclick="showTab('weekend')"><span class="tab-dot" style="background:#8e44ad"></span>🗓 Weekend Analysis</div>
-  <div class="tab" onclick="showTab('cmactions')"><span class="tab-dot" style="background:#d4860a"></span>🎯 CM Actions</div>
+  <div class="tab" id="cmActionsTab" onclick="showTab('cmactions')"><span class="tab-dot" style="background:#d4860a"></span>🎯 CM Actions</div>
   <div class="tab" onclick="showTab('blinkit')"><span class="tab-dot" style="background:#d4860a"></span>Blinkit</div>
   <div class="tab" onclick="showTab('instamart')"><span class="tab-dot" style="background:#c0392b"></span>Instamart</div>
   <div class="tab" onclick="showTab('zepto')"><span class="tab-dot" style="background:#7b2d8b"></span>Zepto</div>
@@ -867,7 +870,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 <!-- UPLOAD -->
 <div id="cmactions" class="content"></div>
 <div id="upload" class="content">
-<div class="card" style="margin-bottom:14px;border-left:3px solid #d4860a"><h3 style="margin:0 0 6px">📦 Supply Note — Item-wise Report (open-PO pipeline)</h3><div style="font-size:12px;color:var(--muted);margin-bottom:8px">Upload the SN "Item-wise Sales Orders Report" (.xlsx). Joined with the live June Tracker to compute open PO qty for CM Actions.</div><input class="file-input" id="cmSnInput" type="file" accept=".xlsx,.xls" onchange="uploadSNReport(this)"><div id="cmSnStatus" style="display:none;margin-top:8px;font-size:12px"></div></div>
+<div class="card" style="margin-bottom:14px;border-left:3px solid #d4860a"><h3 style="margin:0 0 6px">📦 Supply Note — Item-wise Report (open-PO pipeline)</h3><div style="font-size:12px;color:var(--muted);margin-bottom:8px">Upload the SN "Item-wise Sales Orders Report" (.xlsx). Joined with the live June Tracker to compute open PO qty for CM Actions.</div><div class="upload-zone" onclick="document.getElementById('cmSnInput').click()" style="padding:18px;max-width:440px"><div class="up-icon">📦</div><div class="up-title">Upload SN Item-wise Report</div><div class="up-sub" id="cmSnSub">.xlsx · click to choose</div><input class="file-input" id="cmSnInput" type="file" accept=".xlsx,.xls" onchange="uploadSNReport(this)"></div><div id="cmSnStatus" style="display:none;margin-top:8px;font-size:12px"></div></div>
   <div id="archivedViewBanner" style="display:none;background:#fff4e0;border:1px solid #d4860a;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#8a4a00">
     🔒 <b>You are viewing an archived (frozen) month.</b> Uploads are disabled because this month has been closed-out and serves as a baseline for later months.<br><br>
     To upload more data into <b><span id="archivedBannerMonth">this month</span></b>: open the month switcher (click the month pill in the topbar) → click <b>"↩ Unfreeze last month (recover)"</b>. This will discard the data uploaded into the current live month so use carefully.
@@ -7691,7 +7694,7 @@ async function exportSnapPDF(){
   finally{if(btn){btn.textContent='📄 Export PDF';btn.disabled=false;}}
 }
 function tick(){const el=document.getElementById('clockEl');if(el)el.textContent=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
-initDB();renderAll();setInterval(tick,1000);tick();initCloudSync();initGitHubSync();setTimeout(updateUploadDiag,500);setTimeout(()=>{if(window._GAW_IS_ADMIN)initTargetInputs();},600);
+initDB();renderAll();setInterval(tick,1000);tick();initCloudSync();initGitHubSync();setTimeout(updateUploadDiag,500);setTimeout(()=>{if(window._GAW_IS_ADMIN)initTargetInputs();},600);setTimeout(()=>{if(!window._GAW_IS_ADMIN){var _ct=document.getElementById('cmActionsTab');if(_ct)_ct.style.display='none';}},300);
 
 // ── READ-ONLY MODE ─────────────────────────────
 // Called by Netlify auth (viewer role) OR via ?readonly URL param
@@ -7727,6 +7730,8 @@ function activateReadonly() {
 
 
 
+
+
 /* === CM ACTION CENTER MODULE === */
 /* ============================================================
    CM ACTION CENTER  — open-PO netting + per-platform CM digest
@@ -7751,6 +7756,9 @@ let _cmPlat='Zepto', _cmTracker=null, _cmTrackErr=null, _cmSN=null, _cmOpenPO=nu
 const CM_SKU_MAP={"chocolatebrowniefudgeicecream100ml": "Chocolate Brownie Fudge Ice Cream Cup 100ml", "conedarkchocolate110ml": "Dark Chocolate Ice Cream Cone", "coneblueberrycheesecake110ml": "Blueberry Cheesecake Ice Cream Cone", "belgianchocolateicecream100ml": "Belgian Chocolate Ice Cream Cup 100ml", "blueberrycheesecakeicecream100ml": "Blueberry Cheesecake Ice Cream Cup 100ml", "browniecrunchbars": "Brownie Crunch Ice Cream Bar", "hazelnutcrunchbars": "Choco Hazelnut Crunch Ice Cream Bar", "deathbychocolatejar": "Death By Chocolate Jar", "mangoicecream100ml": "Mango Ice Cream Cup 100ml", "hazelnutchococheesecakejar": "Hazelnut Choco Cheesecake Jar", "blueberrycheesecakejar": "Blueberry Cheesecake Jar", "tiramisujar": "Tiramisu Jar", "blackforesticecreampastry": "Black Forest Ice Cream Pastry", "raspberryduet60ml": "Raspberry Duet Stick", "conebrowniechocolate110ml": "Chocolate Brownie Ice Cream Cone", "triplechocolateicecreamcake300gm": "Triple Chocolate Ice Cream Cake", "blueberrycheesecakeicecream500ml": "Blueberry Cheesecake Ice Cream Tub 500ml", "mangocassata125ml": "Mango Cassata", "belgianchocolateicecream500ml": "Belgian Chocolate Ice Cream Tub 500ml", "malaikulfi": "Malai Kulfi Stick", "mangoduet60ml": "Mango Duet Stick", "chocolatebrowniefudgeicecream500ml": "Chocolate Brownie Fudge Ice Cream Tub 500ml", "darktrufflebar": "Dark Truffle Ice Cream Bar", "mudpieicecreamcake300gm": "Mudpie Ice Cream Cake", "chocobrowniecookieicecreamsandwich": "Choco Brownie Cookie Ice Cream Sandwich", "almondcrunchbar": "Almond Crunch Ice Cream Bar", "strawberrycheesecakejar": "Strawberry Cheesecake Jar", "vanillachocobar": "Vanilla Chocobar", "chocolatecassata125ml": "Chocolate Cassata", "mangoicecream500ml": "Mango Ice Cream Tub 500ml", "newyorkstylecheesecake95gm": "New York Style Cheesecake Slice", "mangocheesecakejar": "Mango Cheesecake Jar"};
 function cmKey(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
 function cmPocName(p){if(CM_POC[p])return CM_POC[p];const e=CM_EMAILS[p]||'';const lp=(e.split('@')[0]||'').split(/[._]/)[0];return lp?lp.charAt(0).toUpperCase()+lp.slice(1):'there';}
+function cmTypeEmoji(t){return t==='OOS'?'\uD83D\uDD34':t==='LISTING'?'\uD83D\uDFE0':'\u23F3';}
+function cmTierEmoji(tr){return tr==='Crit'?'\uD83D\uDD34':tr==='Watch'?'\uD83D\uDFE1':'\uD83D\uDD35';}
+function cmSigEmoji(t){return t==='OOS'?'\uD83D\uDCC9':t==='LISTING'?'\uD83C\uDFEA':'\u231B';}
 function cmTier(r){return r>=10000?'Crit':r>=3000?'Watch':'Info';}
 function cmINR(x){return '\u20B9'+Math.round(x||0).toLocaleString('en-IN');}
 
@@ -7918,6 +7926,7 @@ function cmSetPlat(p){_cmPlat=p;cmRenderBody();}
 
 function renderCMActions(){
   const el=document.getElementById('cmactions'); if(!el)return;
+  if(!window._GAW_IS_ADMIN){el.innerHTML='<div class="card" style="text-align:center;padding:34px;color:var(--muted)">\uD83D\uDD12 CM Action Center is admin-only.</div>';return;}
   if(!_cmTracker&&!_cmTrackErr&&!_cmTrackLoading){_cmTrackLoading=true;cmFetchTracker().then(()=>{_cmTrackLoading=false;renderCMActions();});}
   cmBuildLines();
   const counts={}; CM_PLATS.forEach(p=>counts[p]=(_cmLines||[]).filter(l=>l.plat===p).length);
@@ -7964,7 +7973,7 @@ function cmRenderBody(){
     return `<tr style="${inc?'':'opacity:.4'}"><td><input type="checkbox" ${inc?'checked':''} onchange="cmToggleLine('${key.replace(/'/g,"")}')"></td>
       <td style="color:${t[0]};font-weight:700;font-size:11px">${t[1]}</td>
       <td><span style="background:${ty[0]}22;color:${ty[0]};padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700">${ty[1]}</span></td>
-      <td>${l.city}</td><td style="font-size:11.5px">${l.sku}</td><td style="font-size:11.5px">${l.sig}</td>
+      <td>${l.city}</td><td style="font-size:11.5px">${l.sku}</td><td style="font-size:11.5px">${cmSigEmoji(l.type)} ${l.sig}</td>
       <td style="text-align:right;font-weight:700">${cmINR(l.r)}</td><td style="font-size:11px;color:var(--muted)">${l.ask}</td></tr>`;
   }).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No action lines above threshold for '+_cmPlat+'.</td></tr>';
   cmRenderDraft();
@@ -7974,9 +7983,13 @@ function cmRenderDraft(){
   const subj=`GAW · ${_cmPlat} · Daily action points · ${cmINR(tot)}/day at stake`;
   const fl={OOS:'realized loss',LISTING:'depth foregone',STOCKOUT:'at-risk'};
   const grp={Crit:[],Watch:[],Info:[]}; sel.forEach(l=>grp[cmTier(l.r)].push(l));
-  let body='Hi '+cmPocName(_cmPlat)+',\n\nDaily GAW action points for '+_cmPlat+'. Figures are estimated \u20B9/day at stake, city-level, from controllable gaps. Sorted by impact.\n';
-  [['Crit','CRITICAL'],['Watch','WATCH'],['Info','INFO']].forEach(([k,h])=>{if(!grp[k].length)return;body+='\n'+h+'\n';grp[k].forEach(l=>{body+='• '+l.city+' · '+l.sku+' — '+l.sig+' → '+cmINR(l.r)+'/day ('+fl[l.type]+'). Ask: '+l.ask+'\n';});});
-  body+='\nFull detail in the attached sheet. Happy to walk through any item.\n\nThanks,\nGAW Supply';
+  const _oos=sel.filter(l=>l.type==='OOS').reduce((s,l)=>s+l.r,0),_dep=sel.filter(l=>l.type==='LISTING').reduce((s,l)=>s+l.r,0),_risk=sel.filter(l=>l.type==='STOCKOUT').reduce((s,l)=>s+l.r,0),_crit=sel.filter(l=>cmTier(l.r)==='Crit').length;
+  let body='Hi '+cmPocName(_cmPlat)+',\n\n';
+  body+='Sharing today\u2019s GAW priorities for '+_cmPlat+' \u2014 '+cmINR(tot)+'/day at stake across '+sel.length+' action point'+(sel.length===1?'':'s')+(_crit?(' ('+_crit+' critical)'):'')+'.\n\n';
+  body+='   \uD83D\uDD34 Realized loss (OOS): '+cmINR(_oos)+'/day\n   \uD83D\uDFE0 Depth foregone: '+cmINR(_dep)+'/day\n   \u23F3 At-risk (stockout): '+cmINR(_risk)+'/day\n\n';
+  body+='Action points, by impact:\n';
+  [['Crit','CRITICAL'],['Watch','WATCH'],['Info','INFO']].forEach(([k,h])=>{if(!grp[k].length)return;body+='\n'+cmTierEmoji(k)+' '+h+'\n';grp[k].forEach(l=>{body+='\u2022 '+l.city+' \u00B7 '+l.sku+' \u2014 '+l.sig+' \u2192 '+cmINR(l.r)+'/day ('+fl[l.type]+'). Ask: '+l.ask+'\n';});});
+  body+='\nFull line-item detail in the attached sheet. Happy to jump on a quick call.\n\nThanks,\nGAW Supply';
   document.getElementById('cmSubj').textContent=subj;
   document.getElementById('cmDraft').textContent=body;
   document.getElementById('cmMailTo').textContent=(CM_EMAILS[_cmPlat]||'(set CM email)')+(CM_CC[_cmPlat]?(' · cc '+CM_CC[_cmPlat]):'');
@@ -7986,12 +7999,26 @@ function cmOpenMail(){const d=window._cmDraftCache||{};const cc=CM_CC[_cmPlat]?'
 function cmTestMail(){const d=window._cmDraftCache||{};const to=CM_EMAILS[_cmPlat]||'(unset)';const cc=CM_CC[_cmPlat]?(' , cc '+CM_CC[_cmPlat]):'';const note='*** TEST PREVIEW — live send would go to: '+to+cc+' ***\n\n';window.location.href='mailto:'+CM_PROXY+'?subject='+encodeURIComponent('[TEST] '+(d.subj||''))+'&body='+encodeURIComponent(note+(d.body||''));}
 function cmCopy(){const d=window._cmDraftCache||{};navigator.clipboard.writeText((d.subj||'')+'\n\n'+(d.body||''));}
 function cmExportXlsx(){
+  const X=window.XLSXStyle||XLSX; const styled=!!window.XLSXStyle;
   const sel=cmRows().filter(cmInc); const fl={OOS:'Realized loss',LISTING:'Depth (foregone)',STOCKOUT:'At-risk'};
-  const aoa=[['Tier','Type','Flavour','City','SKU','Signal','Est ₹/day','Ask to CM']];
-  sel.forEach(l=>aoa.push([cmTier(l.r)==='Crit'?'Critical':cmTier(l.r),({OOS:'OOS',LISTING:'Depth',STOCKOUT:'Stockout'})[l.type],fl[l.type],l.city,l.sku,l.sig,Math.round(l.r),l.ask]));
-  const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=[{wch:9},{wch:9},{wch:14},{wch:11},{wch:30},{wch:22},{wch:11},{wch:48}];
-  const rng=XLSX.utils.decode_range(ws['!ref']); for(let R=rng.s.r;R<=rng.e.r;R++)for(let C=rng.s.c;C<=rng.e.c;C++){const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];if(cell)cell.s={alignment:{horizontal:'center',vertical:'center',wrapText:true}};}
-  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,_cmPlat); XLSX.writeFile(wb,'GAW_'+_cmPlat+'_action_points.xlsx');
+  const head=['Tier','Driver','Flavour','City','SKU','Signal','Est \u20B9/day','Ask to CM'];
+  const title='GAW \u00B7 '+_cmPlat+' \u00B7 Daily Action Points \u00B7 '+new Date().toLocaleDateString('en-IN');
+  const aoa=[[title,'','','','','','',''],head];
+  sel.forEach(l=>{const tr=cmTier(l.r);aoa.push([cmTierEmoji(tr)+' '+(tr==='Crit'?'Critical':tr),cmTypeEmoji(l.type)+' '+({OOS:'OOS',LISTING:'Depth',STOCKOUT:'Stockout'})[l.type],fl[l.type],l.city,l.sku,cmSigEmoji(l.type)+' '+l.sig,Math.round(l.r),l.ask]);});
+  const ws=X.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:13},{wch:13},{wch:16},{wch:12},{wch:32},{wch:24},{wch:12},{wch:52}];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}];
+  if(styled){
+    const NAVY={rgb:'1B2B45'},WHITE={rgb:'FFFFFF'},L={rgb:'E4E4E4'};
+    const bd={top:{style:'thin',color:L},bottom:{style:'thin',color:L},left:{style:'thin',color:L},right:{style:'thin',color:L}};
+    const ctr={horizontal:'center',vertical:'center',wrapText:true};
+    const tc={Crit:'C0392B',Watch:'B9770E',Info:'2C5E8A'};
+    const tcell=ws[X.utils.encode_cell({r:0,c:0})]; if(tcell)tcell.s={font:{bold:true,sz:13,color:NAVY,name:'Calibri'},alignment:ctr,fill:{fgColor:{rgb:'FBF1DE'}}};
+    for(let c=0;c<head.length;c++){const h=ws[X.utils.encode_cell({r:1,c})];if(h)h.s={font:{bold:true,color:WHITE,name:'Calibri'},fill:{fgColor:{rgb:'D4860A'}},alignment:ctr,border:bd};}
+    for(let r=0;r<sel.length;r++){const tr=cmTier(sel[r].r);for(let c=0;c<head.length;c++){const cell=ws[X.utils.encode_cell({r:r+2,c})];if(!cell)continue;const left=(c===4||c===7);cell.s={font:{name:'Calibri',sz:10,bold:(c===0||c===6),color:(c===0?{rgb:tc[tr]}:NAVY)},alignment:{horizontal:left?'left':'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r%2?'F7F8FA':'FFFFFF')}}};if(c===6)cell.z='\u20B9#,##0';}}
+    ws['!rows']=[{hpt:26},{hpt:20}];
+  }
+  const wb=X.utils.book_new(); X.utils.book_append_sheet(wb,ws,_cmPlat); X.writeFile(wb,'GAW_'+_cmPlat+'_action_points.xlsx');
 }
 async function cmReload(){await cmFetchTracker();renderCMActions();}
 
