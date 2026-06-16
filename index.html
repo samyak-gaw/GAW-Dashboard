@@ -388,7 +388,8 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 
 <div class="tabs">
   <div class="tab active" onclick="showTab('overview')"><span class="tab-dot" style="background:#1a7a3a"></span>Overview</div>
-  <div class="tab" onclick="showTab('weekend')"><span class="tab-dot" style="background:#8e44ad"></span>🗓 Weekend</div>
+  <div class="tab" onclick="showTab('weekend')"><span class="tab-dot" style="background:#8e44ad"></span>🗓 Weekend Analysis</div>
+  <div class="tab" onclick="showTab('cmactions')"><span class="tab-dot" style="background:#d4860a"></span>🎯 CM Actions</div>
   <div class="tab" onclick="showTab('blinkit')"><span class="tab-dot" style="background:#d4860a"></span>Blinkit</div>
   <div class="tab" onclick="showTab('instamart')"><span class="tab-dot" style="background:#c0392b"></span>Instamart</div>
   <div class="tab" onclick="showTab('zepto')"><span class="tab-dot" style="background:#7b2d8b"></span>Zepto</div>
@@ -864,7 +865,9 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 </div>
 
 <!-- UPLOAD -->
+<div id="cmactions" class="content"></div>
 <div id="upload" class="content">
+<div class="card" style="margin-bottom:14px;border-left:3px solid #d4860a"><h3 style="margin:0 0 6px">📦 Supply Note — Item-wise Report (open-PO pipeline)</h3><div style="font-size:12px;color:var(--muted);margin-bottom:8px">Upload the SN "Item-wise Sales Orders Report" (.xlsx). Joined with the live June Tracker to compute open PO qty for CM Actions.</div><input class="file-input" id="cmSnInput" type="file" accept=".xlsx,.xls" onchange="uploadSNReport(this)"><div id="cmSnStatus" style="display:none;margin-top:8px;font-size:12px"></div></div>
   <div id="archivedViewBanner" style="display:none;background:#fff4e0;border:1px solid #d4860a;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#8a4a00">
     🔒 <b>You are viewing an archived (frozen) month.</b> Uploads are disabled because this month has been closed-out and serves as a baseline for later months.<br><br>
     To upload more data into <b><span id="archivedBannerMonth">this month</span></b>: open the month switcher (click the month pill in the topbar) → click <b>"↩ Unfreeze last month (recover)"</b>. This will discard the data uploaded into the current live month so use carefully.
@@ -1242,7 +1245,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div class="card" style="margin-bottom:20px">
     <h3>📊 City Performance Summary — <span id="ciTableLabel">All Platforms · Today</span></h3>
     <div class="scroll-table"><table class="tbl">
-      <thead><tr><th>City</th><th>Zepto GMV</th><th>Blinkit GMV</th><th>Instamart GMV</th><th>Flipkart GMV</th><th>BigBasket GMV</th><th>Total</th><th>SDLW</th><th>Top SKU</th></tr></thead>
+      <thead><tr><th>City</th><th>Zepto GMV</th><th>Blinkit GMV</th><th>Instamart GMV</th><th>Flipkart GMV</th><th>BigBasket GMV</th><th>Total</th><th>City DRR<br><span style="font-weight:400;font-size:9px;color:var(--muted)">units/day · MTD</span></th><th>SDLW</th><th>Top SKU</th></tr></thead>
       <tbody id="ciCitySummaryBody"></tbody>
     </table></div>
   </div>
@@ -1355,7 +1358,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 <div id="moreDrawer" style="display:none;position:fixed;bottom:calc(58px + env(safe-area-inset-bottom));left:0;right:0;background:#fff;border-radius:20px 20px 0 0;border-top:2px solid var(--border);z-index:400;padding:14px 16px 8px;box-shadow:0 -8px 32px rgba(0,0,0,.12)">
   <div style="width:36px;height:4px;background:#e0e5ef;border-radius:2px;margin:0 auto 14px"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-    <div onclick="closeMore();showTab('weekend')" style="padding:12px;background:#f3edf9;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🗓</div>Weekend</div>
+    <div onclick="closeMore();showTab('weekend')" style="padding:12px;background:#f3edf9;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🗓</div>Weekend Analysis</div>
     <div onclick="closeMore();showTab('instamart')" style="padding:12px;background:#fdecea;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🔴</div>Instamart</div>
     <div onclick="closeMore();showTab('amazon')" style="padding:12px;background:#fff8e6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">📦</div>Amazon</div>
     <div onclick="closeMore();showTab('flipkart')" style="padding:12px;background:#eaf0fe;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px">🛒</div>Flipkart</div>
@@ -3435,7 +3438,7 @@ function renderAll(){
     flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),
     bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),
     category:renderCategory,projections:renderProjections,availability:renderAvailability,
-    snapshot:renderSnapshot,cityintel:renderCityIntel,upload:updateUploadDiag,
+    snapshot:renderSnapshot,cityintel:renderCityIntel,cmactions:renderCMActions,upload:updateUploadDiag,
   };
   if(tabRenderMap[activeId])tabRenderMap[activeId]();
   // Defer non-active renders — mkChart visibility guard will queue charts as pending,
@@ -3524,7 +3527,7 @@ function showTab(t){
   const el=document.getElementById(t);if(el)el.classList.add('active');
   document.querySelectorAll('.tab').forEach(c=>{if(c.getAttribute('onclick')?.includes("'"+t+"'"))c.classList.add('active');});
   updateBottomNav(t);
-  const fns={overview:renderOverview,weekend:renderWeekend,blinkit:()=>renderPlatform('Blinkit','bl',DB.targets.Blinkit),instamart:()=>renderPlatform('Instamart','im',DB.targets.Instamart),zepto:()=>renderPlatform('Zepto','zp',DB.targets.Zepto),amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),category:renderCategory,projections:renderProjections,availability:renderAvailability,snapshot:renderSnapshot,cityintel:renderCityIntel,upload:updateUploadDiag};
+  const fns={overview:renderOverview,weekend:renderWeekend,blinkit:()=>renderPlatform('Blinkit','bl',DB.targets.Blinkit),instamart:()=>renderPlatform('Instamart','im',DB.targets.Instamart),zepto:()=>renderPlatform('Zepto','zp',DB.targets.Zepto),amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),category:renderCategory,projections:renderProjections,availability:renderAvailability,snapshot:renderSnapshot,cityintel:renderCityIntel,cmactions:renderCMActions,upload:updateUploadDiag};
   if(fns[t])fns[t]();
   // Flush any charts that were deferred because their canvas was hidden at render time
   const tabEl=document.getElementById(t);
@@ -7529,6 +7532,10 @@ function renderCiSummaryTable(){
   const td=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
   const sdlwTd=td-7; // same day last week
   const cities=['Delhi NCR','Bangalore','Mumbai','Hyderabad','Pune','Chennai','Kolkata','Ahmedabad','Kochi'];
+  // City-wise DRR (units/day, MTD): distinct days present across CI platforms
+  const _drrDays=new Set();
+  CI_PLATS.forEach(p=>(DB.april[p].city||[]).forEach(x=>_drrDays.add(x.day)));
+  const _nDrrDays=_drrDays.size||1;
   const tableEl=document.getElementById('ciCitySummaryBody');if(!tableEl)return;
   const labelEl=document.getElementById('ciTableLabel');
   if(labelEl)labelEl.textContent=`All Platforms · ${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} ${td}`;
@@ -7558,7 +7565,11 @@ function renderCiSummaryTable(){
     });
     const topSku=Object.entries(skuMap).sort((a,b)=>b[1]-a[1])[0];
     const sdlw=totSdlw>0?parseFloat(pct(totToday,totSdlw)):null;
-    return{city,totToday,sdlw,platVals,topSku:topSku?topSku[0]:'—'};
+    // MTD units across CI platforms for this city -> DRR
+    let mtdUnits=0;
+    CI_PLATS.forEach(p=>(DB.april[p].city||[]).filter(x=>x.city_group===city).forEach(x=>{mtdUnits+=(x.units||0);}));
+    const drr=Math.round(mtdUnits/_nDrrDays);
+    return{city,totToday,sdlw,platVals,drr,topSku:topSku?topSku[0]:'—'};
   }).filter(Boolean).sort((a,b)=>b.totToday-a.totToday);
 
   tableEl.innerHTML=rows.map(r=>`<tr>
@@ -7569,9 +7580,10 @@ function renderCiSummaryTable(){
     <td>${r.platVals.Flipkart>0?fC(r.platVals.Flipkart):'<span style="color:var(--muted)">—</span>'}</td>
     <td>${r.platVals.BigBasket>0?fC(r.platVals.BigBasket):'<span style="color:var(--muted)">—</span>'}</td>
     <td><b>${fC(r.totToday)}</b></td>
+    <td style="font-weight:700;color:#16a085">${(r.drr||0).toLocaleString('en-IN')}</td>
     <td>${r.sdlw!==null?badgeDelta(r.sdlw.toFixed(1)):'<span class="cb-na">N/A</span>'}</td>
     <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.topSku}">${r.topSku}</td>
-  </tr>`).join('')||'<tr><td colspan="9" style="color:var(--muted);padding:16px;text-align:center">No city data for selected day</td></tr>';
+  </tr>`).join('')||'<tr><td colspan="10" style="color:var(--muted);padding:16px;text-align:center">No city data for selected day</td></tr>';
 }
 
 // ══════════════════════════════════════════════
@@ -7710,6 +7722,279 @@ function activateReadonly() {
            || window.location.hash === '#readonly';
   if (ro) activateReadonly();
 })();
+
+
+
+
+
+/* === CM ACTION CENTER MODULE === */
+/* ============================================================
+   CM ACTION CENTER  — open-PO netting + per-platform CM digest
+   Self-contained. Reuses _availComputeMTD / nCity / skuLookup / DB.
+   Correctness-first: shows "—" / skips wherever an input is missing;
+   never nets stockout without a loaded tracker (would overstate risk).
+   ============================================================ */
+const CM_TRACKER_CSV_URL='https://docs.google.com/spreadsheets/d/e/2PACX-1vT7LDzUkhk96T7tSR52BenrwH7Kb2OeXmBYrHMx5Zo4SUz5-2Sh88RPZoY39PphpIqU_D61OgfqzFyT/pub?gid=1998625774&single=true&output=csv';
+const CM_OPEN_STATUSES=new Set(['apt confirmed','apt requested','apt not taken','']); // blank = open
+const CM_OSA_BREACH=85, CM_DS_TARGET=85, CM_DTS_DAYS=5;
+const CM_FLOOR={Zepto:5000,Blinkit:3000,Instamart:4000,Flipkart:1500,BigBasket:750,Amazon:1000};
+const CM_EMAILS={Zepto:'shreya.gupta@zepto.com',Blinkit:'banee.khurana@zomato.com',Instamart:'kshitij.sankhe@scootsy.com',Flipkart:'souraneer.bera@flipkart.com',BigBasket:'gaurav.surpur@bigbasket.com',Amazon:'divshanm@amazon.com'};
+const CM_CC={Flipkart:'shivanideepaks.vc@flipkart.com',BigBasket:'rohini.m@bigbasket.com'};
+const CM_PROXY='samyak.getawhey@gmail.com';
+const CM_DISCONTINUED=new Set(['redvelveticecreampastry','biscrunchicecreampastry','chocobrowniefudgeicecreamsandwich']);
+const CM_POC={Zepto:'Shreya',Blinkit:'Banee',Instamart:'Kshitij',Flipkart:'Souraneer',BigBasket:'Gaurav',Amazon:''}; // first-name for greeting; blank = derive from email
+const CM_PLATS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket'];
+const CM_TRACK_PLAT={'big basket':'BigBasket','bigbasket':'BigBasket','blinkit':'Blinkit','zepto':'Zepto','instamart':'Instamart','swiggy instamart':'Instamart','flipkart':'Flipkart','amazon':'Amazon'};
+let _cmTrackLoading=false;
+let _cmPlat='Zepto', _cmTracker=null, _cmTrackErr=null, _cmSN=null, _cmOpenPO=null, _cmUnmapped=null, _cmLines=null, _cmExcl={};
+
+const CM_SKU_MAP={"chocolatebrowniefudgeicecream100ml": "Chocolate Brownie Fudge Ice Cream Cup 100ml", "conedarkchocolate110ml": "Dark Chocolate Ice Cream Cone", "coneblueberrycheesecake110ml": "Blueberry Cheesecake Ice Cream Cone", "belgianchocolateicecream100ml": "Belgian Chocolate Ice Cream Cup 100ml", "blueberrycheesecakeicecream100ml": "Blueberry Cheesecake Ice Cream Cup 100ml", "browniecrunchbars": "Brownie Crunch Ice Cream Bar", "hazelnutcrunchbars": "Choco Hazelnut Crunch Ice Cream Bar", "deathbychocolatejar": "Death By Chocolate Jar", "mangoicecream100ml": "Mango Ice Cream Cup 100ml", "hazelnutchococheesecakejar": "Hazelnut Choco Cheesecake Jar", "blueberrycheesecakejar": "Blueberry Cheesecake Jar", "tiramisujar": "Tiramisu Jar", "blackforesticecreampastry": "Black Forest Ice Cream Pastry", "raspberryduet60ml": "Raspberry Duet Stick", "conebrowniechocolate110ml": "Chocolate Brownie Ice Cream Cone", "triplechocolateicecreamcake300gm": "Triple Chocolate Ice Cream Cake", "blueberrycheesecakeicecream500ml": "Blueberry Cheesecake Ice Cream Tub 500ml", "mangocassata125ml": "Mango Cassata", "belgianchocolateicecream500ml": "Belgian Chocolate Ice Cream Tub 500ml", "malaikulfi": "Malai Kulfi Stick", "mangoduet60ml": "Mango Duet Stick", "chocolatebrowniefudgeicecream500ml": "Chocolate Brownie Fudge Ice Cream Tub 500ml", "darktrufflebar": "Dark Truffle Ice Cream Bar", "mudpieicecreamcake300gm": "Mudpie Ice Cream Cake", "chocobrowniecookieicecreamsandwich": "Choco Brownie Cookie Ice Cream Sandwich", "almondcrunchbar": "Almond Crunch Ice Cream Bar", "strawberrycheesecakejar": "Strawberry Cheesecake Jar", "vanillachocobar": "Vanilla Chocobar", "chocolatecassata125ml": "Chocolate Cassata", "mangoicecream500ml": "Mango Ice Cream Tub 500ml", "newyorkstylecheesecake95gm": "New York Style Cheesecake Slice", "mangocheesecakejar": "Mango Cheesecake Jar"};
+function cmKey(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function cmPocName(p){if(CM_POC[p])return CM_POC[p];const e=CM_EMAILS[p]||'';const lp=(e.split('@')[0]||'').split(/[._]/)[0];return lp?lp.charAt(0).toUpperCase()+lp.slice(1):'there';}
+function cmTier(r){return r>=10000?'Crit':r>=3000?'Watch':'Info';}
+function cmINR(x){return '\u20B9'+Math.round(x||0).toLocaleString('en-IN');}
+
+/* ---- SKU name -> canonical (deterministic; no risky fuzzy) ---- */
+function cmNorm(s){return String(s||'').toLowerCase().replace(/get[\s-]*a[\s-]*way/g,'').replace(/ice\s*cream/g,' ').replace(/\b\d+\s*(ml|gm|g|ltr|l|kg)\b/g,' ').replace(/\b(bar|stick)\b/g,'stickbar').replace(/[^a-z]/g,'');}
+function cmTok(s){return String(s||'').toLowerCase().replace(/get[\s-]*a[\s-]*way/g,'').replace(/ice\s*cream/g,' ').replace(/\b\d+\s*(ml|gm|g|ltr|l|kg)\b/g,' ').replace(/[^a-z\s]/g,' ').split(/\s+/).filter(w=>w.length>2).sort().join('');}
+function cmCanonIndex(){
+  const idx={};
+  Object.values(DB.sku_master||{}).forEach(m=>Object.values(m||{}).forEach(info=>{
+    if(info&&info.name){idx[cmNorm(info.name)]=info.name; const t=cmTok(info.name); if(t)idx[t]=info.name;}
+  }));
+  return idx;
+}
+function cmMapName(nm,idx){const mk=CM_SKU_MAP[cmKey(nm)]; if(mk)return mk; const n=cmNorm(nm); if(idx[n])return idx[n]; const t=cmTok(nm); if(idx[t])return idx[t]; return null;}
+
+/* ---- tracker CSV ---- */
+function cmParseCSV(text){
+  const rows=[]; let i=0,f='',row=[],q=false;
+  while(i<text.length){const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false;} else f+=c; }
+    else{ if(c==='"')q=true; else if(c===','){row.push(f);f='';} else if(c==='\n'){row.push(f);rows.push(row);row=[];f='';} else if(c!=='\r')f+=c; }
+    i++;
+  }
+  if(f.length||row.length){row.push(f);rows.push(row);}
+  return rows;
+}
+async function cmFetchTracker(){
+  _cmTracker=null;_cmTrackErr=null;
+  try{
+    const res=await fetch(CM_TRACKER_CSV_URL,{cache:'no-store'});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const rows=cmParseCSV(await res.text());
+    if(!rows.length)throw new Error('empty');
+    const hdr=rows[0].map(h=>String(h||'').trim());
+    const ix=n=>hdr.indexOf(n);
+    const iPO=ix('SUPPLY NOTE PO'),iPlat=ix('Q COM PARTNER'),iCity=ix('CITY'),iSt=ix('PO STATUS');
+    if(iPO<0||iSt<0)throw new Error('columns not found (is gid the live <Month> Tracker?)');
+    const open={};let cnt=0;
+    for(let r=1;r<rows.length;r++){
+      const po=String(rows[r][iPO]||'').trim(); if(!po)continue;
+      const st=String(rows[r][iSt]||'').trim().toLowerCase().replace(/\s+/g,' ');
+      if(!CM_OPEN_STATUSES.has(st))continue;
+      const plat=CM_TRACK_PLAT[String(rows[r][iPlat]||'').trim().toLowerCase()]||null;
+      open[po]={plat, city:nCity(rows[r][iCity]||'')}; cnt++;
+    }
+    _cmTracker={open,count:cnt,fetched:new Date()};
+  }catch(e){_cmTrackErr=String(e.message||e);}
+}
+
+/* ---- SN item-wise upload ---- */
+function uploadSNReport(input){
+  if(!input.files||!input.files[0])return;
+  const file=input.files[0], st=document.getElementById('cmSnStatus');
+  if(st){st.style.display='block';st.textContent='Parsing '+file.name+' …';}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true});
+      // header row = first row containing 'Indent No.'
+      let h=-1; for(let r=0;r<Math.min(12,aoa.length);r++){ if((aoa[r]||[]).some(c=>String(c).trim()==='Indent No.')){h=r;break;} }
+      if(h<0)throw new Error('Indent No. header not found');
+      const hdr=aoa[h].map(c=>String(c||'').trim());
+      const cPO=hdr.indexOf('Indent No.'),cNm=hdr.indexOf('Item Name'),cQ=hdr.indexOf('Indent Qty');
+      if(cPO<0||cNm<0||cQ<0)throw new Error('Indent No./Item Name/Indent Qty column missing');
+      const byPO={};let lines=0;
+      for(let r=h+1;r<aoa.length;r++){
+        const row=aoa[r]||[]; const po=String(row[cPO]||'').trim(); if(!po)continue;
+        const nm=String(row[cNm]||'').trim(); const q=parseFloat(row[cQ])||0;
+        if(!nm)continue; (byPO[po]=byPO[po]||[]).push({nm,q}); lines++;
+      }
+      _cmSN={byPO,lines,name:file.name,when:new Date()};
+      if(st)st.textContent='✅ '+file.name+' — '+lines.toLocaleString('en-IN')+' lines parsed';
+      _cmOpenPO=null; if(document.getElementById('cmactions')?.classList.contains('active'))renderCMActions();
+    }catch(err){ if(st)st.textContent='❌ '+(err.message||err); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ---- city×SKU MTD (gmv/units) from citysku ---- */
+function cmCitySku(plat){
+  const src=(DB.april[plat]&&DB.april[plat].citysku)||{};
+  const days=Object.keys(src); const nDays=days.length||1; const out={};
+  days.forEach(d=>{const byCity=src[d]||{};Object.keys(byCity).forEach(c=>{const bySku=byCity[c]||{};Object.keys(bySku).forEach(sk=>{
+    const cc=nCity(c); (out[cc]=out[cc]||{}); const o=(out[cc][sk]=out[cc][sk]||{gmv:0,units:0}); o.gmv+=(bySku[sk].gmv||0); o.units+=(bySku[sk].units||0);
+  });});});
+  return {map:out,nDays};
+}
+
+/* ---- build open-PO map (tracker × SN) ---- */
+function cmBuildOpenPO(){
+  if(!_cmTracker||!_cmSN){_cmOpenPO=null;_cmUnmapped=null;return;}
+  const idx=cmCanonIndex(); const po={}; const unmapped={}; let matchedPO=0,missPO=0;
+  Object.entries(_cmTracker.open).forEach(([poNum,meta])=>{
+    const items=_cmSN.byPO[poNum]; if(!items){missPO++;return;} matchedPO++;
+    const plat=meta.plat, city=meta.city; if(!plat)return;
+    items.forEach(it=>{
+      const canon=cmMapName(it.nm,idx);
+      if(!canon){if(!CM_DISCONTINUED.has(cmKey(it.nm)))unmapped[it.nm]=(unmapped[it.nm]||0)+it.q;return;}
+      (po[plat]=po[plat]||{}); (po[plat][city]=po[plat][city]||{}); po[plat][city][canon]=(po[plat][city][canon]||0)+it.q;
+    });
+  });
+  _cmOpenPO={po,matchedPO,missPO}; _cmUnmapped=unmapped;
+}
+
+/* ---- build action lines ---- */
+function cmBuildLines(){
+  if(!window._availMTD)window._availMTD=_availComputeMTD();
+  cmBuildOpenPO();
+  const haveTracker=!!_cmOpenPO;
+  const lines=[];
+  CM_PLATS.forEach(plat=>{
+    const mtd=window._availMTD[plat]; if(!mtd||!mtd.skus)return;
+    const cs=cmCitySku(plat);
+    const openP=(_cmOpenPO&&_cmOpenPO.po[plat])||{};
+    Object.keys(mtd.skus).forEach(sku=>{
+      const k=mtd.skus[sku]; const info=skuLookup(plat,sku); const mrp=info.mrp||0; const canon=info.name;
+      const cities=Object.keys(k.by_city||{});
+      if(plat==='Instamart'){
+        // IM stockout uses native DOI (platform), per memory — region grain
+        if(haveTracker&&k.doi!=null&&k.drr>0){
+          let openUnits=0; Object.values(openP).forEach(byC=>{if(byC[canon])openUnits+=byC[canon];});
+          const netDts=k.doi+(openUnits/k.drr);
+          const atRisk=k.drr*mrp;
+          if(netDts<CM_DTS_DAYS && atRisk>=CM_FLOOR[plat]) lines.push({plat,type:'STOCKOUT',city:'Region',sku:canon,sig:netDts.toFixed(1)+'d net (DOI '+k.doi.toFixed(1)+' + PO)',r:atRisk,ask:'Confirm WH replenishment — native DOI flags imminent zero.'});
+        }
+      }
+      cities.forEach(city=>{
+        const cd=k.by_city[city]; const cc=nCity(city);
+        const cg=(cs.map[cc]&&cs.map[cc][sku])||{gmv:0,units:0};
+        const cityDrr=cg.units/cs.nDays;
+        if(cityDrr<=0)return; // no velocity → no meaningful ₹
+        // OOS-lost (realized)
+        if(cd.wt_osa_ls!=null && cd.wt_osa_ls>0 && cd.wt_osa_ls<CM_OSA_BREACH){
+          const r=cityDrr*mrp*(100-cd.wt_osa_ls)/100;
+          if(r>=CM_FLOOR[plat]) lines.push({plat,type:'OOS',city:cc,sku:canon,sig:'OSA '+cd.wt_osa_ls.toFixed(0)+'%',r,ask:'Restore in-stock in the dry '+plat+' '+cc+' stores.'});
+        }
+        // DS-depth (foregone)
+        if(cd.ds_listing!=null && cd.ds_listing>0 && cd.ds_listing<CM_DS_TARGET){
+          const r=cityDrr*mrp*(CM_DS_TARGET-cd.ds_listing)/cd.ds_listing;
+          if(r>=CM_FLOOR[plat]) lines.push({plat,type:'LISTING',city:cc,sku:canon,sig:'Depth '+cd.ds_listing.toFixed(0)+'% vs '+CM_DS_TARGET+'%',r,ask:'List in serviceable stores to reach '+CM_DS_TARGET+'% depth.'});
+        }
+        // stockout-risk (forward) — non-IM, city grain, requires tracker for correct netting
+        if(plat!=='Instamart' && haveTracker){
+          const soh=(cd.soh!=null)?cd.soh:null;
+          if(soh!=null && cityDrr>0){
+            const openUnits=(openP[cc]&&openP[cc][canon])||0;
+            const netDts=(soh+openUnits)/cityDrr;
+            const atRisk=cityDrr*mrp;
+            if(netDts<CM_DTS_DAYS && atRisk>=CM_FLOOR[plat]) lines.push({plat,type:'STOCKOUT',city:cc,sku:canon,sig:netDts.toFixed(1)+'d net (SOH '+Math.round(soh)+' +PO '+openUnits+')',r:atRisk,ask:'Confirm PO inward; hold the listing through the zero.'});
+          }
+        }
+      });
+    });
+  });
+  _cmLines=lines;
+}
+
+/* ---- render ---- */
+function cmRows(){return (_cmLines||[]).filter(l=>l.plat===_cmPlat).sort((a,b)=>b.r-a.r);}
+function cmInc(l){return !_cmExcl[l.plat+'|'+l.type+'|'+l.city+'|'+l.sku];}
+function cmToggleLine(key){_cmExcl[key]=!_cmExcl[key];cmRenderBody();}
+function cmSetPlat(p){_cmPlat=p;cmRenderBody();}
+
+function renderCMActions(){
+  const el=document.getElementById('cmactions'); if(!el)return;
+  if(!_cmTracker&&!_cmTrackErr&&!_cmTrackLoading){_cmTrackLoading=true;cmFetchTracker().then(()=>{_cmTrackLoading=false;renderCMActions();});}
+  cmBuildLines();
+  const counts={}; CM_PLATS.forEach(p=>counts[p]=(_cmLines||[]).filter(l=>l.plat===p).length);
+  const pills=CM_PLATS.map(p=>`<div class="pill ${p===_cmPlat?'on':''}" onclick="cmSetPlat('${p}')" style="cursor:pointer;padding:6px 12px;border-radius:999px;border:1px solid var(--border);${p===_cmPlat?'background:#d4860a;color:#fff;border-color:#d4860a':''};font-weight:700;font-size:12px;display:inline-block;margin:2px">${p}<span style="opacity:.7;margin-left:5px">${counts[p]||0}</span></div>`).join('');
+  let banner='';
+  if(_cmTrackErr)banner=`<div style="background:#fdecec;color:#c0392b;padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:12.5px">⚠ Tracker not loaded (${_cmTrackErr}). Stockout-risk lines are hidden until open POs load — they're never computed without the live pipeline. <button onclick="cmReload()" style="margin-left:8px">Retry</button></div>`;
+  else if(!_cmTracker)banner=`<div style="background:#fff6e6;color:#9a6b00;padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:12.5px">Loading June Tracker… <button onclick="cmReload()">Load now</button></div>`;
+  else if(!_cmSN)banner=`<div style="background:#fff6e6;color:#9a6b00;padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:12.5px">Tracker loaded (${_cmTracker.count} open POs). Upload the SN item-wise report in the Upload tab to net open PO into stockout-risk.</div>`;
+  let dq='';
+  if(_cmUnmapped&&Object.keys(_cmUnmapped).length){const tot=Object.values(_cmUnmapped).reduce((a,b)=>a+b,0);dq=`<div style="background:#eef2fb;color:#445;padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:11.5px">Data gap: ${Object.keys(_cmUnmapped).length} SN item-name(s) unmapped to master (${Math.round(tot).toLocaleString('en-IN')} u) — excluded from netting, not guessed. ${Object.keys(_cmUnmapped).slice(0,3).join(', ')}</div>`;}
+  el.innerHTML=`
+    <div class="card" style="margin-bottom:14px">
+      <h3 style="margin:0 0 4px">🎯 CM Action Center</h3>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:10px">Daily review-then-release · estimated ₹/day at stake, city-level · supply numbers from the dashboard's own engine, open PO from June Tracker × SN.</div>
+      ${banner}${dq}
+      <div style="margin-bottom:8px">${pills}</div>
+      <div id="cmSummary"></div>
+    </div>
+    <div class="card" style="margin-bottom:14px"><h3 style="margin:0 0 8px">Action lines — untick to suppress</h3><div class="scroll-table"><table class="tbl"><thead><tr><th></th><th>Tier</th><th>Type</th><th>City</th><th>SKU</th><th>Signal</th><th>₹/day</th><th>Ask</th></tr></thead><tbody id="cmBody"></tbody></table></div></div>
+    <div class="card"><h3 style="margin:0 0 8px">Email draft — <span id="cmMailTo" style="color:var(--muted);font-size:12px"></span></h3>
+      <div style="font-size:12px;margin-bottom:6px"><b>Subject:</b> <span id="cmSubj"></span></div>
+      <pre id="cmDraft" style="white-space:pre-wrap;background:#0d1530;color:#dfe3f2;padding:12px;border-radius:8px;font-size:11.5px;max-height:300px;overflow:auto"></pre>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="cmOpenMail()" style="background:#d4860a;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer">Open mail draft</button>
+        <button onclick="cmCopy()" style="padding:8px 14px;border-radius:8px;cursor:pointer">Copy draft</button>
+        <button onclick="cmExportXlsx()" style="padding:8px 14px;border-radius:8px;cursor:pointer">Download Excel</button>
+        <button onclick="cmTestMail()" style="padding:8px 14px;border-radius:8px;cursor:pointer;border:1px dashed #d4860a;color:#d4860a">Send test → proxy</button>
+      </div>
+      <div style="color:var(--muted);font-size:11px;margin-top:6px">Excel attaches manually — mailto carries subject + body only.</div>
+    </div>`;
+  cmRenderBody();
+}
+function cmRenderBody(){
+  const rs=cmRows(); const TIER={Crit:['#e94560','Critical'],Watch:['#d4860a','Watch'],Info:['#3a6ea5','Info']}; const TYPE={OOS:['#e94560','OOS'],LISTING:['#d4860a','Depth'],STOCKOUT:['#3a6ea5','Stockout']};
+  const sel=rs.filter(cmInc);
+  const sum=t=>sel.filter(l=>l.type===t).reduce((s,l)=>s+l.r,0);
+  document.getElementById('cmSummary').innerHTML=`<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12px">
+    <div><span style="color:#e94560">●</span> Realized loss <b>${cmINR(sum('OOS'))}</b>/day</div>
+    <div><span style="color:#d4860a">●</span> Depth foregone <b>${cmINR(sum('LISTING'))}</b>/day</div>
+    <div><span style="color:#3a6ea5">●</span> At-risk <b>${cmINR(sum('STOCKOUT'))}</b>/day</div>
+    <div style="color:var(--muted)">${sel.length}/${rs.length} lines selected</div></div>`;
+  const body=document.getElementById('cmBody');
+  body.innerHTML=rs.length?rs.map(l=>{const key=l.plat+'|'+l.type+'|'+l.city+'|'+l.sku;const t=TIER[cmTier(l.r)];const ty=TYPE[l.type];const inc=cmInc(l);
+    return `<tr style="${inc?'':'opacity:.4'}"><td><input type="checkbox" ${inc?'checked':''} onchange="cmToggleLine('${key.replace(/'/g,"")}')"></td>
+      <td style="color:${t[0]};font-weight:700;font-size:11px">${t[1]}</td>
+      <td><span style="background:${ty[0]}22;color:${ty[0]};padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700">${ty[1]}</span></td>
+      <td>${l.city}</td><td style="font-size:11.5px">${l.sku}</td><td style="font-size:11.5px">${l.sig}</td>
+      <td style="text-align:right;font-weight:700">${cmINR(l.r)}</td><td style="font-size:11px;color:var(--muted)">${l.ask}</td></tr>`;
+  }).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No action lines above threshold for '+_cmPlat+'.</td></tr>';
+  cmRenderDraft();
+}
+function cmRenderDraft(){
+  const sel=cmRows().filter(cmInc); const tot=sel.reduce((s,l)=>s+l.r,0);
+  const subj=`GAW · ${_cmPlat} · Daily action points · ${cmINR(tot)}/day at stake`;
+  const fl={OOS:'realized loss',LISTING:'depth foregone',STOCKOUT:'at-risk'};
+  const grp={Crit:[],Watch:[],Info:[]}; sel.forEach(l=>grp[cmTier(l.r)].push(l));
+  let body='Hi '+cmPocName(_cmPlat)+',\n\nDaily GAW action points for '+_cmPlat+'. Figures are estimated \u20B9/day at stake, city-level, from controllable gaps. Sorted by impact.\n';
+  [['Crit','CRITICAL'],['Watch','WATCH'],['Info','INFO']].forEach(([k,h])=>{if(!grp[k].length)return;body+='\n'+h+'\n';grp[k].forEach(l=>{body+='• '+l.city+' · '+l.sku+' — '+l.sig+' → '+cmINR(l.r)+'/day ('+fl[l.type]+'). Ask: '+l.ask+'\n';});});
+  body+='\nFull detail in the attached sheet. Happy to walk through any item.\n\nThanks,\nGAW Supply';
+  document.getElementById('cmSubj').textContent=subj;
+  document.getElementById('cmDraft').textContent=body;
+  document.getElementById('cmMailTo').textContent=(CM_EMAILS[_cmPlat]||'(set CM email)')+(CM_CC[_cmPlat]?(' · cc '+CM_CC[_cmPlat]):'');
+  window._cmDraftCache={subj,body};
+}
+function cmOpenMail(){const d=window._cmDraftCache||{};const cc=CM_CC[_cmPlat]?'&cc='+encodeURIComponent(CM_CC[_cmPlat]):'';window.location.href='mailto:'+(CM_EMAILS[_cmPlat]||'')+'?subject='+encodeURIComponent(d.subj||'')+cc+'&body='+encodeURIComponent(d.body||'');}
+function cmTestMail(){const d=window._cmDraftCache||{};const to=CM_EMAILS[_cmPlat]||'(unset)';const cc=CM_CC[_cmPlat]?(' , cc '+CM_CC[_cmPlat]):'';const note='*** TEST PREVIEW — live send would go to: '+to+cc+' ***\n\n';window.location.href='mailto:'+CM_PROXY+'?subject='+encodeURIComponent('[TEST] '+(d.subj||''))+'&body='+encodeURIComponent(note+(d.body||''));}
+function cmCopy(){const d=window._cmDraftCache||{};navigator.clipboard.writeText((d.subj||'')+'\n\n'+(d.body||''));}
+function cmExportXlsx(){
+  const sel=cmRows().filter(cmInc); const fl={OOS:'Realized loss',LISTING:'Depth (foregone)',STOCKOUT:'At-risk'};
+  const aoa=[['Tier','Type','Flavour','City','SKU','Signal','Est ₹/day','Ask to CM']];
+  sel.forEach(l=>aoa.push([cmTier(l.r)==='Crit'?'Critical':cmTier(l.r),({OOS:'OOS',LISTING:'Depth',STOCKOUT:'Stockout'})[l.type],fl[l.type],l.city,l.sku,l.sig,Math.round(l.r),l.ask]));
+  const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=[{wch:9},{wch:9},{wch:14},{wch:11},{wch:30},{wch:22},{wch:11},{wch:48}];
+  const rng=XLSX.utils.decode_range(ws['!ref']); for(let R=rng.s.r;R<=rng.e.r;R++)for(let C=rng.s.c;C<=rng.e.c;C++){const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];if(cell)cell.s={alignment:{horizontal:'center',vertical:'center',wrapText:true}};}
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,_cmPlat); XLSX.writeFile(wb,'GAW_'+_cmPlat+'_action_points.xlsx');
+}
+async function cmReload(){await cmFetchTracker();renderCMActions();}
+
 </script>
 </body>
 </html>
