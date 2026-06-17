@@ -7925,7 +7925,7 @@ function cmBuildLines(){
       // DS-depth — foregone GMV from low listing depth
       if(k.ds_listing!=null&&k.ds_listing>0&&k.ds_listing<CM_DS_TARGET&&dayGmv>0){
         const r=dayGmv*(CM_DS_TARGET-k.ds_listing)/k.ds_listing;
-        if(r>=CM_FLOOR[plat]) lines.push({plat,type:'LISTING',city:(dsCities.slice(0,3).join(', ')||'multiple'),sku:canon,sig:'Depth '+k.ds_listing.toFixed(0)+'% vs '+CM_DS_TARGET+'%',r,ask:'Lift listing depth to '+CM_DS_TARGET+'%'+(dsCities.length?(' in '+dsCities.slice(0,3).join('/')):'')+'.'});
+        if(r>=CM_FLOOR[plat]) lines.push({plat,type:'LISTING',city:(dsCities.slice(0,3).join(', ')||'multiple'),sku:canon,sig:k.ds_listing.toFixed(0)+'% listed vs '+CM_DS_TARGET+'%',r,ask:'Lift listing depth to '+CM_DS_TARGET+'%'+(dsCities.length?(' in '+dsCities.slice(0,3).join('/')):'')+'.'});
       }
       // Stockout-risk — DOI (IM native, else SOH/DRR) netted with open PO
       if(k.drr>0){
@@ -8013,11 +8013,13 @@ function cmRenderDraft(){
   const grp={Crit:[],Watch:[],Info:[]}; sel.forEach(l=>grp[cmTier(l.r)].push(l));
   const _oos=sel.filter(l=>l.type==='OOS').reduce((s,l)=>s+l.r,0),_dep=sel.filter(l=>l.type==='LISTING').reduce((s,l)=>s+l.r,0),_risk=sel.filter(l=>l.type==='STOCKOUT').reduce((s,l)=>s+l.r,0),_crit=sel.filter(l=>cmTier(l.r)==='Crit').length;
   let body='Hi '+cmPocName(_cmPlat)+',\n\n';
-  body+='Sharing today\u2019s GAW priorities for '+_cmPlat+' \u2014 '+cmINR(tot)+'/day at stake across '+sel.length+' action point'+(sel.length===1?'':'s')+(_crit?(' ('+_crit+' critical)'):'')+'.\n\n';
-  body+='   \uD83D\uDD34 Realized loss (OOS): '+cmINR(_oos)+'/day\n   \uD83D\uDFE0 Depth foregone: '+cmINR(_dep)+'/day\n   \u23F3 At-risk (stockout): '+cmINR(_risk)+'/day\n\n';
-  body+='Action points, by impact:\n';
-  [['Crit','CRITICAL'],['Watch','WATCH'],['Info','INFO']].forEach(([k,h])=>{if(!grp[k].length)return;body+='\n'+cmTierEmoji(k)+' '+h+'\n';grp[k].forEach(l=>{body+='\u2022 '+l.city+' \u00B7 '+l.sku+' \u2014 '+l.sig+' \u2192 '+cmINR(l.r)+'/day ('+fl[l.type]+'). Ask: '+l.ask+'\n';});});
-  body+='\nFull line-item detail in the attached sheet. Happy to jump on a quick call.\n\nThanks,\nGAW Supply';
+  body+='GAW \u00B7 '+_cmPlat+' \u2014 '+cmINR(tot)+'/day at stake \u00B7 '+sel.length+' action point'+(sel.length===1?'':'s')+(_crit?(' ('+_crit+' critical)'):'')+'\n';
+  body+='Loss '+cmINR(_oos)+' \u00B7 Depth '+cmINR(_dep)+' \u00B7 At-risk '+cmINR(_risk)+' (per day)\n\n';
+  body+='Priorities, by \u20B9/day:\n';
+  const _CAP=15;
+  sel.slice(0,_CAP).forEach(l=>{const _cp=(l.city&&l.city!=='\u2014')?(' \u00B7 '+l.city):'';body+=cmTierEmoji(cmTier(l.r))+' '+cmINR(l.r)+' \u00B7 '+({OOS:'OOS',LISTING:'Depth',STOCKOUT:'Stockout'})[l.type]+' \u00B7 '+l.sku+_cp+' \u00B7 '+l.sig+'\n';});
+  if(sel.length>_CAP)body+='\u2026 +'+(sel.length-_CAP)+' more in the attached sheet\n';
+  body+='\nFull detail \u2014 stores/cities and the ask per line \u2014 is in the attached sheet. Happy to walk through any of it.\n\n\u2014 GAW Supply';
   document.getElementById('cmSubj').textContent=subj;
   document.getElementById('cmDraft').textContent=body;
   document.getElementById('cmMailTo').textContent=(CM_EMAILS[_cmPlat]||'(set CM email)')+(CM_CC[_cmPlat]?(' · cc '+CM_CC[_cmPlat]):'');
