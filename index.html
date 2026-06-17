@@ -5539,6 +5539,14 @@ function _sohRowTint(days){
   return 'transparent';                       // healthy → no tint (keeps table calm)
 }
 
+function _sohOpenPO(plat,canon,city){
+  try{ if(typeof cmBuildOpenPO==='function' && (typeof _cmOpenPO==='undefined'||!_cmOpenPO) && typeof _cmTracker!=='undefined' && _cmTracker && typeof _cmSN!=='undefined' && _cmSN){ cmBuildOpenPO(); } }catch(e){}
+  var po=(typeof _cmOpenPO!=='undefined'&&_cmOpenPO&&_cmOpenPO.po)?_cmOpenPO.po[plat]:null;
+  if(!po)return null;
+  if(city){ return (po[city]&&po[city][canon])||0; }
+  var t=0; Object.keys(po).forEach(function(c){ if(po[c]&&po[c][canon])t+=po[c][canon]; }); return t;
+}
+function _sohPoCell(v){ return (v==null)?'<span style="color:#9aa1a8">\u2014</span>':(v===0)?'<span style="color:#9aa1a8">0</span>':'<span style="color:#1a7a3a;font-weight:700">'+v.toLocaleString('en-IN')+'u</span>'; }
 function _availRenderSohSkuTable(){
   const plat=_availSohPlat;
   if(!plat)return;
@@ -5552,7 +5560,7 @@ function _availRenderSohSkuTable(){
     const reorder=_sohReorderQty(k);
     const sohCities=k.soh_by_city||{};
     const nCities=Object.keys(sohCities).filter(c=>(sohCities[c]||0)>0).length;
-    return {sku,name:info.name,cat:info.cat,soh:k.soh||0,dts:best.days,dts_flag:best.flag,drr:k.drr||0,reorder,nCities};
+    return {sku,name:info.name,cat:info.cat,soh:k.soh||0,dts:best.days,dts_flag:best.flag,drr:k.drr||0,reorder,nCities,openpo:_sohOpenPO(plat,info.name,null)};
   }).filter(r=>r.soh>0||r.drr>0); // only SKUs with stock or sales
   if(search)list=list.filter(r=>(r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search));
   list.sort((a,b)=>{
@@ -5574,12 +5582,13 @@ function _availRenderSohSkuTable(){
     <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
     <td style="padding:8px 10px;font-size:12px;font-weight:700">${Math.round(r.soh).toLocaleString('en-IN')}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(r.dts)};font-weight:700">${_sohFmtDTS(r.dts)}${r.dts_flag==='capped'?'<span style="font-size:9px;color:#9aa1a8">+</span>':''}</td>
+    <td style="padding:8px 10px;font-size:12px">${_sohPoCell(r.openpo)}</td>
     <td style="padding:8px 10px;font-size:12px">${reorderTxt}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${r.nCities} cities</td>
   </tr>`;}).join('');
-  document.getElementById('availSohSkuTable').innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Reorder (14d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table>
-  <div style="font-size:10px;color:var(--muted);margin-top:8px">Days to Stockout: ${plat==='Instamart'?'Instamart native DaysOnHand':'SOH ÷ DRR'}. Reorder (14d) = units to add for 14-day cover, net of current stock. Rows tinted <span style="color:#c0392b">red &lt;3d</span> / <span style="color:#d4860a">amber &lt;7d</span>.</div>`;
+  document.getElementById('availSohSkuTable').innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Reorder (14d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table>
+  <div style="font-size:10px;color:var(--muted);margin-top:8px">Days to Stockout: ${plat==='Instamart'?'Instamart native DaysOnHand':'SOH ÷ DRR'}. Reorder (14d) = units to add for 14-day cover, net of current stock. Open PO = open indent units inbound (tracker \u00D7 SN) \u2014 upload both in the Upload tab. Rows tinted <span style="color:#c0392b">red &lt;3d</span> / <span style="color:#d4860a">amber &lt;7d</span>.</div>`;
 }
 
 function availSohDrillToSku(plat,sku){
@@ -5599,6 +5608,7 @@ function _availRenderSohCityTable(){
   if(!k){document.getElementById('availSohCityTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px">No data.</div>';return;}
   const info=skuLookup(plat,sku);
   const drr=k.drr||0;
+  const openPoTotal=_sohOpenPO(plat,info.name,null);
   // City-level DRR proportion: split platform DRR by each city's SOH share as a proxy
   // (we have city SOH but not city-level sales velocity, so approximate days-to-stockout per city).
   // Use the SOH file's own by_city (raw numbers) — NOT the OSA-derived cityDetail (objects).
@@ -5617,6 +5627,7 @@ function _availRenderSohCityTable(){
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Total SOH</div><div style="font-size:16px;font-weight:800">${Math.round(k.soh||0).toLocaleString('en-IN')} u</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Days to Stockout</div><div style="font-size:16px;font-weight:800;color:${_sohColorDTS(best.days)}">${_sohFmtDTS(best.days)}${best.flag==='capped'?'+':''}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Reorder (14d)</div><div style="font-size:16px;font-weight:800;color:${reorderCol}">${reorderTxt}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Incoming PO</div><div style="font-size:16px;font-weight:800;color:${openPoTotal?'#1a7a3a':'#9aa1a8'}">${openPoTotal==null?'\u2014':openPoTotal.toLocaleString('en-IN')+' u'}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DRR</div><div style="font-size:16px;font-weight:800">${Math.round(drr)}u/d</div></div>
   </div>`;
 
@@ -5626,15 +5637,17 @@ function _availRenderSohCityTable(){
     const csoh=byCity[c]||0;
     const cityDrr=totalSoh>0?drr*(csoh/totalSoh):0; // proxy
     const cdts=_sohDaysToStockout(csoh,cityDrr);
+    const cpo=_sohOpenPO(plat,info.name,c);
     return `<tr>
       <td style="padding:8px 10px;font-size:12px"><b>${c}</b></td>
       <td style="padding:8px 10px;font-size:12px;font-weight:700">${Math.round(csoh).toLocaleString('en-IN')}</td>
       <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${totalSoh>0?((csoh/totalSoh)*100).toFixed(0):0}%</td>
       <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(cdts)};font-weight:700">${_sohFmtDTS(cdts)}</td>
+      <td style="padding:8px 10px;font-size:12px">${_sohPoCell(cpo)}</td>
     </tr>`;
   }).join('');
   const cityTable=`<div style="font-size:11px;font-weight:700;color:#1a3a6e;text-transform:uppercase;margin:4px 0 8px">By City</div>
-    <table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Share</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout*</th></tr></thead><tbody>${cityRows}</tbody></table>`;
+    <table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Share</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout*</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th></tr></thead><tbody>${cityRows}</tbody></table>`;
 
   // Facility table (only platforms that report it: Blinkit/IM/FK/Amazon)
   let facTable='';
