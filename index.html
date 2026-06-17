@@ -7748,7 +7748,7 @@ const CM_FLOOR={Zepto:1000,Blinkit:800,Instamart:1000,Flipkart:400,BigBasket:300
 const CM_EMAILS={Zepto:'shreya.gupta@zepto.com',Blinkit:'banee.khurana@zomato.com',Instamart:'kshitij.sankhe@scootsy.com',Flipkart:'souraneer.bera@flipkart.com',BigBasket:'gaurav.surpur@bigbasket.com',Amazon:'divshanm@amazon.com'};
 const CM_CC={Flipkart:'shivanideepaks.vc@flipkart.com',BigBasket:'rohini.m@bigbasket.com'};
 const CM_PROXY='samyak.getawhey@gmail.com';
-const CM_DISCONTINUED=new Set(['redvelveticecreampastry','biscrunchicecreampastry','chocobrowniefudgeicecreamsandwich']);
+const CM_DISCONTINUED=new Set(['redvelveticecreampastry','biscrunchicecreampastry','chocobrowniefudgeicecreamsandwich','chocolatebrownieicecreamsandwich2pieces']);
 const CM_POC={Zepto:'Shreya',Blinkit:'Banee',Instamart:'Kshitij',Flipkart:'Souraneer',BigBasket:'Gaurav',Amazon:''}; // first-name for greeting; blank = derive from email
 const CM_PLATS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket'];
 const CM_TRACK_PLAT={'big basket':'BigBasket','bigbasket':'BigBasket','blinkit':'Blinkit','zepto':'Zepto','instamart':'Instamart','swiggy instamart':'Instamart','flipkart':'Flipkart','amazon':'Amazon'};
@@ -7761,7 +7761,18 @@ function cmPocName(p){if(CM_POC[p])return CM_POC[p];const e=CM_EMAILS[p]||'';con
 function cmTypeEmoji(t){return t==='OOS'?'\uD83D\uDD34':t==='LISTING'?'\uD83D\uDFE0':'\u23F3';}
 function cmTierEmoji(tr){return tr==='Crit'?'\uD83D\uDD34':tr==='Watch'?'\uD83D\uDFE1':'\uD83D\uDD35';}
 function cmSigEmoji(t){return t==='OOS'?'\uD83D\uDCC9':t==='LISTING'?'\uD83C\uDFEA':'\u231B';}
-function cmTier(r){return r>=4000?'Crit':r>=1200?'Watch':'Info';}
+const CM_SEV={OOS:{crit:60,watch:78},LISTING:{crit:45,watch:70},STOCKOUT:{crit:2,watch:3.5}};
+const CM_RUPEE_TIER={crit:15000,watch:5000};
+function cmTier(l){
+  if(typeof l==='number')return l>=CM_RUPEE_TIER.crit?'Crit':l>=CM_RUPEE_TIER.watch?'Watch':'Info';
+  var s='Info';
+  if(l.type==='OOS')s=(l.osa<CM_SEV.OOS.crit)?'Crit':(l.osa<CM_SEV.OOS.watch)?'Watch':'Info';
+  else if(l.type==='LISTING')s=(l.ds<CM_SEV.LISTING.crit)?'Crit':(l.ds<CM_SEV.LISTING.watch)?'Watch':'Info';
+  else s=(l.cover<CM_SEV.STOCKOUT.crit)?'Crit':(l.cover<CM_SEV.STOCKOUT.watch)?'Watch':'Info';
+  var rt=(l.r>=CM_RUPEE_TIER.crit)?'Crit':(l.r>=CM_RUPEE_TIER.watch)?'Watch':'Info';
+  var rank={Info:0,Watch:1,Crit:2};
+  return rank[s]>=rank[rt]?s:rt;
+}
 function cmINR(x){return '\u20B9'+Math.round(x||0).toLocaleString('en-IN');}
 
 /* ---- SKU name -> canonical (deterministic; no risky fuzzy) ---- */
@@ -7912,20 +7923,20 @@ function cmBuildLines(){
     const skus=mtd.skus||{};
     const openP=(_cmOpenPO&&_cmOpenPO.po[plat])||{};
     Object.keys(skus).forEach(sku=>{
-      const k=skus[sku]; const info=skuLookup(plat,sku); const mrp=info.mrp||0; const canon=info.name||sku;
+      const k=skus[sku]; const info=skuLookup(plat,sku); const mrp=info.mrp||0; const canon=info.name||sku; if(CM_DISCONTINUED.has(cmKey(canon)))return;
       const dayGmv=(k.mtd_gmv||0)/days;
       const bc=k.by_city||{};
       const oosCities=Object.keys(bc).filter(c=>bc[c].wt_osa_ls!=null&&bc[c].wt_osa_ls>0&&bc[c].wt_osa_ls<CM_OSA_BREACH).sort((a,b)=>bc[a].wt_osa_ls-bc[b].wt_osa_ls);
       const dsCities=Object.keys(bc).filter(c=>bc[c].ds_listing!=null&&bc[c].ds_listing>0&&bc[c].ds_listing<CM_DS_TARGET).sort((a,b)=>bc[a].ds_listing-bc[b].ds_listing);
       // OOS-lost — uses the dashboard's own lost-GMV (per day)
-      if(k.wt_osa_ls!=null&&k.wt_osa_ls>0&&k.wt_osa_ls<CM_OSA_BREACH){
+      if(k.wt_osa_ls!=null&&k.wt_osa_ls>0&&Math.round(k.wt_osa_ls)<CM_OSA_BREACH){
         const r=(k.lost_gmv||0)/days;
-        if(r>=CM_FLOOR[plat]) lines.push({plat,type:'OOS',city:(oosCities.slice(0,3).join(', ')||'multiple'),sku:canon,sig:'OSA '+k.wt_osa_ls.toFixed(0)+'%',r,ask:'Restore in-stock'+(oosCities.length?(' in '+oosCities.slice(0,3).join('/')):'')+' on '+plat+'.'});
+        if(r>=CM_FLOOR[plat]) lines.push({plat,type:'OOS',osa:k.wt_osa_ls,city:(oosCities.slice(0,3).join(', ')||'multiple'),sku:canon,sig:'OSA '+Math.round(k.wt_osa_ls)+'%',r,ask:'Restore in-stock'+(oosCities.length?(' in '+oosCities.slice(0,3).join('/')):'')+' on '+plat+'.'});
       }
       // DS-depth — foregone GMV from low listing depth
-      if(k.ds_listing!=null&&k.ds_listing>0&&k.ds_listing<CM_DS_TARGET&&dayGmv>0){
+      if(k.ds_listing!=null&&k.ds_listing>0&&Math.round(k.ds_listing)<CM_DS_TARGET&&dayGmv>0){
         const r=dayGmv*(CM_DS_TARGET-k.ds_listing)/k.ds_listing;
-        if(r>=CM_FLOOR[plat]) lines.push({plat,type:'LISTING',city:(dsCities.slice(0,3).join(', ')||'multiple'),sku:canon,sig:k.ds_listing.toFixed(0)+'% listed vs '+CM_DS_TARGET+'%',r,ask:'Lift listing depth to '+CM_DS_TARGET+'%'+(dsCities.length?(' in '+dsCities.slice(0,3).join('/')):'')+'.'});
+        if(r>=CM_FLOOR[plat]) lines.push({plat,type:'LISTING',ds:k.ds_listing,city:(dsCities.slice(0,3).join(', ')||'multiple'),sku:canon,sig:Math.round(k.ds_listing)+'% listed vs '+CM_DS_TARGET+'%',r,ask:'Lift listing depth to '+CM_DS_TARGET+'%'+(dsCities.length?(' in '+dsCities.slice(0,3).join('/')):'')+'.'});
       }
       // Stockout-risk — DOI (IM native, else SOH/DRR) netted with open PO
       if(k.drr>0){
@@ -7934,7 +7945,7 @@ function cmBuildLines(){
         if(baseDts!=null){
           const netDts=baseDts+(haveTracker?(openUnits/k.drr):0);
           const r=dayGmv;
-          if(netDts<CM_DTS_DAYS&&r>=CM_FLOOR[plat]) lines.push({plat,type:'STOCKOUT',city:'\u2014',sku:canon,sig:netDts.toFixed(1)+'d cover'+(openUnits?(' incl PO '+openUnits):'')+(haveTracker?'':' \u00B7 no PO data'),r,ask:'Confirm replenishment \u2014 cover under '+CM_DTS_DAYS+' days.'});
+          if(netDts<CM_DTS_DAYS&&r>=CM_FLOOR[plat]) lines.push({plat,type:'STOCKOUT',cover:netDts,city:'\u2014',sku:canon,sig:netDts.toFixed(1)+'d cover'+(openUnits?(' incl PO '+openUnits):'')+(haveTracker?'':' \u00B7 no PO data'),r,ask:'Confirm replenishment \u2014 cover under '+CM_DTS_DAYS+' days.'});
         }
       }
     });
@@ -7979,9 +7990,11 @@ function renderCMActions(){
       <pre id="cmDraft" style="white-space:pre-wrap;background:#0d1530;color:#dfe3f2;padding:12px;border-radius:8px;font-size:11.5px;max-height:300px;overflow:auto"></pre>
       <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="cmOpenMail()" style="background:#d4860a;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer">Open mail draft</button>
-        <button onclick="cmCopy()" style="padding:8px 14px;border-radius:8px;cursor:pointer">Copy draft</button>
+        <button onclick="cmCopyTable()" style="background:#1B2B45;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer">📋 Copy table (paste into Gmail)</button>
+        <button onclick="cmCopy()" style="padding:8px 14px;border-radius:8px;cursor:pointer">Copy text</button>
         <button onclick="cmExportXlsx()" style="padding:8px 14px;border-radius:8px;cursor:pointer">Download Excel</button>
         <button onclick="cmTestMail()" style="padding:8px 14px;border-radius:8px;cursor:pointer;border:1px dashed #d4860a;color:#d4860a">Send test → proxy</button>
+        <span id="cmToast" style="display:none;align-self:center;color:#16a085;font-size:12px;font-weight:700"></span>
       </div>
       <div style="color:var(--muted);font-size:11px;margin-top:6px">Excel attaches manually — mailto carries subject + body only.</div>
     </div>`;
@@ -7997,7 +8010,7 @@ function cmRenderBody(){
     <div><span style="color:#3a6ea5">●</span> At-risk <b>${cmINR(sum('STOCKOUT'))}</b>/day</div>
     <div style="color:var(--muted)">${sel.length}/${rs.length} lines selected</div></div>`+cmDiagHtml();
   const body=document.getElementById('cmBody');
-  body.innerHTML=rs.length?rs.map(l=>{const key=l.plat+'|'+l.type+'|'+l.city+'|'+l.sku;const t=TIER[cmTier(l.r)];const ty=TYPE[l.type];const inc=cmInc(l);
+  body.innerHTML=rs.length?rs.map(l=>{const key=l.plat+'|'+l.type+'|'+l.city+'|'+l.sku;const t=TIER[cmTier(l)];const ty=TYPE[l.type];const inc=cmInc(l);
     return `<tr style="${inc?'':'opacity:.4'}"><td><input type="checkbox" ${inc?'checked':''} onchange="cmToggleLine('${key.replace(/'/g,"")}')"></td>
       <td style="color:${t[0]};font-weight:700;font-size:11px">${t[1]}</td>
       <td><span style="background:${ty[0]}22;color:${ty[0]};padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700">${ty[1]}</span></td>
@@ -8010,14 +8023,14 @@ function cmRenderDraft(){
   const sel=cmRows().filter(cmInc); const tot=sel.reduce((s,l)=>s+l.r,0);
   const subj=`GAW · ${_cmPlat} · Daily action points · ${cmINR(tot)}/day at stake`;
   const fl={OOS:'realized loss',LISTING:'depth foregone',STOCKOUT:'at-risk'};
-  const grp={Crit:[],Watch:[],Info:[]}; sel.forEach(l=>grp[cmTier(l.r)].push(l));
-  const _oos=sel.filter(l=>l.type==='OOS').reduce((s,l)=>s+l.r,0),_dep=sel.filter(l=>l.type==='LISTING').reduce((s,l)=>s+l.r,0),_risk=sel.filter(l=>l.type==='STOCKOUT').reduce((s,l)=>s+l.r,0),_crit=sel.filter(l=>cmTier(l.r)==='Crit').length;
+  const grp={Crit:[],Watch:[],Info:[]}; sel.forEach(l=>grp[cmTier(l)].push(l));
+  const _oos=sel.filter(l=>l.type==='OOS').reduce((s,l)=>s+l.r,0),_dep=sel.filter(l=>l.type==='LISTING').reduce((s,l)=>s+l.r,0),_risk=sel.filter(l=>l.type==='STOCKOUT').reduce((s,l)=>s+l.r,0),_crit=sel.filter(l=>cmTier(l)==='Crit').length;
   let body='Hi '+cmPocName(_cmPlat)+',\n\n';
   body+='GAW \u00B7 '+_cmPlat+' \u2014 '+cmINR(tot)+'/day at stake \u00B7 '+sel.length+' action point'+(sel.length===1?'':'s')+(_crit?(' ('+_crit+' critical)'):'')+'\n';
   body+='Loss '+cmINR(_oos)+' \u00B7 Depth '+cmINR(_dep)+' \u00B7 At-risk '+cmINR(_risk)+' (per day)\n\n';
   body+='Priorities, by \u20B9/day:\n';
   const _CAP=15;
-  sel.slice(0,_CAP).forEach(l=>{const _cp=(l.city&&l.city!=='\u2014')?(' \u00B7 '+l.city):'';body+=cmTierEmoji(cmTier(l.r))+' '+cmINR(l.r)+' \u00B7 '+({OOS:'OOS',LISTING:'Depth',STOCKOUT:'Stockout'})[l.type]+' \u00B7 '+l.sku+_cp+' \u00B7 '+l.sig+'\n';});
+  sel.slice(0,_CAP).forEach(l=>{const _cp=(l.city&&l.city!=='\u2014')?(' \u00B7 '+l.city):'';body+=cmTierEmoji(cmTier(l))+' '+cmINR(l.r)+' \u00B7 '+({OOS:'OOS',LISTING:'Depth',STOCKOUT:'Stockout'})[l.type]+' \u00B7 '+l.sku+_cp+' \u00B7 '+l.sig+'\n';});
   if(sel.length>_CAP)body+='\u2026 +'+(sel.length-_CAP)+' more in the attached sheet\n';
   body+='\nFull detail \u2014 stores/cities and the ask per line \u2014 is in the attached sheet. Happy to walk through any of it.\n\n\u2014 GAW Supply';
   document.getElementById('cmSubj').textContent=subj;
@@ -8028,16 +8041,47 @@ function cmRenderDraft(){
 function cmOpenMail(){const d=window._cmDraftCache||{};const cc=CM_CC[_cmPlat]?'&cc='+encodeURIComponent(CM_CC[_cmPlat]):'';window.location.href='mailto:'+(CM_EMAILS[_cmPlat]||'')+'?subject='+encodeURIComponent(d.subj||'')+cc+'&body='+encodeURIComponent(d.body||'');}
 function cmTestMail(){const d=window._cmDraftCache||{};const to=CM_EMAILS[_cmPlat]||'(unset)';const cc=CM_CC[_cmPlat]?(' , cc '+CM_CC[_cmPlat]):'';const note='*** TEST PREVIEW — live send would go to: '+to+cc+' ***\n\n';window.location.href='mailto:'+CM_PROXY+'?subject='+encodeURIComponent('[TEST] '+(d.subj||''))+'&body='+encodeURIComponent(note+(d.body||''));}
 function cmCopy(){const d=window._cmDraftCache||{};navigator.clipboard.writeText((d.subj||'')+'\n\n'+(d.body||''));}
+function cmHtmlTable(){
+  const sel=cmRows().filter(cmInc); const tot=sel.reduce((s,l)=>s+l.r,0); const _crit=sel.filter(l=>cmTier(l)==='Crit').length;
+  const tc={Crit:'#C0392B',Watch:'#B9770E',Info:'#2C5E8A'}; const dn={OOS:'OOS',LISTING:'Depth',STOCKOUT:'Stockout'};
+  let h='<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1B2B45">';
+  h+='<p>Hi '+cmPocName(_cmPlat)+',</p>';
+  h+='<p><b>GAW \u00B7 '+_cmPlat+'</b> \u2014 <b>'+cmINR(tot)+'/day</b> at stake across '+sel.length+' action point'+(sel.length===1?'':'s')+(_crit?(' ('+_crit+' critical)'):'')+'.</p>';
+  h+='<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:12px;border:1px solid #e4e4e4">';
+  h+='<tr style="background:#D4860A;color:#ffffff">'+['Tier','Driver','SKU','City','Signal','\u20B9/day','Ask to CM'].map(function(x,i){return '<th style="border:1px solid #e4e4e4;padding:6px 10px;text-align:'+(i===5?'right':'left')+'">'+x+'</th>';}).join('')+'</tr>';
+  sel.forEach(function(l,i){var tr=cmTier(l);var bg=i%2?'#F7F8FA':'#ffffff';
+    h+='<tr style="background:'+bg+'">'
+      +'<td style="border:1px solid #e4e4e4;padding:6px 10px;color:'+tc[tr]+';font-weight:bold">'+(tr==='Crit'?'Critical':tr)+'</td>'
+      +'<td style="border:1px solid #e4e4e4;padding:6px 10px">'+dn[l.type]+'</td>'
+      +'<td style="border:1px solid #e4e4e4;padding:6px 10px">'+l.sku+'</td>'
+      +'<td style="border:1px solid #e4e4e4;padding:6px 10px">'+(l.city||'')+'</td>'
+      +'<td style="border:1px solid #e4e4e4;padding:6px 10px">'+l.sig+'</td>'
+      +'<td style="border:1px solid #e4e4e4;padding:6px 10px;text-align:right;font-weight:bold">'+cmINR(l.r)+'</td>'
+      +'<td style="border:1px solid #e4e4e4;padding:6px 10px;color:#555555">'+l.ask+'</td></tr>';
+  });
+  h+='</table><p style="color:#555555">Full detail in the attached sheet. Happy to walk through any of these.<br>\u2014 GAW Supply</p></div>';
+  return h;
+}
+function cmToast(msg){var b=document.getElementById('cmToast'); if(b){b.textContent=msg;b.style.display='inline';setTimeout(function(){b.style.display='none';},2600);}}
+function cmCopyTable(){
+  var html=cmHtmlTable(); var text=(window._cmDraftCache&&window._cmDraftCache.body)||'';
+  try{
+    if(window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write){
+      var item=new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([text],{type:'text/plain'})});
+      navigator.clipboard.write([item]).then(function(){cmToast('\u2705 Table copied \u2014 paste into Gmail');}).catch(function(){navigator.clipboard.writeText(text);cmToast('Copied as text');});
+    } else { navigator.clipboard.writeText(text); cmToast('Copied as text'); }
+  }catch(e){ try{navigator.clipboard.writeText(text);}catch(_){} }
+}
 function cmExportXlsx(){
   const X=window.XLSXStyle||XLSX; const styled=!!window.XLSXStyle;
   const sel=cmRows().filter(cmInc); const fl={OOS:'Realized loss',LISTING:'Depth (foregone)',STOCKOUT:'At-risk'};
-  const head=['Tier','Driver','Flavour','City','SKU','Signal','Est \u20B9/day','Ask to CM'];
+  const head=['Tier','Driver','SKU','City','Signal','Est \u20B9/day','Ask to CM'];
   const title='GAW \u00B7 '+_cmPlat+' \u00B7 Daily Action Points \u00B7 '+new Date().toLocaleDateString('en-IN');
-  const aoa=[[title,'','','','','','',''],head];
-  sel.forEach(l=>{const tr=cmTier(l.r);aoa.push([cmTierEmoji(tr)+' '+(tr==='Crit'?'Critical':tr),cmTypeEmoji(l.type)+' '+({OOS:'OOS',LISTING:'Depth',STOCKOUT:'Stockout'})[l.type],fl[l.type],l.city,l.sku,cmSigEmoji(l.type)+' '+l.sig,Math.round(l.r),l.ask]);});
+  const aoa=[[title,'','','','','',''],head];
+  sel.forEach(l=>{const tr=cmTier(l);aoa.push([cmTierEmoji(tr)+' '+(tr==='Crit'?'Critical':tr),cmTypeEmoji(l.type)+' '+({OOS:'OOS',LISTING:'Depth',STOCKOUT:'Stockout'})[l.type],l.sku,l.city,cmSigEmoji(l.type)+' '+l.sig,Math.round(l.r),l.ask]);});
   const ws=X.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:13},{wch:13},{wch:16},{wch:12},{wch:32},{wch:24},{wch:12},{wch:52}];
-  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}];
+  ws['!cols']=[{wch:13},{wch:12},{wch:34},{wch:16},{wch:24},{wch:12},{wch:52}];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:6}}];
   if(styled){
     const NAVY={rgb:'1B2B45'},WHITE={rgb:'FFFFFF'},L={rgb:'E4E4E4'};
     const bd={top:{style:'thin',color:L},bottom:{style:'thin',color:L},left:{style:'thin',color:L},right:{style:'thin',color:L}};
@@ -8045,7 +8089,7 @@ function cmExportXlsx(){
     const tc={Crit:'C0392B',Watch:'B9770E',Info:'2C5E8A'};
     const tcell=ws[X.utils.encode_cell({r:0,c:0})]; if(tcell)tcell.s={font:{bold:true,sz:13,color:NAVY,name:'Calibri'},alignment:ctr,fill:{fgColor:{rgb:'FBF1DE'}}};
     for(let c=0;c<head.length;c++){const h=ws[X.utils.encode_cell({r:1,c})];if(h)h.s={font:{bold:true,color:WHITE,name:'Calibri'},fill:{fgColor:{rgb:'D4860A'}},alignment:ctr,border:bd};}
-    for(let r=0;r<sel.length;r++){const tr=cmTier(sel[r].r);for(let c=0;c<head.length;c++){const cell=ws[X.utils.encode_cell({r:r+2,c})];if(!cell)continue;const left=(c===4||c===7);cell.s={font:{name:'Calibri',sz:10,bold:(c===0||c===6),color:(c===0?{rgb:tc[tr]}:NAVY)},alignment:{horizontal:left?'left':'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r%2?'F7F8FA':'FFFFFF')}}};if(c===6)cell.z='\u20B9#,##0';}}
+    for(let r=0;r<sel.length;r++){const tr=cmTier(sel[r]);for(let c=0;c<head.length;c++){const cell=ws[X.utils.encode_cell({r:r+2,c})];if(!cell)continue;const left=(c===2||c===6);cell.s={font:{name:'Calibri',sz:10,bold:(c===0||c===5),color:(c===0?{rgb:tc[tr]}:NAVY)},alignment:{horizontal:left?'left':'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r%2?'F7F8FA':'FFFFFF')}}};if(c===5)cell.z='\u20B9#,##0';}}
     ws['!rows']=[{hpt:26},{hpt:20}];
   }
   const wb=X.utils.book_new(); X.utils.book_append_sheet(wb,ws,_cmPlat); X.writeFile(wb,'GAW_'+_cmPlat+'_action_points.xlsx');
