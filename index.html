@@ -870,7 +870,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 <!-- UPLOAD -->
 <div id="cmactions" class="content"></div>
 <div id="upload" class="content">
-<div class="card" style="margin-bottom:14px;border-left:3px solid #d4860a"><h3 style="margin:0 0 6px">📦 Supply Note — Item-wise Report (open-PO pipeline)</h3><div style="font-size:12px;color:var(--muted);margin-bottom:8px">Upload the SN "Item-wise Sales Orders Report" (.xlsx). Joined with the live June Tracker to compute open PO qty for CM Actions.</div><div class="upload-zone" onclick="document.getElementById('cmSnInput').click()" style="padding:18px;max-width:440px"><div class="up-icon">📦</div><div class="up-title">Upload SN Item-wise Report</div><div class="up-sub" id="cmSnSub">.xlsx · click to choose</div><input class="file-input" id="cmSnInput" type="file" accept=".xlsx,.xls" onchange="uploadSNReport(this)"></div><div id="cmSnStatus" style="display:none;margin-top:8px;font-size:12px"></div></div>
+<div class="card" style="margin-bottom:14px;border-left:3px solid #d4860a"><h3 style="margin:0 0 6px">📦 Supply Note — Item-wise Report (open-PO pipeline)</h3><div style="font-size:12px;color:var(--muted);margin-bottom:8px">Upload the SN "Item-wise Sales Orders Report" (.xlsx). Joined with the tracker to compute open PO qty for CM Actions.</div><div class="upload-zone" onclick="document.getElementById('cmSnInput').click()" style="padding:18px;max-width:440px"><div class="up-icon">📦</div><div class="up-title">Upload SN Item-wise Report</div><div class="up-sub">.xlsx · click to choose</div><input class="file-input" id="cmSnInput" type="file" accept=".xlsx,.xls" onchange="uploadSNReport(this)"></div><div id="cmSnStatus" style="display:none;margin-top:8px;font-size:12px"></div></div><div class="card" style="margin-bottom:14px;border-left:3px solid #1B2B45"><h3 style="margin:0 0 6px">📋 Q-Comm Tracker (open-PO status)</h3><div style="font-size:12px;color:var(--muted);margin-bottom:8px">Upload the "Q Comm Tracker" .xlsx to use uploaded open-PO status (the live &lt;Month&gt; Tracker tab is auto-detected). Falls back to the live published sheet if not uploaded.</div><div class="upload-zone" onclick="document.getElementById('cmTrkInput').click()" style="padding:18px;max-width:440px"><div class="up-icon">📋</div><div class="up-title">Upload Q-Comm Tracker</div><div class="up-sub">.xlsx · click to choose</div><input class="file-input" id="cmTrkInput" type="file" accept=".xlsx,.xls" onchange="uploadTracker(this)"></div><div id="cmTrkStatus" style="display:none;margin-top:8px;font-size:12px"></div></div>
   <div id="archivedViewBanner" style="display:none;background:#fff4e0;border:1px solid #d4860a;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#8a4a00">
     🔒 <b>You are viewing an archived (frozen) month.</b> Uploads are disabled because this month has been closed-out and serves as a baseline for later months.<br><br>
     To upload more data into <b><span id="archivedBannerMonth">this month</span></b>: open the month switcher (click the month pill in the topbar) → click <b>"↩ Unfreeze last month (recover)"</b>. This will discard the data uploaded into the current live month so use carefully.
@@ -7840,6 +7840,38 @@ function uploadSNReport(input){
   };
   reader.readAsArrayBuffer(file);
 }
+function uploadTracker(input){
+  if(!input.files||!input.files[0])return;
+  const file=input.files[0], st=document.getElementById('cmTrkStatus');
+  if(st){st.style.display='block';st.textContent='Parsing '+file.name+' \u2026';}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      let chosen=null;
+      wb.SheetNames.forEach(sn=>{
+        const ws=wb.Sheets[sn]; if(!ws)return;
+        const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true});
+        for(let r=0;r<Math.min(4,aoa.length);r++){const row=(aoa[r]||[]).map(c=>String(c).trim());
+          if(row.indexOf('SUPPLY NOTE PO')>=0&&row.indexOf('PO STATUS')>=0){ if(!chosen||/tracker\s*$/i.test(sn))chosen={sn,hdrRow:r,aoa}; break; }}
+      });
+      if(!chosen)throw new Error('No sheet with SUPPLY NOTE PO + PO STATUS columns');
+      const hdr=chosen.aoa[chosen.hdrRow].map(c=>String(c).trim());
+      const iPO=hdr.indexOf('SUPPLY NOTE PO'),iPlat=hdr.indexOf('Q COM PARTNER'),iCity=hdr.indexOf('CITY'),iSt=hdr.indexOf('PO STATUS');
+      const open={}; let cnt=0;
+      for(let r=chosen.hdrRow+1;r<chosen.aoa.length;r++){const row=chosen.aoa[r]||[]; const po=String(row[iPO]||'').trim(); if(!po)continue;
+        const stx=String(row[iSt]||'').trim().toLowerCase().replace(/\s+/g,' ');
+        if(!CM_OPEN_STATUSES.has(stx))continue;
+        const plat=CM_TRACK_PLAT[String(row[iPlat]||'').trim().toLowerCase()]||null;
+        open[po]={plat, city:nCity(row[iCity]||'')}; cnt++;
+      }
+      _cmTracker={open,count:cnt,fetched:new Date(),src:'upload'}; _cmTrackErr=null;
+      if(st)st.textContent='\u2705 '+file.name+' \u2014 '+chosen.sn+': '+cnt+' open POs';
+      _cmOpenPO=null; if(document.getElementById('cmactions')&&document.getElementById('cmactions').classList.contains('active'))renderCMActions();
+    }catch(err){ if(st)st.textContent='\u274C '+(err.message||err); }
+  };
+  reader.readAsArrayBuffer(file);
+}
 
 /* ---- city×SKU MTD (gmv/units) from citysku ---- */
 function cmCitySku(plat){
@@ -7872,67 +7904,49 @@ function cmBuildLines(){
   if(!window._availMTD)window._availMTD=_availComputeMTD();
   cmBuildOpenPO();
   const haveTracker=!!_cmOpenPO;
-  const lines=[];
   const _mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
-  const _sohAll=(DB.soh||{})[_mk]||{};
-  const _diag=[];
+  const days=((typeof latestDay==='function'?latestDay():0))||((typeof getMonthDays==='function')?getMonthDays():30)||1;
+  const lines=[]; const _diag=[];
   CM_PLATS.forEach(plat=>{
     const mtd=window._availMTD[plat]||{skus:{}};
-    const cs=cmCitySku(plat);
+    const skus=mtd.skus||{};
     const openP=(_cmOpenPO&&_cmOpenPO.po[plat])||{};
-    const _sohP=((_sohAll[plat]||{}).data)||{};
-    let _csCells=0; Object.keys(cs.map).forEach(c=>_csCells+=Object.keys(cs.map[c]).length);
-    const _avSkus=Object.keys(mtd.skus||{});
-    let _smp=null; for(const s of _avSkus){const bc=mtd.skus[s]&&mtd.skus[s].by_city; if(bc&&Object.keys(bc).length){_smp={sku:(skuLookup(plat,s).name||s).slice(0,20),osaCities:Object.keys(bc).slice(0,5).join(','),csCities:Object.keys(cs.map).filter(c=>cs.map[c][skuLookup(plat,s).name||s]).slice(0,5).join(',')};break;}}
-    _diag.push({plat,avail:_avSkus.length,soh:Object.keys(_sohP).length,csDays:cs.nDays,csCells:_csCells,smp:_smp});
-    if(!mtd.skus)return;
-    Object.keys(mtd.skus).forEach(sku=>{
-      const k=mtd.skus[sku]; const info=skuLookup(plat,sku); const mrp=info.mrp||0; const canon=info.name;
-      const cities=Object.keys(k.by_city||{});
-      if(plat==='Instamart'){
-        // IM stockout uses native DOI (platform), per memory — region grain
-        if(haveTracker&&k.doi!=null&&k.drr>0){
-          let openUnits=0; Object.values(openP).forEach(byC=>{if(byC[canon])openUnits+=byC[canon];});
-          const netDts=k.doi+(openUnits/k.drr);
-          const atRisk=k.drr*mrp;
-          if(netDts<CM_DTS_DAYS && atRisk>=CM_FLOOR[plat]) lines.push({plat,type:'STOCKOUT',city:'Region',sku:canon,sig:netDts.toFixed(1)+'d net (DOI '+k.doi.toFixed(1)+' + PO)',r:atRisk,ask:'Confirm WH replenishment — native DOI flags imminent zero.'});
+    Object.keys(skus).forEach(sku=>{
+      const k=skus[sku]; const info=skuLookup(plat,sku); const mrp=info.mrp||0; const canon=info.name||sku;
+      const dayGmv=(k.mtd_gmv||0)/days;
+      const bc=k.by_city||{};
+      const oosCities=Object.keys(bc).filter(c=>bc[c].wt_osa_ls!=null&&bc[c].wt_osa_ls>0&&bc[c].wt_osa_ls<CM_OSA_BREACH).sort((a,b)=>bc[a].wt_osa_ls-bc[b].wt_osa_ls);
+      const dsCities=Object.keys(bc).filter(c=>bc[c].ds_listing!=null&&bc[c].ds_listing>0&&bc[c].ds_listing<CM_DS_TARGET).sort((a,b)=>bc[a].ds_listing-bc[b].ds_listing);
+      // OOS-lost — uses the dashboard's own lost-GMV (per day)
+      if(k.wt_osa_ls!=null&&k.wt_osa_ls>0&&k.wt_osa_ls<CM_OSA_BREACH){
+        const r=(k.lost_gmv||0)/days;
+        if(r>=CM_FLOOR[plat]) lines.push({plat,type:'OOS',city:(oosCities.slice(0,3).join(', ')||'multiple'),sku:canon,sig:'OSA '+k.wt_osa_ls.toFixed(0)+'%',r,ask:'Restore in-stock'+(oosCities.length?(' in '+oosCities.slice(0,3).join('/')):'')+' on '+plat+'.'});
+      }
+      // DS-depth — foregone GMV from low listing depth
+      if(k.ds_listing!=null&&k.ds_listing>0&&k.ds_listing<CM_DS_TARGET&&dayGmv>0){
+        const r=dayGmv*(CM_DS_TARGET-k.ds_listing)/k.ds_listing;
+        if(r>=CM_FLOOR[plat]) lines.push({plat,type:'LISTING',city:(dsCities.slice(0,3).join(', ')||'multiple'),sku:canon,sig:'Depth '+k.ds_listing.toFixed(0)+'% vs '+CM_DS_TARGET+'%',r,ask:'Lift listing depth to '+CM_DS_TARGET+'%'+(dsCities.length?(' in '+dsCities.slice(0,3).join('/')):'')+'.'});
+      }
+      // Stockout-risk — DOI (IM native, else SOH/DRR) netted with open PO
+      if(k.drr>0){
+        let openUnits=0; Object.values(openP).forEach(byC=>{if(byC[canon])openUnits+=byC[canon];});
+        const baseDts=(plat==='Instamart'&&k.doi!=null)?k.doi:((k.soh!=null&&k.drr>0)?k.soh/k.drr:null);
+        if(baseDts!=null){
+          const netDts=baseDts+(haveTracker?(openUnits/k.drr):0);
+          const r=dayGmv;
+          if(netDts<CM_DTS_DAYS&&r>=CM_FLOOR[plat]) lines.push({plat,type:'STOCKOUT',city:'\u2014',sku:canon,sig:netDts.toFixed(1)+'d cover'+(openUnits?(' incl PO '+openUnits):'')+(haveTracker?'':' \u00B7 no PO data'),r,ask:'Confirm replenishment \u2014 cover under '+CM_DTS_DAYS+' days.'});
         }
       }
-      cities.forEach(city=>{
-        const cd=k.by_city[city]; const cc=nCity(city);
-        const cg=(cs.map[cc]&&cs.map[cc][canon])||{gmv:0,units:0};
-        const cityDrr=cg.units/cs.nDays;
-        if(cityDrr<=0)return; // no velocity → no meaningful ₹
-        // OOS-lost (realized)
-        if(cd.wt_osa_ls!=null && cd.wt_osa_ls>0 && cd.wt_osa_ls<CM_OSA_BREACH){
-          const r=cityDrr*mrp*(100-cd.wt_osa_ls)/100;
-          if(r>=CM_FLOOR[plat]) lines.push({plat,type:'OOS',city:cc,sku:canon,sig:'OSA '+cd.wt_osa_ls.toFixed(0)+'%',r,ask:'Restore in-stock in the dry '+plat+' '+cc+' stores.'});
-        }
-        // DS-depth (foregone)
-        if(cd.ds_listing!=null && cd.ds_listing>0 && cd.ds_listing<CM_DS_TARGET){
-          const r=cityDrr*mrp*(CM_DS_TARGET-cd.ds_listing)/cd.ds_listing;
-          if(r>=CM_FLOOR[plat]) lines.push({plat,type:'LISTING',city:cc,sku:canon,sig:'Depth '+cd.ds_listing.toFixed(0)+'% vs '+CM_DS_TARGET+'%',r,ask:'List in serviceable stores to reach '+CM_DS_TARGET+'% depth.'});
-        }
-        // stockout-risk (forward) — non-IM, city grain, requires tracker for correct netting
-        if(plat!=='Instamart' && haveTracker){
-          const soh=(cd.soh!=null)?cd.soh:null;
-          if(soh!=null && cityDrr>0){
-            const openUnits=(openP[cc]&&openP[cc][canon])||0;
-            const netDts=(soh+openUnits)/cityDrr;
-            const atRisk=cityDrr*mrp;
-            if(netDts<CM_DTS_DAYS && atRisk>=CM_FLOOR[plat]) lines.push({plat,type:'STOCKOUT',city:cc,sku:canon,sig:netDts.toFixed(1)+'d net (SOH '+Math.round(soh)+' +PO '+openUnits+')',r:atRisk,ask:'Confirm PO inward; hold the listing through the zero.'});
-          }
-        }
-      });
     });
+    const _ls=lines.filter(l=>l.plat===plat);
+    _diag.push({plat,avail:Object.keys(skus).length,lines:_ls.length,maxR:_ls.length?Math.max.apply(null,_ls.map(l=>Math.round(l.r))):0});
   });
-  _diag.forEach(d=>{const _ls=lines.filter(l=>l.plat===d.plat);d.lines=_ls.length;d.maxR=_ls.length?Math.max.apply(null,_ls.map(l=>Math.round(l.r))):0;});
-  window._cmDiag={rows:_diag,tracker:(_cmTracker?('loaded '+_cmTracker.count):(_cmTrackErr?('ERR: '+_cmTrackErr):'not loaded')),sn:(_cmSN?('loaded '+_cmSN.lines+' lines'):'none'),mk:_mk};
+  window._cmDiag={rows:_diag,tracker:(_cmTracker?(((_cmTracker.src?'upload':'live'))+' '+_cmTracker.count+' POs'):(_cmTrackErr?('ERR: '+_cmTrackErr):'not loaded')),sn:(_cmSN?('loaded '+_cmSN.lines):'none'),mk:_mk,days:days};
   _cmLines=lines;
 }
 
 /* ---- render ---- */
-function cmDiagHtml(){var d=window._cmDiag;if(!d)return'';var rows=d.rows.map(function(r){return r.plat+': avail '+r.avail+' \u00B7 SOH '+r.soh+' \u00B7 citysku '+r.csDays+'d/'+r.csCells+' cells \u00B7 LINES '+(r.lines||0)+' (max \u20B9'+(r.maxR||0).toLocaleString('en-IN')+'/day)'+(r.smp?(' \u00B7 e.g. '+r.smp.sku+' OSA-cities[ '+r.smp.osaCities+' ] vs citysku-cities[ '+r.smp.csCities+' ]'):'');}).join('<br>');return '<div style="margin-top:10px;padding:8px 10px;background:#0d1530;color:#a9b4d6;border-radius:8px;font-family:monospace;font-size:10.5px;line-height:1.6"><b>\uD83D\uDD0E inputs ('+d.mk+')</b> \u00B7 tracker: '+d.tracker+' \u00B7 SN: '+d.sn+'<br>'+rows+'</div>';}
+function cmDiagHtml(){var d=window._cmDiag;if(!d)return'';var rows=d.rows.map(function(r){return r.plat+': avail '+r.avail+' SKUs \u00B7 LINES '+(r.lines||0)+' (max \u20B9'+(r.maxR||0).toLocaleString('en-IN')+'/day)';}).join('<br>');return '<div style="margin-top:10px;padding:8px 10px;background:#0d1530;color:#a9b4d6;border-radius:8px;font-family:monospace;font-size:10.5px;line-height:1.6"><b>\uD83D\uDD0E inputs ('+d.mk+')</b> \u00B7 tracker: '+d.tracker+' \u00B7 SN: '+d.sn+'<br>'+rows+'</div>';}
 function cmRows(){return (_cmLines||[]).filter(l=>l.plat===_cmPlat).sort((a,b)=>b.r-a.r);}
 function cmInc(l){return !_cmExcl[l.plat+'|'+l.type+'|'+l.city+'|'+l.sku];}
 function cmToggleLine(key){_cmExcl[key]=!_cmExcl[key];cmRenderBody();}
