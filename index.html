@@ -782,6 +782,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
             <option value="soh_asc">Sort: SOH ▲ (least stock)</option>
             <option value="name">Sort: Name (A–Z)</option>
           </select>
+          <button class="exp-btn" onclick="_sohExportXlsx()" style="font-size:11px;background:#1B2B45;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:700">⬇ Download Excel</button>
         </div>
         <div id="availSohSkuTable"></div>
       </div>
@@ -1605,6 +1606,7 @@ let _delta = {
   avail: {},
   soh: {},
   dark_store_counts: {},
+  open_po: {po:{},ts:0,month:''},
   targets_by_month: {},
   active_month: 'Apr-2026',
   viewing_month: null
@@ -1628,6 +1630,7 @@ function _migrateLegacyDelta() {
   if (!_delta.avail)             _delta.avail            = {};
   if (!_delta.soh)               _delta.soh              = {};
   if (!_delta.dark_store_counts) _delta.dark_store_counts= {};
+  if (!_delta.open_po)           _delta.open_po          = {po:{},ts:0,month:''};
   if (!_delta.targets_by_month)  _delta.targets_by_month = {};
   if (!_delta.active_month)      _delta.active_month     = 'Apr-2026';
   // viewing_month falls back to active_month at read time
@@ -1677,7 +1680,8 @@ function _buildDB() {
     baselines: {},                            // prior-month + anchor baselines for comparisons
     avail: _delta.avail || {},                // [monthKey][platform][sku_id][day] = {wt_osa_ls, ds_listing, by_city}
     soh: _delta.soh || {},                    // [monthKey][platform][sku_id] = {total, by_city, by_facility, last_updated}
-    dark_store_counts: _delta.dark_store_counts || {}  // [platform][city] = {dark_stores, dark_stores_listed, period}
+    dark_store_counts: _delta.dark_store_counts || {},  // [platform][city] = {dark_stores, dark_stores_listed, period}
+    open_po: _delta.open_po || {po:{},ts:0,month:''}    // {po:{plat:{city:{canon:qty}}}, ts, month} — synced pipeline for viewers
   };
 
   // Merge SKU master: SEED base + delta additions
@@ -2012,6 +2016,7 @@ function resetData() {
     const savedAvail      = _delta.avail || {};
     const savedSoh        = _delta.soh || {};
     const savedDsc        = _delta.dark_store_counts || {};
+    const savedOpenPo     = _delta.open_po || {po:{},ts:0,month:''};
     const savedActive     = _delta.active_month || 'Apr-2026';
     _delta = {
       months: {},
@@ -2020,6 +2025,7 @@ function resetData() {
       avail: savedAvail,
       soh: savedSoh,
       dark_store_counts: savedDsc,
+      open_po: savedOpenPo,
       targets_by_month: savedTargets,
       active_month: savedActive,
       viewing_month: null
@@ -3680,11 +3686,20 @@ function processFile(file,type){
       // This is the ONLY reliable way to avoid the Zepto +1 day shift bug
       // (Zepto's Excel uses serial 46114 for Apr1 while standard is 46113 — off by 1)
       // raw:false → numbers come as formatted strings, but we parseFloat() them anyway
-      const wb=XLSX.read(e.target.result,{type:'array',cellDates:true,dateNF:'yyyy-mm-dd'});
-      console.log('[upload] XLSX read OK, sheets=', wb.SheetNames);
+      // CSV text dates (e.g. "01-06-2026" DD-MM-YYYY) get MIS-COERCED by SheetJS date guessing
+      // (read as 2001-06-26). For CSV we therefore read RAW (preserve original text) and let
+      // parseDay() handle the format. XLSX keeps cellDates:true — its dates are unambiguous serials,
+      // and this path also corrects the Zepto +1-day serial quirk (46114 vs 46113).
+      const _isCsv=/\.csv$/i.test(file.name||'');
+      const wb=_isCsv
+        ? XLSX.read(e.target.result,{type:'array',raw:true})
+        : XLSX.read(e.target.result,{type:'array',cellDates:true,dateNF:'yyyy-mm-dd'});
+      console.log('[upload] XLSX read OK ('+(_isCsv?'csv-raw':'xlsx')+'), sheets=', wb.SheetNames);
       const sn=type==='imS'?'Sales Report':type==='imD'?'Discounts Report':wb.SheetNames[0];
       const ws=wb.Sheets[sn]||wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{raw:false,dateNF:'yyyy-mm-dd',defval:''});
+      const rows=_isCsv
+        ? XLSX.utils.sheet_to_json(ws,{raw:true,defval:''})
+        : XLSX.utils.sheet_to_json(ws,{raw:false,dateNF:'yyyy-mm-dd',defval:''});
       console.log('[upload] Rows parsed:', rows.length, '· first row keys:', rows[0]?Object.keys(rows[0]).slice(0,8):'(none)');
       if(!rows.length){alert('No rows found in the file. Make sure you selected the correct sheet/file.');return;}
 
@@ -5541,12 +5556,49 @@ function _sohRowTint(days){
 
 function _sohOpenPO(plat,canon,city){
   try{ if(typeof cmBuildOpenPO==='function' && (typeof _cmOpenPO==='undefined'||!_cmOpenPO) && typeof _cmTracker!=='undefined' && _cmTracker && typeof _cmSN!=='undefined' && _cmSN){ cmBuildOpenPO(); } }catch(e){}
-  var po=(typeof _cmOpenPO!=='undefined'&&_cmOpenPO&&_cmOpenPO.po)?_cmOpenPO.po[plat]:null;
+  var liveAll=(typeof _cmOpenPO!=='undefined'&&_cmOpenPO&&_cmOpenPO.po)?_cmOpenPO.po:null;
+  var vm=(typeof getViewingMonth==='function')?getViewingMonth():null;
+  var syncedAll=(typeof DB!=='undefined'&&DB.open_po&&DB.open_po.po&&(!vm||DB.open_po.month===vm))?DB.open_po.po:null;
+  var all=liveAll||syncedAll;
+  var po=all?all[plat]:null;
   if(!po)return null;
   if(city){ return (po[city]&&po[city][canon])||0; }
   var t=0; Object.keys(po).forEach(function(c){ if(po[c]&&po[c][canon])t+=po[c][canon]; }); return t;
 }
 function _sohPoCell(v){ return (v==null)?'<span style="color:#9aa1a8">\u2014</span>':(v===0)?'<span style="color:#9aa1a8">0</span>':'<span style="color:#1a7a3a;font-weight:700">'+v.toLocaleString('en-IN')+'u</span>'; }
+function _sohExportXlsx(){
+  var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
+  var styled=!!window.XLSXStyle;
+  var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
+  var plats=Object.keys(window._availMTD||{}).filter(function(p){return window._availMTD[p]&&window._availMTD[p].skus&&Object.keys(window._availMTD[p].skus).length;});
+  if(!plats.length){alert('No SOH data loaded to export.');return;}
+  var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
+  var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
+  var head=['SKU','Category','SOH (units)','Days to Stockout','Open PO (units)','Reorder 14d (units)','DRR (u/day)','Cities'];
+  var wb=X.utils.book_new();
+  plats.forEach(function(plat){
+    var pd=window._availMTD[plat]||{skus:{}};
+    var list=Object.keys(pd.skus).map(function(sku){
+      var info=skuLookup(plat,sku), k=pd.skus[sku], best=_sohBestDTS(plat,k), reorder=_sohReorderQty(k);
+      var sohCities=k.soh_by_city||{}; var nCities=Object.keys(sohCities).filter(function(c){return (sohCities[c]||0)>0;}).length;
+      return {name:info.name,cat:info.cat||'',soh:Math.round(k.soh||0),dts:best.days,drr:Math.round(k.drr||0),reorder:reorder,openpo:_sohOpenPO(plat,info.name,null),nCities:nCities};
+    }).filter(function(r){return r.soh>0||r.drr>0;}).sort(function(a,b){return (a.dts==null?99999:a.dts)-(b.dts==null?99999:b.dts);});
+    var aoa=[['GAW \u00B7 '+plat+' \u00B7 SOH Explorer \u00B7 '+mk,'','','','','','',''],head];
+    list.forEach(function(r){ aoa.push([r.name,r.cat,r.soh,(r.dts==null?'':Math.round(r.dts)),(r.openpo==null?'':r.openpo),(r.reorder==null?'':r.reorder),r.drr,r.nCities]); });
+    var ws=X.utils.aoa_to_sheet(aoa);
+    ws['!cols']=[{wch:38},{wch:18},{wch:12},{wch:16},{wch:15},{wch:17},{wch:12},{wch:8}];
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}];
+    if(styled){
+      var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
+      for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
+      for(var r2=0;r2<list.length;r2++){for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue; cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}}
+    }
+    var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
+    X.utils.book_append_sheet(wb,ws,safe);
+  });
+  X.writeFile(wb,'GAW_SOH_Explorer_'+(mk||'export')+'.xlsx');
+}
+
 function _availRenderSohSkuTable(){
   const plat=_availSohPlat;
   if(!plat)return;
@@ -6479,6 +6531,7 @@ function _applyGHPayload(payload,logFn,manual){
     if(!merged.avail)             merged.avail            = {};
     if(!merged.soh)               merged.soh              = {};
     if(!merged.dark_store_counts) merged.dark_store_counts= {};
+    if(!merged.open_po)           merged.open_po          = {po:{},ts:0,month:''};
     if(!merged.targets_by_month)  merged.targets_by_month = {};
     if(!merged.active_month)      merged.active_month     = (_delta.active_month || 'Apr-2026');
 
@@ -6607,6 +6660,9 @@ function _applyGHPayload(payload,logFn,manual){
       const ct=Date.parse(cloudRec.last_updated||0)||0;
       if(lt>=ct) merged.dark_store_counts[plat]=localRec;
     });
+
+    // open_po: single small map, keep newer by ts (admin computes; viewers pull). Never let an empty local clobber cloud.
+    { const lt=(_delta.open_po&&_delta.open_po.ts)||0; const ct=(merged.open_po&&merged.open_po.ts)||0; if(lt>=ct && lt>0) merged.open_po=_delta.open_po; }
 
     // avail_meta: platform → {last_updated} freshness stamps — keep newest
     if(_delta.avail_meta){
@@ -7859,7 +7915,7 @@ function uploadSNReport(input){
       }
       _cmSN={byPO,lines,name:file.name,when:new Date()};
       if(st)st.textContent='✅ '+file.name+' — '+lines.toLocaleString('en-IN')+' lines parsed';
-      _cmOpenPO=null; if(document.getElementById('cmactions')?.classList.contains('active'))renderCMActions();
+      _cmOpenPO=null; try{cmBuildOpenPO(); if(typeof saveDB==='function')saveDB(); if(typeof githubPush==='function')githubPush();}catch(e){} if(document.getElementById('cmactions')?.classList.contains('active'))renderCMActions();
     }catch(err){ if(st)st.textContent='❌ '+(err.message||err); }
   };
   reader.readAsArrayBuffer(file);
@@ -7891,7 +7947,7 @@ function uploadTracker(input){
       }
       _cmTracker={open,count:cnt,fetched:new Date(),src:'upload'}; _cmTrackErr=null;
       if(st)st.textContent='\u2705 '+file.name+' \u2014 '+chosen.sn+': '+cnt+' open POs';
-      _cmOpenPO=null; if(document.getElementById('cmactions')&&document.getElementById('cmactions').classList.contains('active'))renderCMActions();
+      _cmOpenPO=null; try{cmBuildOpenPO(); if(typeof saveDB==='function')saveDB(); if(typeof githubPush==='function')githubPush();}catch(e){} if(document.getElementById('cmactions')&&document.getElementById('cmactions').classList.contains('active'))renderCMActions();
     }catch(err){ if(st)st.textContent='\u274C '+(err.message||err); }
   };
   reader.readAsArrayBuffer(file);
@@ -7921,6 +7977,7 @@ function cmBuildOpenPO(){
     });
   });
   _cmOpenPO={po,matchedPO,missPO}; _cmUnmapped=unmapped;
+  try{ if(po&&Object.keys(po).length&&typeof _delta!=='undefined'){ _delta.open_po={po:po,ts:Date.now(),month:(typeof getViewingMonth==='function'?getViewingMonth():'')}; } }catch(e){}
 }
 
 /* ---- build action lines ---- */
