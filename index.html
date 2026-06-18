@@ -4794,6 +4794,7 @@ function exportCSV(){
 // AVAILABILITY TAB (Stage 2) — Render functions
 // ══════════════════════════════════════════════
 const _AVAIL_PLATFORMS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket'];
+const _SOH_PLATFORMS=_AVAIL_PLATFORMS.concat(['Amazon']);  // SOH Explorer includes Amazon (SOH-only)
 // Display window for OSA/DS metrics: 'today' (latest day) or 'mtd' (month-to-date avg).
 // Lost GMV and DOI are always MTD/period concepts and don't change with this toggle.
 let _availWindow='today';
@@ -4998,6 +4999,41 @@ function _availComputeMTD(){
       result[plat].summary.lost_gmv=skuList.reduce((s,k)=>s+k.lost_gmv,0);
     }
   });
+  // ── Amazon: SOH-only platform (no OSA/DS availability yet). Built from SOH snapshot + Amazon
+  //    sales for DRR, so it shows in the SOH Explorer. Excluded from OSA/CM views by design. ──
+  (function(){
+    const plat='Amazon';
+    const platSoh=(sohM[plat]||{}).data||{};
+    const aprilPlatData=(DB.april[plat]&&DB.april[plat].sku)||[];
+    const skuSet=new Set(Object.keys(platSoh));
+    aprilPlatData.forEach(r=>{ if(_mtdDay(r.day)) skuSet.add(String(r.sku_code).trim()); });
+    if(!skuSet.size) return;
+    result[plat]={skus:{}, summary:{wt_osa_ls:null, ds_listing:null, doi:null, lost_gmv:0, active_skus:0, has_data:false}};
+    const mtdDaysElapsed=Object.keys(aprilPlatData.reduce((m,r)=>{if(_mtdDay(r.day))m[r.day]=1;return m;},{})).length||1;
+    skuSet.forEach(sku=>{
+      const sohRec=platSoh[sku];
+      const totalSoh=sohRec?sohRec.total:0;
+      const mtdUnits=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&_mtdDay(r.day)).reduce((s,r)=>s+r.units,0);
+      const mtdGmv=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&_mtdDay(r.day)).reduce((s,r)=>s+r.gmv,0);
+      const drr=mtdUnits/mtdDaysElapsed;
+      let doi=null,doiFlag=null;
+      if(drr>0.05&&totalSoh>0)doi=totalSoh/drr;
+      else if(totalSoh>0&&drr<=0.05){doi=null;doiFlag='no_velocity';}
+      if(doi!=null&&doi>90){doi=90;doiFlag='capped';}
+      const sohByCity=(sohRec&&sohRec.by_city)?sohRec.by_city:{};
+      const cityDetail={};
+      Object.keys(sohByCity).forEach(c=>{ cityDetail[c]={wt_osa_ls:null,ds_listing:null,soh:sohByCity[c]||0}; });
+      result[plat].skus[sku]={
+        wt_osa_ls:null, ds_listing:null, day_osa_ls:null, day_ds_listing:null,
+        mtd_gmv:mtdGmv, mtd_units:mtdUnits, drr, soh:totalSoh, doi, doi_flag:doiFlag,
+        lost_gmv:0, days_data:0, by_city:cityDetail,
+        soh_by_city:sohByCity, by_facility:sohRec?(sohRec.by_facility||{}):{}
+      };
+    });
+    const skuList=Object.values(result[plat].skus);
+    if(skuList.length){ result[plat].summary.active_skus=skuList.length; result[plat].summary.has_data=true; }
+  })();
+
   return result;
 }
 window._availMTD=null;  // cache
@@ -5479,8 +5515,8 @@ function _availRenderSohPlatformCards(){
   const host=document.getElementById('availSohPlatformCards');
   if(!host)return;
   const mtd=window._availMTD||{};
-  const colorMap={Zepto:'#7b2d8b',Blinkit:'#d4860a',Instamart:'#c0392b',Flipkart:'#2874f0',BigBasket:'#84c225'};
-  const cards=_AVAIL_PLATFORMS.map(plat=>{
+  const colorMap={Zepto:'#7b2d8b',Blinkit:'#d4860a',Instamart:'#c0392b',Flipkart:'#2874f0',BigBasket:'#84c225',Amazon:'#ff9900'};
+  const cards=_SOH_PLATFORMS.map(plat=>{
     const pd=mtd[plat];
     const c=colorMap[plat];
     if(!pd||!pd.summary||!pd.summary.has_data){
@@ -5562,7 +5598,7 @@ function _sohOpenPO(plat,canon,city){
   var all=liveAll||syncedAll;
   var po=all?all[plat]:null;
   if(!po)return null;
-  if(city){ return (po[city]&&po[city][canon])||0; }
+  if(city && plat!=='Amazon'){ return (po[city]&&po[city][canon])||0; }  // Amazon is national → always return the total
   var t=0; Object.keys(po).forEach(function(c){ if(po[c]&&po[c][canon])t+=po[c][canon]; }); return t;
 }
 function _sohPoCell(v){ return (v==null)?'<span style="color:#9aa1a8">\u2014</span>':(v===0)?'<span style="color:#9aa1a8">0</span>':'<span style="color:#1a7a3a;font-weight:700">'+v.toLocaleString('en-IN')+'u</span>'; }
