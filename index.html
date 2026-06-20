@@ -8017,7 +8017,17 @@ function cmCitySku(plat){
 /* ---- Fill Rate (FR%) engine — last-10-day, delivered POs ---- */
 const CM_DELIVERED=new Set(['delivered']);
 function _frINR(v){if(v==null||v==='')return 0;const s=String(v).replace(/[\u20b9,\s]/g,'').replace(/[^\d.\-]/g,'');return parseFloat(s)||0;}
-function _frParseDate(s){s=String(s||'').trim();const mm=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);if(!mm)return null;let d=+mm[1],mo=+mm[2],y=+mm[3];if(y<100)y+=2000;if(mo<1||mo>12||d<1||d>31)return null;const dt=new Date(y,mo-1,d);return isNaN(dt.getTime())?null:dt;}
+function _frParseDate(v){
+  if(v==null||v==='')return null;
+  if(v instanceof Date)return isNaN(v.getTime())?null:new Date(v.getFullYear(),v.getMonth(),v.getDate());
+  if(typeof v==='number'&&isFinite(v)){ if(v>20000&&v<90000){const e=new Date(Math.round((v-25569)*86400000)); return isNaN(e.getTime())?null:new Date(e.getUTCFullYear(),e.getUTCMonth(),e.getUTCDate());} return null; }
+  const s=String(v).trim(); if(!s)return null;
+  let mm=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);   // ISO yyyy-mm-dd
+  if(mm){const y=+mm[1],mo=+mm[2],d=+mm[3]; if(mo>=1&&mo<=12&&d>=1&&d<=31){const dt=new Date(y,mo-1,d);return isNaN(dt.getTime())?null:dt;}}
+  mm=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);     // dd-mm-yyyy / dd-m-yyyy
+  if(mm){let d=+mm[1],mo=+mm[2],y=+mm[3]; if(y<100)y+=2000; if(mo>=1&&mo<=12&&d>=1&&d<=31){const dt=new Date(y,mo-1,d);return isNaN(dt.getTime())?null:dt;}}
+  const t=Date.parse(s); return isNaN(t)?null:new Date(t);
+}
 function _frColor(fr){if(fr==null)return '#9aa1a8';if(fr>=95)return '#1a7a3a';if(fr>=85)return '#d4860a';return '#c0392b';}
 function _frFmt(fr){return fr==null?'\u2014':Math.round(fr)+'%';}
 function cmBuildFR(){
@@ -8029,12 +8039,12 @@ function cmBuildFR(){
     const end=maxT||Date.now(); const start=end-9*86400000;  // 10 calendar days inclusive
     const idx=(typeof _cmSN!=='undefined'&&_cmSN)?cmCanonIndex():null;
     const hasIss=!!(typeof _cmSN!=='undefined'&&_cmSN&&_cmSN.hasIssued);
-    const bySku={},byPlat={};
+    const bySku={},byPlat={}; let nWin=0;
     Object.keys(all).forEach(po=>{
       const mt=all[po];
       if(!mt.plat||!CM_DELIVERED.has(mt.status))return;
       if(!mt.recv)return; const t=mt.recv.getTime(); if(t<start||t>end)return;
-      const bp=(byPlat[mt.plat]=byPlat[mt.plat]||{poVal:0,invVal:0,nPO:0}); bp.poVal+=mt.poVal||0; bp.invVal+=mt.invVal||0; bp.nPO++;
+      const bp=(byPlat[mt.plat]=byPlat[mt.plat]||{poVal:0,invVal:0,nPO:0}); bp.poVal+=mt.poVal||0; bp.invVal+=mt.invVal||0; bp.nPO++; nWin++;
       if(idx&&hasIss&&_cmSN.byPO[po]){
         _cmSN.byPO[po].forEach(it=>{ if(it.issued==null)return; const canon=cmMapName(it.nm,idx);
           if(!canon||CM_DISCONTINUED.has(cmKey(canon))||CM_DISCONTINUED.has(cmKey(it.nm)))return;
@@ -8044,7 +8054,7 @@ function cmBuildFR(){
     });
     Object.keys(byPlat).forEach(p=>{const o=byPlat[p];o.fr=o.poVal>0?(o.invVal/o.poVal*100):null;});
     Object.keys(bySku).forEach(p=>Object.keys(bySku[p]).forEach(c=>{const o=bySku[p][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;}));
-    _cmFR={bySku,byPlat,window:{start,end},hasSku:Object.keys(bySku).length>0,builtAt:new Date()};
+    _cmFR={bySku,byPlat,window:{start,end},hasSku:Object.keys(bySku).length>0,nWin,hasIssued:hasIss,nPlat:Object.keys(byPlat).length,nSku:Object.keys(bySku).reduce((a,p)=>a+Object.keys(bySku[p]).length,0),builtAt:new Date()};
   }catch(e){console.warn('cmBuildFR failed',e);_cmFR=null;}
 }
 function _frForSku(plat,name){
@@ -8127,7 +8137,8 @@ function cmBuildLines(){
 }
 
 /* ---- render ---- */
-function cmDiagHtml(){var d=window._cmDiag;if(!d)return'';var rows=d.rows.map(function(r){return r.plat+': avail '+r.avail+' SKUs \u00B7 LINES '+(r.lines||0)+' (max \u20B9'+(r.maxR||0).toLocaleString('en-IN')+'/day)';}).join('<br>');return '<div style="margin-top:10px;padding:8px 10px;background:#0d1530;color:#a9b4d6;border-radius:8px;font-family:monospace;font-size:10.5px;line-height:1.6"><b>\uD83D\uDD0E inputs ('+d.mk+')</b> \u00B7 tracker: '+d.tracker+' \u00B7 SN: '+d.sn+'<br>'+rows+'</div>';}
+function cmDiagHtml(){var d=window._cmDiag;if(!d)return'';var rows=d.rows.map(function(r){return r.plat+': avail '+r.avail+' SKUs \u00B7 LINES '+(r.lines||0)+' (max \u20B9'+(r.maxR||0).toLocaleString('en-IN')+'/day)';}).join('<br>');return '<div style="margin-top:10px;padding:8px 10px;background:#0d1530;color:#a9b4d6;border-radius:8px;font-family:monospace;font-size:10.5px;line-height:1.6"><b>\uD83D\uDD0E inputs ('+d.mk+')</b> \u00B7 tracker: '+d.tracker+' \u00B7 SN: '+d.sn+'<br>'+rows+_frDiagStr()+'</div>';}
+function _frDiagStr(){try{if(typeof _cmFR==='undefined'||!_cmFR)return '<br><b>FR</b> not built \u2014 need tracker with PO RECEIVED DATE + PO/INVOICE VALUE and delivered POs in the last 10 days';var w=_cmFR.window;var dd=function(ms){var x=new Date(ms);return ('0'+x.getDate()).slice(-2)+'/'+('0'+(x.getMonth()+1)).slice(-2);};return '<br><b>FR</b> '+dd(w.start)+'\u2013'+dd(w.end)+' \u00B7 '+(_cmFR.nWin||0)+' delivered POs \u00B7 '+(_cmFR.nPlat||0)+' plat \u00B7 '+(_cmFR.nSku||0)+' per-SKU \u00B7 SN issued: '+(_cmFR.hasIssued?'yes':'no');}catch(e){return '';}}
 function cmRows(){return (_cmLines||[]).filter(l=>l.plat===_cmPlat).sort((a,b)=>b.r-a.r);}
 function cmInc(l){return !_cmExcl[l.plat+'|'+l.type+'|'+l.city+'|'+l.sku];}
 function cmToggleLine(key){_cmExcl[key]=!_cmExcl[key];cmRenderBody();}
