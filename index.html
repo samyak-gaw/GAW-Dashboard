@@ -6647,6 +6647,31 @@ function clearGitHubConfig(){
   setGHStatus('GitHub config cleared.',true);logGH('Config cleared');
 }
 
+async function _ghPutWithRetry(url,headers,body,refetchSha,logGH){
+  let lastErr=null;
+  for(let attempt=1;attempt<=4;attempt++){
+    try{
+      const res=await fetch(url,{method:'PUT',headers,body:JSON.stringify(body)});
+      if(res.ok)return res;
+      if(res.status===409){
+        logGH('PUT 409 (try '+attempt+'/4) \u2014 refetching SHA\u2026');
+        await new Promise(r=>setTimeout(r,500*attempt));
+        const sha=await refetchSha(); if(sha)body.sha=sha; else delete body.sha;
+        continue;
+      }
+      const txt=await res.text().catch(()=>'');
+      if(res.status>=500){ logGH('PUT '+res.status+' (try '+attempt+'/4) \u2014 retrying\u2026'); lastErr=new Error('HTTP '+res.status+' \u2014 '+txt.slice(0,100)); await new Promise(r=>setTimeout(r,600*attempt)); continue; }
+      throw new Error('PUT failed: HTTP '+res.status+' \u2014 '+txt.slice(0,120));
+    }catch(e){
+      if(e instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(e.message||'')){
+        logGH('Network error (try '+attempt+'/4): '+e.message+' \u2014 retrying\u2026');
+        lastErr=e; await new Promise(r=>setTimeout(r,900*attempt)); continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr||new Error('PUT failed after 4 attempts');
+}
 async function githubPush(manual=false){
   const token=getGHToken(),user=getGHUser(),repo=getGHRepo(),path=getGHPath();
   if(!token||!user||!repo){if(manual)alert('GitHub sync not configured. Fill in the fields above.');return;}
@@ -6677,7 +6702,9 @@ async function githubPush(manual=false){
       april: _activeMonthData  // v10 viewers read this
       // months[] still present for v11 viewers
     });
-    const payload={db:DB,_delta:_backCompatDelta,ts:Date.now(),pushedBy:'owner',schema_version:11};
+    // NOTE: `db` is intentionally omitted — it is rebuilt from `_delta` on pull (see _applyGHPayload),
+    // so sending it duplicated the entire dataset and bloated the file past GitHub's 1MB Contents-API limit.
+    const payload={_delta:_backCompatDelta,ts:Date.now(),pushedBy:'owner',schema_version:11};
     const jsonStr=JSON.stringify(payload);
     // btoa only works on Latin1 — encode UTF-8 to base64 safely
     const bytes=new TextEncoder().encode(jsonStr);
@@ -6688,40 +6715,11 @@ async function githubPush(manual=false){
     const body={message:'GAW data update '+new Date().toISOString().slice(0,16),content};
     if(sha)body.sha=sha;
 
-    const putRes=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path,{
-      method:'PUT',
-      headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},
-      body:JSON.stringify(body)
-    });
-    // Auto-retry once on 409 Conflict (stale SHA from rapid back-to-back pushes).
-    // Common with bulk uploads — GitHub eventual consistency means freshly-fetched SHA can race.
-    if(putRes.status===409){
-      logGH('PUT 409 conflict — refetching SHA and retrying once…');
-      // Wait briefly to let GitHub settle, then refetch SHA
-      await new Promise(r=>setTimeout(r,800));
-      const reGet=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path,{
-        headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Cache-Control':'no-cache'}
-      });
-      if(reGet.ok){
-        const d2=await reGet.json();
-        body.sha=d2.sha;
-        const retryRes=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path,{
-          method:'PUT',
-          headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},
-          body:JSON.stringify(body)
-        });
-        if(!retryRes.ok){
-          const txt=await retryRes.text().catch(()=>'');
-          throw new Error('PUT retry failed: HTTP '+retryRes.status+' — '+txt.slice(0,120));
-        }
-        logGH('Retry OK');
-      }else{
-        throw new Error('SHA refetch failed: HTTP '+reGet.status);
-      }
-    }else if(!putRes.ok){
-      const txt=await putRes.text().catch(()=>'');
-      throw new Error('PUT failed: HTTP '+putRes.status+' — '+txt.slice(0,120));
-    }
+    // PUT with robust retry: handles 409 (SHA race), 5xx, and transient "Failed to fetch" network errors.
+    const _ghUrl='https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path;
+    const _ghHdr={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'};
+    const _refetchSha=async()=>{ try{ const g=await fetch(_ghUrl,{headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Cache-Control':'no-cache'}}); if(g.ok){const dd=await g.json(); return dd.sha;} }catch(_e){} return null; };
+    await _ghPutWithRetry(_ghUrl,_ghHdr,body,_refetchSha,logGH);
     const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
     setSyncStatus('ok','✅ GitHub · '+t+' ('+kb+'KB)');
     logGH('Push OK · '+kb+'KB → Netlify rebuild triggered');
