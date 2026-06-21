@@ -70,7 +70,7 @@ function showApp(role) {
   if (logoutBtn) logoutBtn.style.display = 'inline-block';
   if (!isAdmin) activateReadonly();
   else {
-    // Show admin-only buttons (monthly review downloads)
+    // Show admin-only buttons
     document.querySelectorAll('.admin-only-btn').forEach(b=>b.style.display='inline-flex');
   }
 }
@@ -420,8 +420,6 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     <button class="exp-btn" onclick="exportPDF()">📄 Save as PDF</button>
     <button class="exp-btn" onclick="exportCSV()">📊 Export CSV</button>
     <button class="exp-btn" onclick="downloadReadOnly()" style="background:#1a3a6e;color:#fff;border-color:#1a3a6e">📤 Download Read-Only Snapshot</button>
-    <button class="exp-btn admin-only-btn" onclick="downloadMonthlyReviewHTML()" style="background:#1a7a3a;color:#fff;border-color:#1a7a3a;display:none">📋 Monthly Review (HTML)</button>
-    <button class="exp-btn admin-only-btn" onclick="downloadMonthlyReviewXLSX()" style="background:#1a7a3a;color:#fff;border-color:#1a7a3a;display:none">📊 Monthly Review (Excel)</button>
     <span style="font-size:11px;color:var(--muted)">Exports current active tab view</span>
   </div>
   <div id="ovKpis" class="kpi-row"></div>
@@ -1607,6 +1605,7 @@ let _delta = {
   soh: {},
   dark_store_counts: {},
   open_po: {po:{},ts:0,month:''},
+  fr: null,
   targets_by_month: {},
   active_month: 'Apr-2026',
   viewing_month: null
@@ -1631,6 +1630,7 @@ function _migrateLegacyDelta() {
   if (!_delta.soh)               _delta.soh              = {};
   if (!_delta.dark_store_counts) _delta.dark_store_counts= {};
   if (!_delta.open_po)           _delta.open_po          = {po:{},ts:0,month:''};
+  if (!('fr' in _delta))         _delta.fr               = null;
   if (!_delta.targets_by_month)  _delta.targets_by_month = {};
   if (!_delta.active_month)      _delta.active_month     = 'Apr-2026';
   // viewing_month falls back to active_month at read time
@@ -1681,7 +1681,8 @@ function _buildDB() {
     avail: _delta.avail || {},                // [monthKey][platform][sku_id][day] = {wt_osa_ls, ds_listing, by_city}
     soh: _delta.soh || {},                    // [monthKey][platform][sku_id] = {total, by_city, by_facility, last_updated}
     dark_store_counts: _delta.dark_store_counts || {},  // [platform][city] = {dark_stores, dark_stores_listed, period}
-    open_po: _delta.open_po || {po:{},ts:0,month:''}    // {po:{plat:{city:{canon:qty}}}, ts, month} — synced pipeline for viewers
+    open_po: _delta.open_po || {po:{},ts:0,month:''},    // {po:{plat:{city:{canon:qty}}}, ts, month} — synced pipeline for viewers
+    fr: _delta.fr || null    // {bySku,byPlat,window,...,ts,month} — persisted FR% (survives reload)
   };
 
   // Merge SKU master: SEED base + delta additions
@@ -2017,6 +2018,7 @@ function resetData() {
     const savedSoh        = _delta.soh || {};
     const savedDsc        = _delta.dark_store_counts || {};
     const savedOpenPo     = _delta.open_po || {po:{},ts:0,month:''};
+    const savedFr         = _delta.fr || null;
     const savedActive     = _delta.active_month || 'Apr-2026';
     _delta = {
       months: {},
@@ -2026,6 +2028,7 @@ function resetData() {
       soh: savedSoh,
       dark_store_counts: savedDsc,
       open_po: savedOpenPo,
+      fr: savedFr,
       targets_by_month: savedTargets,
       active_month: savedActive,
       viewing_month: null
@@ -5340,7 +5343,7 @@ function availRenderSkuTable(){
     return 0;
   });
   if(!list.length){document.getElementById('availSkuTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No SKUs match — try clearing the search.</div>';return;}
-  const _showFR=(typeof _cmFR!=='undefined'&&_cmFR&&((_cmFR.hasSku)||(_cmFR.byPlat&&Object.keys(_cmFR.byPlat).length)));
+  const _showFR=(function(){var f=(typeof _frState==='function')?_frState():((typeof _cmFR!=='undefined')?_cmFR:null);return !!(f&&((f.hasSku)||(f.byPlat&&Object.keys(f.byPlat).length)));})();
   const rows=list.map(r=>`<tr style="cursor:pointer" onclick="availDrillToSku('${plat}','${r.sku}')">
     <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.day_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.day_osa_ls)}</td>
@@ -6314,152 +6317,6 @@ function _buildMonthlyData(){
   return{platSummary,dailyRows,catRows,topSkus,cityRows,lastDay,totalCatGmv,totalSkuGmv,allDays};
 }
 
-function downloadMonthlyReviewHTML(){
-  if(!window._GAW_IS_ADMIN){alert('Admin access required.');return;}
-  const d=_buildMonthlyData();
-  const date=new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
-  const fmtC=v=>v>=10000000?'₹'+(v/10000000).toFixed(2)+'Cr':v>=100000?'₹'+(v/100000).toFixed(2)+'L':'₹'+Math.round(v).toLocaleString('en-IN');
-  const fmtN=v=>v>=100000?(v/100000).toFixed(1)+'L':v>=1000?(v/1000).toFixed(1)+'K':Math.round(v);
-  const badge=(v,good=0)=>{const f=parseFloat(v);if(isNaN(f))return`<span style="color:#6b7a99">—</span>`;const c=f>=good?'#1a7a3a':f>=-10?'#c07700':'#c0392b';return`<span style="color:${c};font-weight:700">${f>=0?'▲':'▼'}${Math.abs(f)}%</span>`;};
-  const PC2={Zepto:'#7b2d8b',Blinkit:'#d4860a',Instamart:'#c0392b',Amazon:'#ff9900',Flipkart:'#2874f0',BigBasket:'#84c225'};
-
-  let html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>GAW Monthly Review — ${MONTH_LABEL(getViewingMonth())}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a1a2e;font-size:13px}
-.hdr{background:#1a1a2e;color:#fff;padding:24px 32px;display:flex;justify-content:space-between;align-items:center}
-.hdr h1{font-size:20px;font-weight:800}.hdr h1 span{color:#d4860a}
-.hdr .meta{font-size:12px;opacity:.65;margin-top:4px}
-.wrap{max-width:1200px;margin:0 auto;padding:28px 24px}
-.sec-hdr{font-size:11px;font-weight:800;color:#6b7a99;text-transform:uppercase;letter-spacing:1px;margin:28px 0 12px;padding-left:12px;border-left:4px solid #d4860a}
-.kpi-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:24px}
-.kpi{background:#fff;border:1px solid #e0e5ef;border-radius:10px;padding:16px 18px;flex:1;min-width:150px;border-top:3px solid #d4860a}
-.kpi .lbl{font-size:10px;color:#6b7a99;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
-.kpi .val{font-size:20px;font-weight:800}
-.kpi .sub{font-size:11px;color:#6b7a99;margin-top:4px}
-table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e0e5ef;margin-bottom:24px}
-th{background:#f0f3fa;color:#6b7a99;font-weight:700;padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
-td{padding:8px 12px;border-bottom:1px solid #f0f3fa;color:#2a2a3e;vertical-align:middle}
-tr:last-child td{border-bottom:none}tr:hover td{background:#f8f9fe}
-.tag{display:inline-block;padding:1px 7px;border-radius:6px;font-size:10px;font-weight:700}
-.prog-bg{background:#f0f3fa;border-radius:4px;height:7px;overflow:hidden;width:100px;display:inline-block;vertical-align:middle;margin-left:6px}
-.prog-fill{height:100%;border-radius:4px}
-.footer{text-align:center;padding:20px;color:#6b7a99;font-size:11px;border-top:1px solid #e0e5ef;margin-top:20px}
-@media print{body{background:#fff}.hdr{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style></head><body>
-<div class="hdr">
-  <div><h1>Get A Way <span>Desserts</span> — Monthly Review</h1><div class="meta">${MONTH_LABEL(getViewingMonth())} · Day ${d.lastDay} of ${getMonthDays()} · Generated ${date} · Confidential</div></div>
-  <div style="font-size:32px">🍦</div>
-</div>
-<div class="wrap">`;
-
-  // ── Top KPIs ──
-  const totMtd=d.platSummary.reduce((s,r)=>s+r.mtdGmv,0);
-  const totTgt=d.platSummary.reduce((s,r)=>s+r.target,0);
-  const totDisc=d.platSummary.reduce((s,r)=>s+r.mtdDisc,0);
-  const totMarch=d.platSummary.reduce((s,r)=>s+r.marchGmv,0);
-  html+=`<div class="sec-hdr">📊 Month-to-Date Summary — ${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} 1–${d.lastDay}</div>
-<div class="kpi-row">
-  <div class="kpi"><div class="lbl">MTD GMV</div><div class="val">${fmtC(totMtd)}</div><div class="sub">${(totMtd/totTgt*100).toFixed(1)}% of ${fmtC(totTgt)} target</div></div>
-  <div class="kpi"><div class="lbl">Total Units</div><div class="val">${fmtN(d.platSummary.reduce((s,r)=>s+r.mtdUnits,0))}</div><div class="sub">All platforms</div></div>
-  <div class="kpi"><div class="lbl">Total Discount</div><div class="val">${fmtC(totDisc)}</div><div class="sub">${totMtd>0?(totDisc/totMtd*100).toFixed(1):0}% blended</div></div>
-  <div class="kpi"><div class="lbl">vs March MTD</div><div class="val">${badge((totMtd-totMarch)/totMarch*100,0)}</div><div class="sub">March total: ${fmtC(totMarch)}</div></div>
-  <div class="kpi"><div class="lbl">Days Tracked</div><div class="val">${d.lastDay}/${getMonthDays()}</div><div class="sub">${getMonthDays()-d.lastDay} days remaining</div></div>
-</div>`;
-
-  // ── Platform breakdown ──
-  html+=`<div class="sec-hdr">🛒 Platform Breakdown</div>
-<table><thead><tr><th>Platform</th><th>MTD GMV</th><th>Target</th><th>Progress</th><th>Cur DRR</th><th>Req DRR</th><th>Proj. End</th><th>Status</th></tr></thead><tbody>`;
-  d.platSummary.forEach(r=>{
-    const pct2=parseFloat(r.progress);const pe=r.projEnd>=r.target;
-    const barW=Math.min(pct2,100);const barC=pct2>=80?'#1a7a3a':pct2>=50?'#c07700':'#c0392b';
-    html+=`<tr>
-      <td><span class="tag" style="background:${PC2[r.p]}22;color:${PC2[r.p]}">${r.p}</span></td>
-      <td><b>${fmtC(r.mtdGmv)}</b></td><td>${fmtC(r.target)}</td>
-      <td><b>${r.progress}%</b><span class="prog-bg"><span class="prog-fill" style="width:${barW}%;background:${barC}"></span></span></td>
-      <td>${fmtC(r.curDRR)}</td>
-      <td style="color:${r.reqDRR>r.curDRR?'#c0392b':'#1a7a3a'};font-weight:700">${fmtC(r.reqDRR)}</td>
-      <td style="color:${pe?'#1a7a3a':'#c07700'};font-weight:700">${fmtC(r.projEnd)}</td>
-      <td><span style="font-size:11px;font-weight:700;color:${pe?'#1a7a3a':'#c0392b'}">${pe?'On Track ✅':'Behind ⚠'}</span></td>
-    </tr>`;
-  });
-  html+=`</tbody></table>`;
-
-  // ── Daily GMV ──
-  html+=`<div class="sec-hdr">📅 Daily GMV — All Platforms Combined</div>
-<table><thead><tr><th>Date</th><th>Total GMV</th><th>Units</th><th>Disc %</th>${PN.map(p=>`<th style="color:${PC2[p]}">${p}</th>`).join('')}</tr></thead><tbody>`;
-  const _mrAbbr=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];
-  d.dailyRows.forEach(r=>{
-    html+=`<tr><td><b>${_mrAbbr} ${r.day}</b></td><td>${fmtC(r.gmv)}</td><td>${fmtN(r.units)}</td><td>${r.discPct}%</td>${PN.map(p=>r[p]!=null?`<td>${fmtC(r[p])}</td>`:`<td style="color:#ccc">—</td>`).join('')}</tr>`;
-  });
-  html+=`</tbody></table>`;
-
-  // ── Category breakdown ──
-  html+=`<div class="sec-hdr">🗂 Category Mix — MTD</div>
-<table><thead><tr><th>Category</th><th>MTD GMV</th><th>Units</th><th>Share</th></tr></thead><tbody>`;
-  d.catRows.forEach(r=>{ html+=`<tr><td><b>${r.cat}</b></td><td>${fmtC(r.gmv)}</td><td>${fmtN(r.units)}</td><td>${r.share}%</td></tr>`; });
-  html+=`</tbody></table>`;
-
-  // ── Top SKUs ──
-  html+=`<div class="sec-hdr">🏷 Top 20 SKUs — MTD</div>
-<table><thead><tr><th>#</th><th>SKU</th><th>Category</th><th>MTD GMV</th><th>Units</th><th>Discount</th><th>Share</th></tr></thead><tbody>`;
-  d.topSkus.forEach((r,i)=>{
-    const share=d.totalSkuGmv>0?(r.gmv/d.totalSkuGmv*100).toFixed(1):0;
-    html+=`<tr><td style="color:#6b7a99">${i+1}</td><td><b>${r.name}</b></td><td>${r.cat}</td><td>${fmtC(r.gmv)}</td><td>${fmtN(r.units)}</td><td>${fmtC(r.disc||0)}</td><td>${share}%</td></tr>`;
-  });
-  html+=`</tbody></table>`;
-
-  // ── City breakdown ──
-  html+=`<div class="sec-hdr">🏙 City GMV — MTD (All Platforms)</div>
-<table><thead><tr><th>City</th><th>MTD GMV</th><th>Units</th></tr></thead><tbody>`;
-  d.cityRows.forEach(r=>{ html+=`<tr><td><b>${r.city}</b></td><td>${fmtC(r.gmv)}</td><td>${fmtN(r.units)}</td></tr>`; });
-  html+=`</tbody></table>`;
-
-  html+=`<div class="footer">Get A Way Desserts · ${MONTH_LABEL(getViewingMonth())} Monthly Review · Confidential · Generated ${date}</div></div></body></html>`;
-
-  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
-  const a=document.createElement('a');
-  a.download='GAW_Monthly_Review_'+getViewingMonth().replace('-','')+'_Day'+d.lastDay+'.html';
-  a.href=URL.createObjectURL(blob);a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-}
-
-function downloadMonthlyReviewXLSX(){
-  if(!window._GAW_IS_ADMIN){alert('Admin access required.');return;}
-  if(typeof XLSX==='undefined'){alert('XLSX library not loaded.');return;}
-  const d=_buildMonthlyData();
-  const wb=XLSX.utils.book_new();
-
-  // Sheet 1: Platform Summary
-  const ps=[['Platform','MTD GMV','MTD Units','MTD Discount','Target','Progress %','Cur DRR','Req DRR','Projected End','Days Tracked','Status']];
-  d.platSummary.forEach(r=>ps.push([r.p,r.mtdGmv,r.mtdUnits,Math.round(r.mtdDisc),r.target,parseFloat(r.progress),r.curDRR,r.reqDRR,r.projEnd,r.daysTracked,r.projEnd>=r.target?'On Track':'Behind']));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ps),'Platform Summary');
-
-  // Sheet 2: Daily GMV
-  const dh=['Date','Total GMV','Units','Discount','Disc %',...PN];
-  const dr2=[dh];
-  const _ab=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];d.dailyRows.forEach(r=>dr2.push([`${_ab} ${r.day}`,r.gmv,r.units,Math.round(r.disc),parseFloat(r.discPct),...PN.map(p=>r[p]!=null?r[p]:'')]));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(dr2),'Daily GMV');
-
-  // Sheet 3: Category Mix
-  const ch=[['Category','MTD GMV','Units','Share %']];
-  d.catRows.forEach(r=>ch.push([r.cat,r.gmv,r.units,parseFloat(r.share)]));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ch),'Category Mix');
-
-  // Sheet 4: Top SKUs
-  const sh=[['Rank','SKU','Category','MTD GMV','Units','Discount','Share %']];
-  const totSkuGmv=d.totalSkuGmv;
-  d.topSkus.forEach((r,i)=>sh.push([i+1,r.name,r.cat,r.gmv,r.units,Math.round(r.disc||0),totSkuGmv>0?parseFloat((r.gmv/totSkuGmv*100).toFixed(1)):0]));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sh),'Top SKUs');
-
-  // Sheet 5: City MTD
-  const cth=[['City','MTD GMV','Units']];
-  d.cityRows.forEach(r=>cth.push([r.city,r.gmv,r.units]));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cth),'City GMV');
-
-  XLSX.writeFile(wb,'GAW_Monthly_Review_'+getViewingMonth().replace('-','')+'_Day'+d.lastDay+'.xlsx');
-}
-
-
 // ── JSONBin removed — GitHub is the only sync method ─────────────────
 // These stubs exist to prevent errors if any old references remain.
 function initCloudSync(){}
@@ -6701,6 +6558,9 @@ function _applyGHPayload(payload,logFn,manual){
 
     // open_po: single small map, keep newer by ts (admin computes; viewers pull). Never let an empty local clobber cloud.
     { const lt=(_delta.open_po&&_delta.open_po.ts)||0; const ct=(merged.open_po&&merged.open_po.ts)||0; if(lt>=ct && lt>0) merged.open_po=_delta.open_po; }
+
+    // fr: persisted FR%, keep newer by ts
+    { const lt=(_delta.fr&&_delta.fr.ts)||0; const ct=(merged.fr&&merged.fr.ts)||0; if(lt>=ct && lt>0) merged.fr=_delta.fr; }
 
     // avail_meta: platform → {last_updated} freshness stamps — keep newest
     if(_delta.avail_meta){
@@ -8055,16 +7915,18 @@ function cmBuildFR(){
     Object.keys(byPlat).forEach(p=>{const o=byPlat[p];o.fr=o.poVal>0?(o.invVal/o.poVal*100):null;});
     Object.keys(bySku).forEach(p=>Object.keys(bySku[p]).forEach(c=>{const o=bySku[p][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;}));
     _cmFR={bySku,byPlat,window:{start,end},hasSku:Object.keys(bySku).length>0,nWin,hasIssued:hasIss,nPlat:Object.keys(byPlat).length,nSku:Object.keys(bySku).reduce((a,p)=>a+Object.keys(bySku[p]).length,0),builtAt:new Date()};
+    try{ if(typeof _delta!=='undefined'&&_delta){ _delta.fr={bySku,byPlat,window:{start,end},hasSku:_cmFR.hasSku,nWin:_cmFR.nWin,nPlat:_cmFR.nPlat,nSku:_cmFR.nSku,hasIssued:hasIss,month:(typeof getViewingMonth==='function'?getViewingMonth():''),ts:Date.now()}; } }catch(e){}
   }catch(e){console.warn('cmBuildFR failed',e);_cmFR=null;}
 }
+function _frState(){ if(typeof _cmFR!=='undefined'&&_cmFR)return _cmFR; if(typeof DB!=='undefined'&&DB&&DB.fr)return DB.fr; return null; }
 function _frForSku(plat,name){
-  if(typeof _cmFR==='undefined'||!_cmFR)return null;
-  if(_cmFR.bySku&&_cmFR.bySku[plat]){
+  const F=_frState(); if(!F)return null;
+  if(F.bySku&&F.bySku[plat]){
     const idx=window._frIdx||(window._frIdx=cmCanonIndex());
     const canon=cmMapName(name,idx);
-    if(canon&&_cmFR.bySku[plat][canon]&&_cmFR.bySku[plat][canon].fr!=null)return{fr:_cmFR.bySku[plat][canon].fr,level:'sku',n:_cmFR.bySku[plat][canon].nPO};
+    if(canon&&F.bySku[plat][canon]&&F.bySku[plat][canon].fr!=null)return{fr:F.bySku[plat][canon].fr,level:'sku',n:F.bySku[plat][canon].nPO};
   }
-  if(_cmFR.byPlat&&_cmFR.byPlat[plat]&&_cmFR.byPlat[plat].fr!=null)return{fr:_cmFR.byPlat[plat].fr,level:'plat',n:_cmFR.byPlat[plat].nPO};
+  if(F.byPlat&&F.byPlat[plat]&&F.byPlat[plat].fr!=null)return{fr:F.byPlat[plat].fr,level:'plat',n:F.byPlat[plat].nPO};
   return null;
 }
 function _frCellHtml(plat,name){
@@ -8138,7 +8000,7 @@ function cmBuildLines(){
 
 /* ---- render ---- */
 function cmDiagHtml(){var d=window._cmDiag;if(!d)return'';var rows=d.rows.map(function(r){return r.plat+': avail '+r.avail+' SKUs \u00B7 LINES '+(r.lines||0)+' (max \u20B9'+(r.maxR||0).toLocaleString('en-IN')+'/day)';}).join('<br>');return '<div style="margin-top:10px;padding:8px 10px;background:#0d1530;color:#a9b4d6;border-radius:8px;font-family:monospace;font-size:10.5px;line-height:1.6"><b>\uD83D\uDD0E inputs ('+d.mk+')</b> \u00B7 tracker: '+d.tracker+' \u00B7 SN: '+d.sn+'<br>'+rows+_frDiagStr()+'</div>';}
-function _frDiagStr(){try{if(typeof _cmFR==='undefined'||!_cmFR)return '<br><b>FR</b> not built \u2014 need tracker with PO RECEIVED DATE + PO/INVOICE VALUE and delivered POs in the last 10 days';var w=_cmFR.window;var dd=function(ms){var x=new Date(ms);return ('0'+x.getDate()).slice(-2)+'/'+('0'+(x.getMonth()+1)).slice(-2);};return '<br><b>FR</b> '+dd(w.start)+'\u2013'+dd(w.end)+' \u00B7 '+(_cmFR.nWin||0)+' delivered POs \u00B7 '+(_cmFR.nPlat||0)+' plat \u00B7 '+(_cmFR.nSku||0)+' per-SKU \u00B7 SN issued: '+(_cmFR.hasIssued?'yes':'no');}catch(e){return '';}}
+function _frDiagStr(){try{var F=_frState();if(!F)return '<br><b>FR</b> not built \u2014 need tracker with PO RECEIVED DATE + PO/INVOICE VALUE and delivered POs in the last 10 days';var w=F.window;var dd=function(ms){var x=new Date(ms);return ('0'+x.getDate()).slice(-2)+'/'+('0'+(x.getMonth()+1)).slice(-2);};return '<br><b>FR</b> '+dd(w.start)+'\u2013'+dd(w.end)+' \u00B7 '+(F.nWin||0)+' delivered POs \u00B7 '+(F.nPlat||0)+' plat \u00B7 '+(F.nSku||0)+' per-SKU \u00B7 SN issued: '+(F.hasIssued?'yes':'no');}catch(e){return '';}}
 function cmRows(){return (_cmLines||[]).filter(l=>l.plat===_cmPlat).sort((a,b)=>b.r-a.r);}
 function cmInc(l){return !_cmExcl[l.plat+'|'+l.type+'|'+l.city+'|'+l.sku];}
 function cmToggleLine(key){_cmExcl[key]=!_cmExcl[key];cmRenderBody();}
