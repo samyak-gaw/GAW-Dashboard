@@ -659,6 +659,8 @@ body{padding-bottom:env(safe-area-inset-bottom)}
       <tbody id="skuFullBody"></tbody>
     </table></div>
   </div>
+  <!-- NLC / Realized Revenue -->
+  <div id="nlcSection"></div>
 </div>
 
 <!-- PROJECTIONS -->
@@ -731,7 +733,9 @@ body{padding-bottom:env(safe-area-inset-bottom)}
           <option value="doi_asc">Sort: DOI ▲ (low stock first)</option>
           <option value="name">Sort: Name (A–Z)</option>
         </select>
+        <button class="exp-btn" onclick="_osaExportXlsx()" style="font-size:11px;background:#1B2B45;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:700">⬇ Download Excel</button>
       </div>
+      <div id="availSkuFilters"></div>
       <div id="availSkuTable"></div>
     </div>
   </div>
@@ -772,6 +776,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
           </select>
           <button class="exp-btn" onclick="_sohExportXlsx()" style="font-size:11px;background:#1B2B45;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:700">⬇ Download Excel</button>
         </div>
+        <div id="availSohFilters"></div>
         <div id="availSohSkuTable"></div>
       </div>
     </div>
@@ -1234,12 +1239,20 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   </div>
 
   <!-- City performance summary table -->
-  <div class="card" style="margin-bottom:20px">
-    <h3>📊 City Performance Summary — <span id="ciTableLabel">All Platforms · Today</span></h3>
+  <div class="card" style="margin-bottom:20px" id="ciSummaryCard">
+    <h3>📊 City Performance Summary — <span id="ciTableLabel">All Platforms · Today</span> <span style="font-size:10px;font-weight:400;color:var(--muted)">· click a city to drill into its SKUs</span></h3>
     <div class="scroll-table"><table class="tbl">
       <thead><tr><th>City</th><th>Zepto GMV</th><th>Blinkit GMV</th><th>Instamart GMV</th><th>Flipkart GMV</th><th>BigBasket GMV</th><th>Total</th><th>City DRR<br><span style="font-weight:400;font-size:9px;color:var(--muted)">units/day · MTD</span></th><th>SDLW</th><th>Top SKU</th></tr></thead>
       <tbody id="ciCitySummaryBody"></tbody>
     </table></div>
+  </div>
+  <!-- City -> SKU drilldown -->
+  <div class="card" style="margin-bottom:20px;display:none" id="ciDrillView">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <button onclick="ciBackToCities()" style="font-size:11px;background:#1B2B45;color:#fff;border:none;padding:7px 12px;border-radius:6px;cursor:pointer;font-weight:700">← Back to cities</button>
+      <h3 style="margin:0" id="ciDrillTitle">City SKU breakdown</h3>
+    </div>
+    <div id="ciDrillBody"></div>
   </div>
 </div>
 
@@ -1438,6 +1451,117 @@ function _fkDiscActive(monthKey){
   const mk = MONTH_NUM_FROM_KEY(monthKey) + YEAR_FROM_KEY(monthKey)*12;
   const me = MONTH_NUM_FROM_KEY(em) + YEAR_FROM_KEY(em)*12;
   return mk >= me;
+}
+
+/* NLC / Realized Revenue ---------------------------------------------------- */
+// 13 confirmed NLCs. FK/Zepto/IM keyed by canonical SKU NAME; Amazon by ASIN.
+const NLC_MAP = {
+  Flipkart: {
+    'Belgian Chocolate Ice Cream Tub 500ml': 200,
+    'Blueberry Cheesecake Ice Cream Tub 500ml': 175,
+    'Mango Ice Cream Tub 500ml': 175
+  },
+  Zepto: {
+    'Blueberry Cheesecake Ice Cream Cone': 50,
+    'Blueberry Cheesecake Ice Cream Tub 500ml': 175,
+    'Mango Duet Stick': 32
+  },
+  Instamart: {
+    'Blueberry Cheesecake Ice Cream Cone': 50,
+    'Malai Kulfi Stick': 30,
+    'Mango Duet Stick': 32,
+    'Raspberry Duet Stick': 32
+  },
+  Amazon: {            // keyed by ASIN; gated to Jul-2026
+    'B0GTZK6T6V': 140, // Mango Ice Cream Tub 500ml
+    'B0GNZ3C99N': 27,  // Mango Duet Stick
+    'B0GYPK86NX': 27   // Raspberry Duet Stick
+  }
+};
+const NLC_EFFECTIVE = { Flipkart:'live', Zepto:'live', Instamart:'live', Amazon:'Jul-2026' };
+
+// Amazon NLC applies only from Jul-2026 (same ordinal compare as _fkDiscActive)
+function _nlcActive(plat, monthKey){
+  if(plat!=='Amazon') return true;
+  const mk = MONTH_NUM_FROM_KEY(monthKey) + YEAR_FROM_KEY(monthKey)*12;
+  const me = MONTH_NUM_FROM_KEY('Jul-2026') + YEAR_FROM_KEY('Jul-2026')*12;
+  return mk >= me;
+}
+
+// canonical NAME -> platform sku_id (for FK/Zepto/IM; Amazon uses ASIN directly)
+function _nlcSkuIdByName(plat){
+  const idx={};
+  const fold = m => Object.keys(m||{}).forEach(id=>{
+    const nm=(m[id]&&m[id].name)||''; if(nm && !(nm in idx)) idx[nm]=id;
+  });
+  fold(DB.sku_master[plat]); fold(SEED.sku_master[plat]);
+  return idx;
+}
+
+// MTD units + consumer GMV for one platform sku_id (normalised match)
+function _nlcMtd(plat, skuId){
+  const latest = latestDay() || getMonthDays();
+  const rows = (DB.april[plat] && DB.april[plat].sku) || [];
+  const target = _normSkuId(skuId);
+  let u=0, g=0;
+  rows.forEach(r=>{ if(r.day<=latest && _normSkuId(r.sku_code)===target){ u+=r.units||0; g+=r.gmv||0; } });
+  return {units:u, gmv:g};
+}
+
+function renderNLCSection(){
+  const host = document.getElementById('nlcSection');
+  if(!host) return;
+  const mk = getViewingMonth();
+  const plats = ['Flipkart','Zepto','Instamart','Amazon'];
+  let totRealized=0, totGmv=0, rowsHtml='', anyPending=false;
+
+  plats.forEach(plat=>{
+    const map = NLC_MAP[plat]||{}; const keys=Object.keys(map);
+    if(!keys.length) return;
+    const active = _nlcActive(plat, mk);
+    const nameIdx = (plat==='Amazon') ? null : _nlcSkuIdByName(plat);
+    let pRealized=0, pGmv=0, body='';
+    keys.forEach(key=>{
+      const nlc = map[key];
+      const skuId = (plat==='Amazon') ? key : (nameIdx[key]||null);
+      const nm = (plat==='Amazon') ? (skuLookup('Amazon',key).name||key) : key;
+      const m = skuId ? _nlcMtd(plat, skuId) : {units:0,gmv:0};
+      const realized = active ? m.units*nlc : 0;
+      const realPct = (active && m.gmv>0) ? (realized/m.gmv*100) : null;
+      if(active){ pRealized+=realized; pGmv+=m.gmv; } else { anyPending=true; }
+      body += '<tr>'
+        + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+nm+'</td>'
+        + '<td style="padding:6px 10px;font-size:12px;text-align:center">\u20B9'+nlc+'</td>'
+        + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+(active?Math.round(m.units).toLocaleString('en-IN'):'\u2014')+'</td>'
+        + '<td style="padding:6px 10px;font-size:12px;text-align:center;font-weight:700">'+(active?fC(realized):'\u2014')+'</td>'
+        + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+(active?fC(m.gmv):'\u2014')+'</td>'
+        + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+(realPct==null?'\u2014':(Math.round(realPct)+'%'))+'</td>'
+        + '</tr>';
+    });
+    totRealized+=pRealized; totGmv+=pGmv;
+    const eff = active ? '' : ' <span style="font-size:10px;color:#c07700">(NLC effective '+NLC_EFFECTIVE[plat]+')</span>';
+    rowsHtml += '<tr style="background:#f0f3fa"><td colspan="6" style="padding:6px 10px;font-size:11px;font-weight:800;text-transform:uppercase;color:#1a3a6e;text-align:center">'+plat+eff+'</td></tr>'
+      + body
+      + (active ? '<tr><td colspan="3" style="padding:6px 10px;font-size:11px;color:var(--muted);text-align:center">Subtotal</td><td style="padding:6px 10px;font-size:12px;text-align:center;font-weight:800">'+fC(pRealized)+'</td><td style="padding:6px 10px;font-size:12px;text-align:center">'+fC(pGmv)+'</td><td></td></tr>' : '');
+  });
+
+  host.innerHTML = '<div class="card" style="margin-bottom:16px">'
+    + '<h3>\uD83D\uDCB0 NLC / Realized Revenue <span class="pill" style="color:var(--muted)">units \u00D7 NLC \u00B7 '+mk+'</span></h3>'
+    + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">What GAW nets per platform (NLC) vs consumer GMV. Realization % = realized \u00F7 GMV.</div>'
+    + '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#1a3a6e;color:#fff">'
+    + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">SKU</th>'
+    + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">NLC</th>'
+    + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">MTD Units</th>'
+    + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">Realized \u20B9</th>'
+    + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">GMV</th>'
+    + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">Realization %</th>'
+    + '</tr></thead><tbody>'+rowsHtml+'</tbody>'
+    + '<tfoot><tr style="border-top:2px solid #1a3a6e"><td colspan="3" style="padding:8px 10px;font-size:12px;font-weight:800;text-align:center">Grand total realized</td>'
+    + '<td style="padding:8px 10px;font-size:13px;font-weight:800;text-align:center">'+fC(totRealized)+'</td>'
+    + '<td style="padding:8px 10px;font-size:12px;text-align:center">'+fC(totGmv)+'</td>'
+    + '<td style="padding:8px 10px;font-size:12px;text-align:center">'+(totGmv>0?Math.round(totRealized/totGmv*100)+'%':'\u2014')+'</td></tr></tfoot></table>'
+    + (anyPending ? '<div style="font-size:11px;color:#c07700;margin-top:8px">\u23F3 Amazon NLC (3 SKUs) effective Jul-2026 \u2014 excluded until pre-NLC SOH is exhausted.</div>' : '')
+    + '</div>';
 }
 
 function priorMonthKey(monthKey){
@@ -2819,6 +2943,7 @@ function renderCategory(){
     allCats.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;catSel.appendChild(o);});
   }
   renderSkuAnalysis();
+  renderNLCSection();
 }
 
 // ══════════════════════════════════════════════
@@ -4879,6 +5004,7 @@ function _availComputeMTD(){
       // Average OSA_LS and DS across days (SKU-level MTD)
       let osaSum=0,osaCnt=0,dsSum=0,dsCnt=0;
       dayKeys.forEach(d=>{
+        if(parseInt(d,10)>_mtdLatest)return; // respect back-dated day pick: only average days <= selected
         const dd=days[d];
         if(dd&&dd.wt_osa_ls!=null){osaSum+=dd.wt_osa_ls;osaCnt++;}
         if(dd&&dd.ds_listing!=null){dsSum+=dd.ds_listing;dsCnt++;}
@@ -5082,6 +5208,11 @@ function renderAvailability(){
   _availRenderRestockQueue();
   // Pre-render SOH platform cards so the view is ready the moment the toggle is clicked.
   _availRenderSohPlatformCards();
+  // Day-pick / recompute: refresh whichever drilled table is open so OSA/DS reflect SELECTED_DAY.
+  if(_availCurrentPlat&&document.getElementById('availSkuView')&&document.getElementById('availSkuView').style.display!=='none')availRenderSkuTable();
+  if(_availCurrentSku&&document.getElementById('availCityView')&&document.getElementById('availCityView').style.display!=='none')_availRenderCityTable();
+  if(_availSohPlat&&document.getElementById('availSohSkuView')&&document.getElementById('availSohSkuView').style.display!=='none')_availRenderSohSkuTable();
+  if(_availSohSku&&document.getElementById('availSohCityView')&&document.getElementById('availSohCityView').style.display!=='none')_availRenderSohCityTable();
   _availRenderDataFreshness();
 }
 
@@ -5311,9 +5442,88 @@ function availDrillToPlatform(plat){
   document.getElementById('availCityView').style.display='none';
   document.getElementById('availSkuViewTitle').textContent=plat+' — SKU Detail';
   document.getElementById('availSkuSearch').value='';
+  _resetAvailFilters('osa'); _buildAvailFilterBar('osa');
   availRenderSkuTable();
   window.scrollTo({top:0,behavior:'smooth'});
 }
+
+
+/* ---- SKU-table filters (OSA + SOH) ---- */
+let _osaFilters={cat:'',city:'',fr:'',osa:'',po:'',skus:null};
+let _sohFilters={cat:'',city:'',fr:'',ds:'',po:'',skus:null};
+function _filtState(v){return v==='osa'?_osaFilters:_sohFilters;}
+function _availPlatFacets(plat){
+  const pd=(window._availMTD||{})[plat]||{skus:{}};
+  const cats=new Set(),cities=new Set(),skus=[];
+  Object.keys(pd.skus).forEach(sku=>{
+    const info=skuLookup(plat,sku),k=pd.skus[sku];
+    if(info.cat)cats.add(info.cat);
+    Object.keys(k.by_city||{}).forEach(c=>cities.add(c));
+    Object.keys(k.soh_by_city||{}).forEach(c=>{if((k.soh_by_city[c]||0)>0)cities.add(c);});
+    skus.push({id:sku,name:info.name});
+  });
+  skus.sort((a,b)=>a.name.localeCompare(b.name));
+  return {cats:[...cats].sort(),cities:[...cities].sort(),skus};
+}
+function _availSkuInCity(plat,sku,city){
+  const k=((window._availMTD||{})[plat]||{skus:{}}).skus[sku]; if(!k)return false;
+  if(k.by_city&&k.by_city[city])return true;
+  if(k.soh_by_city&&(k.soh_by_city[city]||0)>0)return true;
+  return false;
+}
+function _frBand(fr){ if(fr==null)return null; return fr>=95?'hi':(fr>=85?'mid':'lo'); }
+function _osaBand(v){ if(v==null)return null; return v>=90?'hi':(v>=75?'mid':'lo'); }
+function _dsBand(v){ if(v==null)return null; return v<7?'urgent':(v<=14?'mid':'hi'); }
+function _applyAvailFilters(list,plat,view){
+  const st=_filtState(view);
+  return list.filter(r=>{
+    if(st.cat&&r.cat!==st.cat)return false;
+    if(st.city&&!_availSkuInCity(plat,r.sku,st.city))return false;
+    if(st.skus&&!st.skus.has(r.sku))return false;
+    if(st.po){ const po=(view==='osa')?_sohOpenPO(plat,r.name,null):r.openpo; const has=(po!=null&&po>0); if(st.po==='has'&&!has)return false; if(st.po==='none'&&has)return false; }
+    if(st.fr){ const f=(typeof _frForSku==='function')?_frForSku(plat,r.name):null; if(_frBand(f&&f.fr)!==st.fr)return false; }
+    if(view==='osa'&&st.osa){ if(_osaBand(r.wt_osa_ls)!==st.osa)return false; }
+    if(view==='soh'&&st.ds){ if(_dsBand(r.dts)!==st.ds)return false; }
+    return true;
+  });
+}
+function _filtSel(view,key,opts,sel){
+  return '<select onchange="_setFilt(\''+view+'\',\''+key+'\',this.value)" style="font-size:11px;padding:7px 8px;border:1px solid var(--border);border-radius:6px;background:#f0f3fa">'
+    +opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===(sel||'')?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
+}
+function _skuPicker(view,skus,selSet){
+  const n=selSet?selSet.size:0;
+  const items=skus.map(s=>'<label style="display:block;font-size:11px;padding:3px 6px;cursor:pointer;white-space:nowrap"><input type="checkbox" '+(selSet&&selSet.has(s.id)?'checked':'')+' onchange="_toggleSkuFilt(\''+view+'\',\''+String(s.id).replace(/'/g,"\\'")+'\',this.checked)"> '+s.name+'</label>').join('');
+  return '<details style="position:relative"><summary style="list-style:none;font-size:11px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:#f0f3fa;cursor:pointer">\u{1F3AF} SKUs'+(n?' ('+n+')':'')+'</summary>'
+    +'<div style="position:absolute;z-index:50;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:4px;max-height:260px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.15);min-width:240px">'
+    +'<div style="display:flex;gap:8px;margin-bottom:6px"><button onclick="_skuFiltAll(\''+view+'\',true)" style="font-size:10px;padding:3px 7px;cursor:pointer">All</button><button onclick="_skuFiltAll(\''+view+'\',false)" style="font-size:10px;padding:3px 7px;cursor:pointer">None</button></div>'
+    +items+'</div></details>';
+}
+function _buildAvailFilterBar(view){
+  const hostId=view==='osa'?'availSkuFilters':'availSohFilters';
+  const host=document.getElementById(hostId); if(!host)return;
+  const plat=view==='osa'?_availCurrentPlat:_availSohPlat;
+  if(!plat){host.innerHTML='';return;}
+  const f=_availPlatFacets(plat),st=_filtState(view);
+  const bandSel=(view==='osa')
+    ?_filtSel(view,'osa',[['','OSA: any'],['hi','OSA \u226590'],['mid','OSA 75\u201390'],['lo','OSA <75']],st.osa)
+    :_filtSel(view,'ds',[['','DS: any'],['urgent','DS urgent <7'],['mid','DS 7\u201314'],['hi','DS >14']],st.ds);
+  host.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">'
+    +_filtSel(view,'cat',[['','All categories']].concat(f.cats.map(c=>[c,c])),st.cat)
+    +_filtSel(view,'city',[['','All cities']].concat(f.cities.map(c=>[c,c])),st.city)
+    +_filtSel(view,'fr',[['','FR%: any'],['hi','FR \u226595'],['mid','FR 85\u201395'],['lo','FR <85']],st.fr)
+    +bandSel
+    +_filtSel(view,'po',[['','Open PO: any'],['has','Has PO'],['none','No PO']],st.po)
+    +_skuPicker(view,f.skus,st.skus)
+    +'<button onclick="_clearFilt(\''+view+'\')" style="font-size:11px;background:#eee;border:1px solid var(--border);padding:7px 10px;border-radius:6px;cursor:pointer">Clear</button>'
+    +'</div>';
+}
+function _filtRender(view){ if(view==='osa')availRenderSkuTable(); else _availRenderSohSkuTable(); }
+function _setFilt(view,key,val){ _filtState(view)[key]=val||''; _filtRender(view); }
+function _clearFilt(view){ const st=_filtState(view); Object.keys(st).forEach(k=>st[k]=(k==='skus')?null:''); _buildAvailFilterBar(view); _filtRender(view); }
+function _toggleSkuFilt(view,id,on){ const st=_filtState(view); if(!st.skus)st.skus=new Set(); if(on)st.skus.add(id); else{ st.skus.delete(id); if(!st.skus.size)st.skus=null; } _filtRender(view); }
+function _skuFiltAll(view,all){ const st=_filtState(view); const plat=view==='osa'?_availCurrentPlat:_availSohPlat; st.skus=all?new Set(_availPlatFacets(plat).skus.map(s=>s.id)):null; _buildAvailFilterBar(view); _filtRender(view); }
+function _resetAvailFilters(view){ const st=_filtState(view); Object.keys(st).forEach(k=>st[k]=(k==='skus')?null:''); }
 
 function availRenderSkuTable(){
   const plat=_availCurrentPlat;
@@ -5326,6 +5536,7 @@ function availRenderSkuTable(){
     return{sku,name:info.name,cat:info.cat,mrp:info.mrp||0,...mtd.skus[sku]};
   });
   if(search)list=list.filter(r=>(r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search));
+  list=_applyAvailFilters(list,plat,'osa');
   list.sort((a,b)=>{
     if(sortBy==='lost_gmv')return b.lost_gmv-a.lost_gmv;
     if(sortBy==='osa_asc')return (a.wt_osa_ls??101)-(b.wt_osa_ls??101);
@@ -5518,6 +5729,7 @@ function availSohDrillToPlatform(plat){
   document.getElementById('availSohCityView').style.display='none';
   document.getElementById('availSohSkuTitle').textContent=plat+' — Stock On Hand';
   const s=document.getElementById('availSohSearch'); if(s)s.value='';
+  _resetAvailFilters('soh'); _buildAvailFilterBar('soh');
   _availRenderSohSkuTable();
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -5600,6 +5812,50 @@ function _sohExportXlsx(){
   X.writeFile(wb,'GAW_SOH_Explorer_'+(mk||'export')+'.xlsx');
 }
 
+// OSA (Platforms view) SKU table export — mirrors _sohExportXlsx. Current platform; window-aware DS.
+function _osaExportXlsx(){
+  var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
+  var styled=!!window.XLSXStyle;
+  var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
+  // Respect current platform; fall back to all platforms with OSA data.
+  var plats;
+  if(_availCurrentPlat && window._availMTD && window._availMTD[_availCurrentPlat] && Object.keys((window._availMTD[_availCurrentPlat].skus)||{}).length){
+    plats=[_availCurrentPlat];
+  }else{
+    plats=Object.keys(window._availMTD||{}).filter(function(p){return window._availMTD[p]&&window._availMTD[p].skus&&Object.keys(window._availMTD[p].skus).length;});
+  }
+  if(!plats.length){alert('No OSA data loaded to export.');return;}
+  var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
+  var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
+  var head=['SKU','Category','OSA Today','OSA MTD','FR% (10d)','DS Listing','DOI','SOH','DRR (u/day)','Lost GMV'];
+  var wb=X.utils.book_new();
+  var _pct=function(v){return (v==null||isNaN(v))?'':Math.round(v*10)/10;};
+  plats.forEach(function(plat){
+    var pd=window._availMTD[plat]||{skus:{}};
+    var list=Object.keys(pd.skus).map(function(sku){
+      var info=skuLookup(plat,sku), k=pd.skus[sku];
+      var dsVal=(typeof _availDs==='function')?_availDs(k):k.ds_listing;
+      var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name):null;
+      var _frv=_f?(_f.level==='sku'?Math.round(_f.fr):Math.round(_f.fr)+' (plat)'):'';
+      var doiv=(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':''):Math.round(k.doi)+(k.doi_flag==='capped'?'+':'');
+      return {name:info.name,cat:info.cat||'',osaToday:k.day_osa_ls,osaMtd:k.wt_osa_ls,fr:_frv,ds:dsVal,doi:doiv,soh:Math.round(k.soh||0),drr:Math.round(k.drr||0),lost:Math.round(k.lost_gmv||0)};
+    }).filter(function(r){return r.soh>0||r.drr>0||r.osaMtd!=null;}).sort(function(a,b){return (b.lost||0)-(a.lost||0);});
+    var aoa=[['GAW · '+plat+' · OSA / Availability · '+mk,'','','','','','','','',''],head];
+    list.forEach(function(r){ aoa.push([r.name,r.cat,_pct(r.osaToday),_pct(r.osaMtd),r.fr,_pct(r.ds),r.doi,r.soh,r.drr,r.lost]); });
+    var ws=X.utils.aoa_to_sheet(aoa);
+    ws['!cols']=[{wch:38},{wch:18},{wch:11},{wch:11},{wch:12},{wch:12},{wch:11},{wch:12},{wch:12},{wch:14}];
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:9}}];
+    if(styled){
+      var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
+      for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
+      for(var r2=0;r2<list.length;r2++){for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue; cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}}
+    }
+    var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
+    X.utils.book_append_sheet(wb,ws,safe);
+  });
+  X.writeFile(wb,'GAW_OSA_'+(plats.length===1?plats[0]+'_':'')+(mk||'export')+'.xlsx');
+}
+
 function _availRenderSohSkuTable(){
   const plat=_availSohPlat;
   if(!plat)return;
@@ -5617,6 +5873,7 @@ function _availRenderSohSkuTable(){
     return {sku,name:info.name,cat:info.cat,soh:k.soh||0,dts:best.days,dts_flag:best.flag,drr:k.drr||0,reorder,nCities,openpo:_sohOpenPO(plat,info.name,null)};
   }).filter(r=>r.soh>0||r.drr>0); // only SKUs with stock or sales
   if(search)list=list.filter(r=>(r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search));
+  list=_applyAvailFilters(list,plat,'soh');
   list.sort((a,b)=>{
     if(sortBy==='dts_asc')return (a.dts??99999)-(b.dts??99999);
     if(sortBy==='soh_desc')return b.soh-a.soh;
@@ -5693,16 +5950,18 @@ function _availRenderSohCityTable(){
     const cityDrr=totalSoh>0?drr*(csoh/totalSoh):0; // proxy
     const cdts=_sohDaysToStockout(csoh,cityDrr);
     const cpo=_sohOpenPO(plat,info.name,c);
+    const cf=_frForSkuCity(plat,info.name,c); const cfCol=_frColor(cf&&cf.fr);
     return `<tr>
       <td style="padding:8px 10px;font-size:12px"><b>${c}</b></td>
       <td style="padding:8px 10px;font-size:12px;font-weight:700">${Math.round(csoh).toLocaleString('en-IN')}</td>
       <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${totalSoh>0?((csoh/totalSoh)*100).toFixed(0):0}%</td>
       <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(cdts)};font-weight:700">${_sohFmtDTS(cdts)}</td>
       <td style="padding:8px 10px;font-size:12px">${_sohPoCell(cpo)}</td>
+      <td style="padding:8px 10px;font-size:12px;color:${cfCol};font-weight:700" title="True per-city fill rate · issued ÷ indent · 10d delivered">${cf?_frFmt(cf.fr):'\u2014'}</td>
     </tr>`;
   }).join('');
   const cityTable=`<div style="font-size:11px;font-weight:700;color:#1a3a6e;text-transform:uppercase;margin:4px 0 8px">By City</div>
-    <table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Share</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout*</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th></tr></thead><tbody>${cityRows}</tbody></table>`;
+    <table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Share</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout*</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="True per-city fill rate (issued ÷ indent), 10d delivered POs">FR% (10d)</th></tr></thead><tbody>${cityRows}</tbody></table>`;
 
   // Facility table (only platforms that report it: Blinkit/IM/FK/Amazon)
   let facTable='';
@@ -7156,6 +7415,9 @@ function getAllCities(){
 }
 
 function renderCityIntel(){
+  // Reset drill -> summary on (re)entry so a stale city drill isn't shown.
+  const _dv=document.getElementById('ciDrillView'); if(_dv)_dv.style.display='none';
+  const _sc=document.getElementById('ciSummaryCard'); if(_sc)_sc.style.display='block';
   renderCityHeatmap();
   renderCityMixPanel();
   renderCityPillBars();
@@ -7502,7 +7764,7 @@ function renderCiSummaryTable(){
     return{city,totToday,sdlw,platVals,drr,topSku:topSku?topSku[0]:'—'};
   }).filter(Boolean).sort((a,b)=>b.totToday-a.totToday);
 
-  tableEl.innerHTML=rows.map(r=>`<tr>
+  tableEl.innerHTML=rows.map(r=>`<tr style="cursor:pointer" onclick="ciDrillToCity('${String(r.city).replace(/'/g,"\\'")}')">
     <td style="font-weight:700">${r.city}</td>
     <td>${r.platVals.Zepto>0?fC(r.platVals.Zepto):'<span style="color:var(--muted)">—</span>'}</td>
     <td>${r.platVals.Blinkit>0?fC(r.platVals.Blinkit):'<span style="color:var(--muted)">—</span>'}</td>
@@ -7514,6 +7776,49 @@ function renderCiSummaryTable(){
     <td>${r.sdlw!==null?badgeDelta(r.sdlw.toFixed(1)):'<span class="cb-na">N/A</span>'}</td>
     <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.topSku}">${r.topSku}</td>
   </tr>`).join('')||'<tr><td colspan="10" style="color:var(--muted);padding:16px;text-align:center">No city data for selected day</td></tr>';
+}
+
+// City -> SKU drilldown (true city×SKU MTD from citysku; GMV/Units/DRR + per-platform split)
+function ciDrillToCity(city){
+  const _drrDays=new Set(); CI_PLATS.forEach(p=>(DB.april[p].city||[]).forEach(x=>_drrDays.add(x.day))); const nD=_drrDays.size||1;
+  const perPlat={}; CI_PLATS.forEach(p=>{perPlat[p]=((cmCitySku(p).map)||{})[city]||{};});
+  const catOf={}; CI_PLATS.forEach(p=>{const m=DB.sku_master[p]||{}; Object.values(m).forEach(s=>{if(s&&s.name&&!(s.name in catOf))catOf[s.name]=s.cat||'';});});
+  const names=new Set(); CI_PLATS.forEach(p=>Object.keys(perPlat[p]).forEach(n=>names.add(n)));
+  const list=[...names].map(nm=>{
+    let gmv=0,units=0; const pv={};
+    CI_PLATS.forEach(p=>{const o=perPlat[p][nm]; pv[p]=o?o.gmv:0; gmv+=o?o.gmv:0; units+=o?(o.units||0):0;});
+    return {nm,cat:catOf[nm]||'',gmv,units,drr:Math.round(units/nD),pv};
+  }).filter(r=>r.gmv>0||r.units>0).sort((a,b)=>b.gmv-a.gmv);
+  const totGmv=list.reduce((s,r)=>s+r.gmv,0), totUnits=list.reduce((s,r)=>s+r.units,0);
+  const body=document.getElementById('ciDrillBody');
+  if(!list.length){ body.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No SKU-level data for '+city+'.</div>'; }
+  else{
+    const rows=list.map((r,i)=>`<tr>
+      <td>${i+1}</td>
+      <td><b>${r.nm}</b></td>
+      <td style="font-size:11px;color:var(--muted)">${r.cat}</td>
+      <td><b>${fC(r.gmv)}</b></td>
+      <td>${(r.units||0).toLocaleString('en-IN')}</td>
+      <td style="font-weight:700;color:#16a085">${(r.drr||0).toLocaleString('en-IN')}</td>
+      <td>${r.pv.Zepto>0?fC(r.pv.Zepto):'<span style="color:var(--muted)">—</span>'}</td>
+      <td>${r.pv.Blinkit>0?fC(r.pv.Blinkit):'<span style="color:var(--muted)">—</span>'}</td>
+      <td>${r.pv.Instamart>0?fC(r.pv.Instamart):'<span style="color:var(--muted)">—</span>'}</td>
+      <td>${r.pv.Flipkart>0?fC(r.pv.Flipkart):'<span style="color:var(--muted)">—</span>'}</td>
+      <td>${r.pv.BigBasket>0?fC(r.pv.BigBasket):'<span style="color:var(--muted)">—</span>'}</td>
+    </tr>`).join('');
+    body.innerHTML=`<div class="scroll-table"><table class="tbl">
+      <thead><tr><th>#</th><th>SKU</th><th>Cat</th><th>GMV</th><th>Units</th><th>DRR<br><span style="font-weight:400;font-size:9px;color:var(--muted)">u/day · MTD</span></th><th>Zepto</th><th>Blinkit</th><th>Instamart</th><th>Flipkart</th><th>BigBasket</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="border-top:2px solid #1B2B45"><td></td><td colspan="2"><b>Total · ${list.length} SKUs</b></td><td><b>${fC(totGmv)}</b></td><td><b>${totUnits.toLocaleString('en-IN')}</b></td><td colspan="6"></td></tr></tfoot>
+    </table></div>`;
+  }
+  document.getElementById('ciDrillTitle').textContent=city+' — SKU breakdown · MTD';
+  const sc=document.getElementById('ciSummaryCard'); if(sc)sc.style.display='none';
+  const dv=document.getElementById('ciDrillView'); if(dv){dv.style.display='block'; dv.scrollIntoView({behavior:'smooth',block:'start'});}
+}
+function ciBackToCities(){
+  const dv=document.getElementById('ciDrillView'); if(dv)dv.style.display='none';
+  const sc=document.getElementById('ciSummaryCard'); if(sc){sc.style.display='block'; sc.scrollIntoView({behavior:'smooth',block:'start'});}
 }
 
 // ══════════════════════════════════════════════
@@ -7734,7 +8039,7 @@ async function cmFetchTracker(){
     if(!rows.length)throw new Error('empty');
     const hdr=rows[0].map(h=>String(h||'').trim());
     const ix=n=>hdr.indexOf(n);
-    const iPO=ix('SUPPLY NOTE PO'),iPlat=ix('Q COM PARTNER'),iCity=ix('CITY'),iSt=ix('PO STATUS');
+    const iPO=ix('SUPPLY NOTE PO'),iPlat=ix('Q COM PARTNER'),iCity=(ix('CITY')>=0?ix('CITY'):hdr.findIndex(h=>/\bcity\b/i.test(h))),iSt=ix('PO STATUS');
     const iRecv=ix('PO RECEIVED DATE'),iPV=ix('PO VALUE'),iIV=ix('INVOICE VALUE');
     const _trkAll={};
     if(iPO<0||iSt<0)throw new Error('columns not found (is gid the live <Month> Tracker?)');
@@ -7804,7 +8109,7 @@ function uploadTracker(input){
       });
       if(!chosen)throw new Error('No sheet with SUPPLY NOTE PO + PO STATUS columns');
       const hdr=chosen.aoa[chosen.hdrRow].map(c=>String(c).trim());
-      const iPO=hdr.indexOf('SUPPLY NOTE PO'),iPlat=hdr.indexOf('Q COM PARTNER'),iCity=hdr.indexOf('CITY'),iSt=hdr.indexOf('PO STATUS');
+      const iPO=hdr.indexOf('SUPPLY NOTE PO'),iPlat=hdr.indexOf('Q COM PARTNER'),iCity=(hdr.indexOf('CITY')>=0?hdr.indexOf('CITY'):hdr.findIndex(h=>/\bcity\b/i.test(h))),iSt=hdr.indexOf('PO STATUS');
       const iRecv=hdr.indexOf('PO RECEIVED DATE'),iPV=hdr.indexOf('PO VALUE'),iIV=hdr.indexOf('INVOICE VALUE');
       const _trkAll={};
       const open={}; let cnt=0;
@@ -7859,23 +8164,29 @@ function cmBuildFR(){
     const end=maxT||Date.now(); const start=end-9*86400000;  // 10 calendar days inclusive
     const idx=(typeof _cmSN!=='undefined'&&_cmSN)?cmCanonIndex():null;
     const hasIss=!!(typeof _cmSN!=='undefined'&&_cmSN&&_cmSN.hasIssued);
-    const bySku={},byPlat={}; let nWin=0;
+    const bySku={},byPlat={},bySkuCity={}; let nWin=0;
     Object.keys(all).forEach(po=>{
       const mt=all[po];
       if(!mt.plat||!CM_DELIVERED.has(mt.status))return;
       if(!mt.recv)return; const t=mt.recv.getTime(); if(t<start||t>end)return;
       const bp=(byPlat[mt.plat]=byPlat[mt.plat]||{poVal:0,invVal:0,nPO:0}); bp.poVal+=mt.poVal||0; bp.invVal+=mt.invVal||0; bp.nPO++; nWin++;
       if(idx&&hasIss&&_cmSN.byPO[po]){
+        const cty=(mt.city&&mt.city!=='Unknown')?mt.city:null; // honest per-city: skip unattributed POs
         _cmSN.byPO[po].forEach(it=>{ if(it.issued==null)return; const canon=cmMapName(it.nm,idx);
           if(!canon||CM_DISCONTINUED.has(cmKey(canon))||CM_DISCONTINUED.has(cmKey(it.nm)))return;
           const bs=(bySku[mt.plat]=bySku[mt.plat]||{}); const o=(bs[canon]=bs[canon]||{indent:0,issued:0,nPO:0}); o.indent+=it.q||0; o.issued+=it.issued||0; o.nPO++;
+          if(cty){
+            const pc=(bySkuCity[mt.plat]=bySkuCity[mt.plat]||{}); const cc=(pc[cty]=pc[cty]||{});
+            const oc=(cc[canon]=cc[canon]||{indent:0,issued:0,nPO:0}); oc.indent+=it.q||0; oc.issued+=it.issued||0; oc.nPO++;
+          }
         });
       }
     });
     Object.keys(byPlat).forEach(p=>{const o=byPlat[p];o.fr=o.poVal>0?(o.invVal/o.poVal*100):null;});
     Object.keys(bySku).forEach(p=>Object.keys(bySku[p]).forEach(c=>{const o=bySku[p][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;}));
-    _cmFR={bySku,byPlat,window:{start,end},hasSku:Object.keys(bySku).length>0,nWin,hasIssued:hasIss,nPlat:Object.keys(byPlat).length,nSku:Object.keys(bySku).reduce((a,p)=>a+Object.keys(bySku[p]).length,0),builtAt:new Date()};
-    try{ if(typeof _delta!=='undefined'&&_delta){ _delta.fr={bySku,byPlat,window:{start,end},hasSku:_cmFR.hasSku,nWin:_cmFR.nWin,nPlat:_cmFR.nPlat,nSku:_cmFR.nSku,hasIssued:hasIss,month:(typeof getViewingMonth==='function'?getViewingMonth():''),ts:Date.now()}; } }catch(e){}
+    Object.keys(bySkuCity).forEach(p=>Object.keys(bySkuCity[p]).forEach(ct=>Object.keys(bySkuCity[p][ct]).forEach(c=>{const o=bySkuCity[p][ct][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;})));
+    _cmFR={bySku,byPlat,bySkuCity,window:{start,end},hasSku:Object.keys(bySku).length>0,nWin,hasIssued:hasIss,nPlat:Object.keys(byPlat).length,nSku:Object.keys(bySku).reduce((a,p)=>a+Object.keys(bySku[p]).length,0),builtAt:new Date()};
+    try{ if(typeof _delta!=='undefined'&&_delta){ _delta.fr={bySku,byPlat,bySkuCity,window:{start,end},hasSku:_cmFR.hasSku,nWin:_cmFR.nWin,nPlat:_cmFR.nPlat,nSku:_cmFR.nSku,hasIssued:hasIss,month:(typeof getViewingMonth==='function'?getViewingMonth():''),ts:Date.now()}; } }catch(e){}
   }catch(e){console.warn('cmBuildFR failed',e);_cmFR=null;}
 }
 function _frState(){ if(typeof _cmFR!=='undefined'&&_cmFR)return _cmFR; if(typeof DB!=='undefined'&&DB&&DB.fr)return DB.fr; return null; }
@@ -7887,6 +8198,16 @@ function _frForSku(plat,name){
     if(canon&&F.bySku[plat][canon]&&F.bySku[plat][canon].fr!=null)return{fr:F.bySku[plat][canon].fr,level:'sku',n:F.bySku[plat][canon].nPO};
   }
   if(F.byPlat&&F.byPlat[plat]&&F.byPlat[plat].fr!=null)return{fr:F.byPlat[plat].fr,level:'plat',n:F.byPlat[plat].nPO};
+  return null;
+}
+// True per-city FR (issued ÷ indent for that SKU's POs in that city). No SKU-level fallback — "—" when absent.
+function _frForSkuCity(plat,name,city){
+  const F=_frState(); if(!F||!F.bySkuCity||!F.bySkuCity[plat])return null;
+  const cty=(typeof nCity==='function')?nCity(city||''):(city||'');
+  const pc=F.bySkuCity[plat][cty]; if(!pc)return null;
+  const idx=window._frIdx||(window._frIdx=cmCanonIndex());
+  const canon=cmMapName(name,idx);
+  if(canon&&pc[canon]&&pc[canon].fr!=null)return{fr:pc[canon].fr,n:pc[canon].nPO};
   return null;
 }
 function _frCellHtml(plat,name){
