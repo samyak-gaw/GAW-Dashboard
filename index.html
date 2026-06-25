@@ -1698,7 +1698,21 @@ const _CITY_FIX={banglore:'Bangalore',bengaluru:'Bangalore',bangalore:'Bangalore
 function _cleanCity(c){
   const s=String(c||'').trim(); if(!s)return 'Unknown';
   const k=s.toLowerCase(); if(_CITY_FIX[k])return _CITY_FIX[k];
-  return s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
+  const ACRO={ncr:'NCR'};
+  return s.split(/\s+/).map(w=>{
+    const lw=w.toLowerCase();
+    if(_CITY_FIX[lw])return _CITY_FIX[lw];
+    if(ACRO[lw])return ACRO[lw];
+    return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
+  }).join(' ');
+}
+// Unified granular city for SOH parsers: WH mapping (facility/raw) -> clean real city -> nCity fallback.
+function _sohCity(raw,fac){
+  const w=fac?whCity(fac):null; if(w)return w;
+  const w2=raw?whCity(raw):null; if(w2)return w2;
+  const s=String(raw||'').trim();
+  if(s && !/^(rest|others?|unknown|all\s*india|n\/?a)$/i.test(s)) return _cleanCity(s);
+  return nCity(raw||fac||'');
 }
 function _whNorm(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
 // Resolve a warehouse / facility name -> granular city. Returns null if unmappable.
@@ -4726,7 +4740,7 @@ function _sohZepto(rows){
   rows.forEach(r=>{
     const sku=_normSkuId(r[skuCol]);if(!sku)return;
     if(!DB.sku_master.Zepto?.[sku]&&!SEED.sku_master.Zepto?.[sku]){unmatched++;return;}
-    const city=nCity(String(r[cityCol]||'Unknown').trim());
+    const city=_sohCity(String(r[cityCol]||'').trim());
     const u=parseFloat(r[unitCol])||0;
     if(!data[sku])data[sku]={total:0,by_city:{}};
     data[sku].total+=u;
@@ -4784,7 +4798,7 @@ function _sohBlinkit(rows){
     const fe=parseFloat(r[feCol])||0;
     const u=be+fe;
     const cityRaw=extractCity(facility);
-    const city=nCity(cityRaw);
+    const city=_sohCity(cityRaw,facility);
     if(!data[sku])data[sku]={total:0,by_city:{},by_facility:{}};
     data[sku].total+=u;
     data[sku].by_city[city]=(data[sku].by_city[city]||0)+u;
@@ -4809,7 +4823,7 @@ function _sohIM(rows){
   rows.forEach(r=>{
     const sku=_normSkuId(r[skuCol]);if(!sku)return;
     if(!DB.sku_master.Instamart?.[sku]&&!SEED.sku_master.Instamart?.[sku]){unmatched++;return;}
-    const city=nCity(String(r[cityCol]||'Unknown').trim());
+    const city=_sohCity(String(r[cityCol]||'').trim());
     const facility=String(r[facCol]||'').trim();
     const qty=parseFloat(r[qtyCol])||0;
     const doh=parseFloat(r[dohCol]);
@@ -4844,7 +4858,7 @@ function _sohBB(rows){
   rows.forEach(r=>{
     const sku=_normSkuId(r[skuCol]);if(!sku)return;
     if(!DB.sku_master.BigBasket?.[sku]&&!SEED.sku_master.BigBasket?.[sku]){unmatched++;return;}
-    const city=nCity(String(r[cityCol]||'Unknown').trim());
+    const city=_sohCity(String(r[cityCol]||'').trim());
     const u=parseFloat(r[sohCol])||0;
     if(!data[sku])data[sku]={total:0,by_city:{}};
     data[sku].total+=u;
@@ -4925,7 +4939,7 @@ function _sohFK(rows){
     if(!data[sku])data[sku]={total:0,by_city:{},by_facility:{}};
     sohCols.forEach(col=>{
       const v=parseFloat(r[col])||0;if(!v)return;
-      const city=FK_CITY_MAP[col]||'Rest';
+      const _fkRaw=col.replace(/_store$/i,'').replace(/_SH$/i,'').replace(/_/g,' ').trim(); const city=whCity(_fkRaw)||_cleanCity(_fkRaw)||FK_CITY_MAP[col]||'Rest';
       data[sku].total+=v;
       data[sku].by_city[city]=(data[sku].by_city[city]||0)+v;
       data[sku].by_facility[col]=v;
