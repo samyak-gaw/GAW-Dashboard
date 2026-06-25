@@ -1690,6 +1690,47 @@ function nCity(c){
   }
   return'Rest';
 }
+
+/* ---- Granular city resolution (WH mapping sheet — SOH Explorer + tracker join) ---- */
+const WH_CITY_MAP={"zeptolimitedjai032m":"Jaipur","zeptolimitedsulurtamilnadu":"Coimbatore","ircplmh":"Mumbai","flipkartindiaprivatelimitedtamilnadu":"Chennai","mumcoldmh3":"Mumbai","flipkartindiaprivatelimitedbengaluru":"Bangalore","mhcoldkolsankrail":"Kolkata","zeptolimitedgujrat":"Ahmedabad","zeptolimitedlko043m":"Lucknow","mhcoldgurmanesargurugram":"Gurugram","flipkartwestbengal":"Kolkata","flipkartindiaprivatelimitedguwahati":"Guwahati","mumcoldmhpalavathane":"Mumbai","ktplnoidacoldfmcgmhdadrinod054m":"Noida","amazonretailmumbai":"Mumbai","amazonretailchennai":"Chennai","mbkscootsyblrim2cold":"Bangalore","coimbatoresctycbeecomcold":"Coimbatore","ccwsctychdecomcoldmohali":"Mohali","sarojininagarlucknow":"Lucknow","chlscootsyhydecomcold":"Hyderabad","scootsylogisticsprivatelimitedodisha":"Bhubaneswar","sctyahmdhlycold":"Ahmedabad","koxscootsylogisticsprivateltdwestbengal":"Kolkata","scootsylogisticsprivatelimitedkerala":"Kochi","flipkartindiaprivatelimitedpatna":"Patna","mhcoldhydrajabollaram":"Hyderabad","scootsygwcsnowmanlogisticslimited":"Guwahati","khasranumber2641265amp266":"Delhi","scootsylogisticsprivatelimitedgoa":"Goa","scootsylogisticspvtltdvishakapatnam":"Visakhapatnam","jjksctychncoldmrkool":"Chennai","scootsylogisticstamilnadu":"Chennai","amazonretailkolkata":"Kolkata","amazonretailindiaprivatelimitedhyderabad":"Hyderabad","ircplup":"Noida","flipkartmumbai":"Mumbai","ircplharyana":"Gurugram","zeptolimitedpun084m":"Pune","zeptolimitedblr271m":"Bangalore","autonagarscootsylogisticsprivatelimited":"Hyderabad","scootsymp":"Indore","scootsylogisticsrajasthan":"Jaipur","scootsylogisticsbhiwandi":"Mumbai","scootsylogisticsnagpur":"Nagpur","ccdchakanindustrialarea":"Pune","zomatohyperpurepvtltdcpcggn3":"Gurugram","ircplpune":"Pune","mbcscootsyblrcoldstar":"Bangalore","mhcoldchnpalavayal":"Chennai","amazonretailindiaprivatelimitedbengaluru":"Bangalore","amazonpune":"Pune","amazonretailharyana":"Gurugram","amanzonraigad":"Mumbai","flipkartdelhi":"Delhi","flipkartindiaprivatelimitedgurgaon":"Gurugram","zomatohyperpurepvtltdcpcsurat1":"Surat","zomatohyperpurepvtltdcpcnoida2frz":"Noida","zomatohyperpuredel4":"Delhi","noidacpc":"Noida","ircplhoblibengaluru":"Bangalore","ircplkarnataka":"Bangalore","ptcjhandsaraiviranpautadiroadscootsylogisticsprivatelimited":"Gurugram","zomatohyperpurepvtltdthanezone9":"Mumbai","amazonretailahmedabad":"Ahmedabad","amazonbangalore":"Bangalore","ktplggnfmcgcoldmhtajnagargur086m":"Gurugram","zomatohyperpurepvtltdhyd3":"Hyderabad","ircpltelangana":"Hyderabad","zomatohyperpurepvtltdthane":"Mumbai","zomatohyperpureprivatelimitedzhplblrcpc":"Bangalore","amazonretailindiaprivatelimitedchennai":"Chennai","amazonretailindiaprivatelimitedwestbengal":"Kolkata","amazonretailindiagurgaon":"Gurugram","flipkartpune":"Pune","flipkartkarnataka":"Bangalore","zomatohyperpurepvtltdcpcblr8frz":"Bangalore","zomatohyperpurepvtltdcpcpune3frz":"Pune","delhipatelnagar":"Delhi","amazonretailindiabengaluru":"Bangalore","noida":"Noida","banglore":"Bangalore","mumbai":"Mumbai","handsontradesprivatelimitedbengaluru":"Bangalore","patelnagar":"Delhi","mumbaithanezone9":"Mumbai","flipkartnadiadkhedagujarat":"Nadiad","flipkartindiaprivatelimitedlucknow":"Lucknow","flipkartjaipur":"Jaipur","kiranakartpun084m":"Pune","zeptoprivatelimitedblr271m":"Bangalore","jaicoldmhsitapur":"Jaipur","kiranakartmhnawabganjlko043m":"Lucknow","kkgujrat":"Ahmedabad","mhcoldblrhoskote":"Bangalore","scootsythanecm2":"Mumbai","scootsylogisticsgoa":"Goa","mhcoldmummh4":"Mumbai","scootsylogisticsprivatelimitedandhrapradesh":"Visakhapatnam","scootsykerala":"Kochi","pune":"Pune","kiranakartkoccoldmhmatsypuri":"Kochi","flipkartchennai":"Chennai","coldstarlogisticscogubbacold":"Hyderabad","gautambudhnagar":"Noida","kksulurtamilnadu":"Coimbatore","thanemumbai":"Mumbai"};
+const _WH_CODE={cbe:'Coimbatore',lko:'Lucknow',guw:'Guwahati',ggn:'Gurugram',gur:'Gurugram',pun:'Pune',pnq:'Pune',che:'Chennai',maa:'Chennai',hyd:'Hyderabad',blr:'Bangalore',mum:'Mumbai',bom:'Mumbai',nod:'Noida',noi:'Noida',ahm:'Ahmedabad',kol:'Kolkata',kox:'Kolkata',ccu:'Kolkata',del:'Delhi',jai:'Jaipur',ind:'Indore',cok:'Kochi',goa:'Goa',vtz:'Visakhapatnam',pat:'Patna',nag:'Nagpur',sur:'Surat'};
+const _CITY_FIX={banglore:'Bangalore',bengaluru:'Bangalore',bangalore:'Bangalore',guwhati:'Guwahati',guwahati:'Guwahati',vishakapatnam:'Visakhapatnam',visakhapatnam:'Visakhapatnam',bhubneshwar:'Bhubaneswar',bhubaneshwar:'Bhubaneswar',cochin:'Kochi',kochi:'Kochi',gurgaon:'Gurugram',gurugram:'Gurugram'};
+function _cleanCity(c){
+  const s=String(c||'').trim(); if(!s)return 'Unknown';
+  const k=s.toLowerCase(); if(_CITY_FIX[k])return _CITY_FIX[k];
+  return s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
+}
+function _whNorm(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
+// Resolve a warehouse / facility name -> granular city. Returns null if unmappable.
+function whCity(name){
+  const n=_whNorm(name); if(!n)return null;
+  if(WH_CITY_MAP[n])return WH_CITY_MAP[n];
+  let best=null,bl=0;
+  for(const k in WH_CITY_MAP){ if(k.length>=5 && (n.indexOf(k)>=0||k.indexOf(n)>=0) && k.length>bl){bl=k.length;best=WH_CITY_MAP[k];} }
+  if(best)return best;
+  const toks=String(name||'').toLowerCase().split(/[^a-z0-9]+/);
+  for(const t of toks){ if(_WH_CODE[t])return _WH_CODE[t]; }
+  return null;
+}
+// Rebuild SOH city aggregation at granular level from per-facility stock (falls back to stored soh_by_city).
+function _sohGranularByCity(plat,k){
+  const byFac=k.by_facility||{}; const fk=Object.keys(byFac);
+  if(fk.length){
+    const out={}; let attributed=0;
+    fk.forEach(f=>{
+      const fv=byFac[f]; const qty=(typeof fv==='object')?(fv.qty||fv.total||0):fv;
+      if(!qty)return;
+      let city=whCity(f);
+      if(!city && typeof fv==='object' && fv.city) city=whCity(fv.city)||_cleanCity(fv.city);
+      if(!city) city=nCity(f);
+      out[city]=(out[city]||0)+qty; attributed+=qty;
+    });
+    const tot=k.soh||0;
+    if(attributed>0 && (tot===0 || attributed>=tot*0.5)) return out;
+  }
+  return k.soh_by_city||{};
+}
+
 let CR={};
 let DB;
 let SELECTED_DAY=null;
@@ -2548,6 +2589,43 @@ function mkChart(id,type,data,ex){
 // ══════════════════════════════════════════════
 // RENDER OVERVIEW
 // ══════════════════════════════════════════════
+/* ---- Overview platform-card drilldown (accordion: top SKUs · city GMV/DRR · 7d sparkline) ---- */
+function _ovSpark(vals){
+  const w=180,ht=34,pad=3; const n=vals.length; if(!n)return '';
+  const mx=Math.max(...vals,1),mn=Math.min(...vals,0),rng=(mx-mn)||1;
+  const pts=vals.map((v,i)=>{const x=pad+(i*(w-2*pad)/Math.max(n-1,1));const y=ht-pad-((v-mn)/rng)*(ht-2*pad);return x.toFixed(1)+','+y.toFixed(1);}).join(' ');
+  const lx=pad+((n-1)*(w-2*pad)/Math.max(n-1,1)), ly=ht-pad-((vals[n-1]-mn)/rng)*(ht-2*pad);
+  return '<svg width="'+w+'" height="'+ht+'" viewBox="0 0 '+w+' '+ht+'" style="display:block"><polyline points="'+pts+'" fill="none" stroke="#1B2B45" stroke-width="1.5"/><circle cx="'+lx.toFixed(1)+'" cy="'+ly.toFixed(1)+'" r="2.5" fill="#D4860A"/></svg>';
+}
+function _ovDrillHtml(p){
+  const td=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
+  // Top 5 SKUs (MTD by GMV)
+  const agg={}; (DB.april[p].sku||[]).forEach(r=>{ if(r.day<=td){ const nm=skuLookup(p,r.sku_code).name; if(!agg[nm])agg[nm]={gmv:0,units:0}; agg[nm].gmv+=r.gmv||0; agg[nm].units+=r.units||0; } });
+  const tot=Object.values(agg).reduce((s,o)=>s+o.gmv,0)||1;
+  const top5=Object.entries(agg).sort((a,b)=>b[1].gmv-a[1].gmv).slice(0,5);
+  const skuRows=top5.length?top5.map((e,i)=>'<tr><td style="padding:3px 6px;font-size:11px">'+(i+1)+'. '+e[0]+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;font-weight:700">'+fC(e[1].gmv)+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;color:var(--muted)">'+fN(e[1].units)+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;color:var(--muted)">'+Math.round(e[1].gmv/tot*100)+'%</td></tr>').join(''):'<tr><td style="padding:6px;color:var(--muted);font-size:11px">No SKU data</td></tr>';
+  // City-wise GMV + DRR (granular; MTD)
+  const cs=(typeof cmCitySku==='function')?cmCitySku(p):{map:{},nDays:1}; const nD=cs.nDays||1;
+  const cityAgg={}; Object.keys(cs.map||{}).forEach(c=>{let g=0,u=0;Object.values(cs.map[c]).forEach(o=>{g+=o.gmv||0;u+=o.units||0;});cityAgg[c]={gmv:g,drr:Math.round(u/nD)};});
+  const topC=Object.entries(cityAgg).sort((a,b)=>b[1].gmv-a[1].gmv).slice(0,6);
+  const cityRows=topC.length?topC.map(e=>'<tr><td style="padding:3px 6px;font-size:11px">'+e[0]+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;font-weight:700">'+fC(e[1].gmv)+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;color:#16a085">'+e[1].drr.toLocaleString('en-IN')+' u/d</td></tr>').join(''):'<tr><td style="padding:6px;color:var(--muted);font-size:11px">No city data for '+p+'</td></tr>';
+  // 7-day GMV sparkline
+  const days=[]; for(let d=Math.max(1,td-6);d<=td;d++)days.push(d);
+  const vals=days.map(d=>{const r=getForDay(p,d);return r?r.gmv:0;});
+  const spark=vals.some(v=>v>0)?('<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:3px">Last 7 days GMV</div>'+_ovSpark(vals)+'<div style="font-size:10px;color:var(--muted)">'+MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]+' '+days[0]+' \u2192 '+days[days.length-1]+'</div></div>'):'';
+  return spark
+    +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin:4px 0 2px">Top 5 SKUs \u00B7 MTD</div>'
+    +'<table style="width:100%;border-collapse:collapse">'+skuRows+'</table>'
+    +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin:10px 0 2px">City-wise GMV \u00B7 DRR</div>'
+    +'<table style="width:100%;border-collapse:collapse">'+cityRows+'</table>';
+}
+function ovToggleDrill(p){
+  const el=document.getElementById('ovDrill_'+p); if(!el)return;
+  const car=document.getElementById('ovDrillCaret_'+p);
+  if(el.style.display!=='none'){ el.style.display='none'; if(car)car.textContent='\u25B8'; return; }
+  el.innerHTML=_ovDrillHtml(p); el.style.display='block'; if(car)car.textContent='\u25BE';
+}
+
 function renderOverview(){
   const td=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
   // Only sum platforms that have data for the same selected date
@@ -2596,7 +2674,10 @@ function renderOverview(){
         ${sdlw!==null?`<span style="background:#f0f3fa;border-radius:6px;padding:2px 6px">SDLW: <span class="${parseFloat(sdlw)>=0?'du':'dd'}">${parseFloat(sdlw)>=0?'▲':'▼'}${Math.abs(sdlw)}%</span></span>`:''}
         ${wow!==null?`<span style="background:#f0f3fa;border-radius:6px;padding:2px 6px">WoW: <span class="${parseFloat(wow)>=0?'du':'dd'}">${parseFloat(wow)>=0?'▲':'▼'}${Math.abs(wow)}%</span></span>`:''}
         ${vm!==null?`<span style="background:#f0f3fa;border-radius:6px;padding:2px 6px">vs${priorMonthLabel().slice(0,3)}: <span class="${parseFloat(vm)>=0?'du':'dd'}">${parseFloat(vm)>=0?'▲':'▼'}${Math.abs(vm)}%</span></span>`:''}
-      </div></div>`;
+      </div>
+      <div onclick="ovToggleDrill('${p}')" style="margin-top:10px;font-size:11px;color:#1B2B45;font-weight:700;cursor:pointer;border-top:1px solid var(--border);padding-top:8px;user-select:none"><span id="ovDrillCaret_${p}">▸</span> Quick details</div>
+      <div id="ovDrill_${p}" style="display:none;margin-top:8px"></div>
+      </div>`;
   }).join('');
 
   // Charts use all days that have Blinkit data (most complete)
@@ -2645,11 +2726,12 @@ function renderOverview(){
   // MTD Summary
   const mtdEl=document.getElementById('mtdSummary');
   if(mtdEl){
-    let html='<table class="tbl"><thead><tr><th>Platform</th><th>MTD GMV</th><th>MTD Units</th><th>MTD Disc</th><th>Target</th><th>Progress</th></tr></thead><tbody>';
+    let html='<table class="tbl"><thead><tr><th>Platform</th><th>MTD GMV</th><th>MTD Units</th><th>MTD Disc</th><th>Disc %</th><th>Target</th><th>Progress</th></tr></thead><tbody>';
     PN.forEach(p=>{
       const m=getMTD(p);const tgt=DB.targets[p];const pA=(m.gmv/tgt*100).toFixed(1);
       const cls=parseFloat(pA)>=80?'cb-up':parseFloat(pA)>=50?'cb-w':'cb-dn';
-      html+=`<tr><td>${platTag(p)}</td><td><b>${fC(m.gmv)}</b></td><td>${fN(m.units)}</td><td>${fC(m.disc)}</td><td>${fC(tgt)}</td><td><span class="${cls}">${pA}%</span></td></tr>`;
+      const dpct=m.gmv>0?(m.disc/m.gmv*100):0;
+      html+=`<tr><td>${platTag(p)}</td><td><b>${fC(m.gmv)}</b></td><td>${fN(m.units)}</td><td>${fC(m.disc)}</td><td><b style="color:${dpct>30?'#c0392b':'#1a7a3a'}">${dpct.toFixed(1)}%</b></td><td>${fC(tgt)}</td><td><span class="${cls}">${pA}%</span></td></tr>`;
     });
     html+='</tbody></table>';
     mtdEl.innerHTML=html;
@@ -5924,7 +6006,7 @@ function _availRenderSohCityTable(){
   // City-level DRR proportion: split platform DRR by each city's SOH share as a proxy
   // (we have city SOH but not city-level sales velocity, so approximate days-to-stockout per city).
   // Use the SOH file's own by_city (raw numbers) — NOT the OSA-derived cityDetail (objects).
-  const byCity=k.soh_by_city||{};
+  const byCity=_sohGranularByCity(plat,k); // granular cities via WH mapping
   const cities=Object.keys(byCity).filter(c=>(byCity[c]||0)>0).sort((a,b)=>(byCity[b]||0)-(byCity[a]||0));
   // Facility data (if platform provides it): k.by_facility = {facName:{...}} or {facName:units}
   const byFac=k.by_facility||{};
@@ -8048,7 +8130,7 @@ async function cmFetchTracker(){
       const po=String(rows[r][iPO]||'').trim(); if(!po)continue;
       const st=String(rows[r][iSt]||'').trim().toLowerCase().replace(/\s+/g,' ');
       const platx=CM_TRACK_PLAT[String(rows[r][iPlat]||'').trim().toLowerCase()]||null;
-      const cityx=nCity(rows[r][iCity]||'');
+      const cityx=(iCity>=0?_cleanCity(rows[r][iCity]):'Unknown'); // granular city (col N) — no metro collapse
       _trkAll[po]={plat:platx, city:cityx, status:st, recv:(iRecv>=0?_frParseDate(rows[r][iRecv]):null), poVal:(iPV>=0?_frINR(rows[r][iPV]):0), invVal:(iIV>=0?_frINR(rows[r][iIV]):0)};
       if(!CM_OPEN_STATUSES.has(st))continue;
       const plat=platx;
@@ -8116,7 +8198,7 @@ function uploadTracker(input){
       for(let r=chosen.hdrRow+1;r<chosen.aoa.length;r++){const row=chosen.aoa[r]||[]; const po=String(row[iPO]||'').trim(); if(!po)continue;
         const stx=String(row[iSt]||'').trim().toLowerCase().replace(/\s+/g,' ');
         const platx=CM_TRACK_PLAT[String(row[iPlat]||'').trim().toLowerCase()]||null;
-        const cityx=nCity(row[iCity]||'');
+        const cityx=(iCity>=0?_cleanCity(row[iCity]):'Unknown'); // granular city (col N) — no metro collapse
         _trkAll[po]={plat:platx, city:cityx, status:stx, recv:(iRecv>=0?_frParseDate(row[iRecv]):null), poVal:(iPV>=0?_frINR(row[iPV]):0), invVal:(iIV>=0?_frINR(row[iIV]):0)};
         if(!CM_OPEN_STATUSES.has(stx))continue;
         open[po]={plat:platx, city:cityx}; cnt++;
