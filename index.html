@@ -3098,13 +3098,17 @@ function renderSkuAnalysis(){
   const plats=platFilter==='all'?PN:[platFilter];
   plats.forEach(p=>{
     const rows=dayRange?(DB.april[p].sku||[]).filter(r=>dayRange.includes(r.day)):(DB.april[p].sku||[]);
+    // Zepto disc is daily-only (separate promo file) — distribute each day's disc to SKUs by GMV share.
+    const _zpDD={},_zpDG={};
+    if(p==='Zepto'){ [...new Set(rows.map(r=>r.day))].forEach(d=>{const g=getForDay('Zepto',d);_zpDD[d]=g?(g.disc||0):0;_zpDG[d]=g?(g.gmv||0):0;}); }
     rows.forEach(r=>{
       const info=skuLookup(p,r.sku_code);
       const cat=normCat(info.cat)||'Unknown';
       if(catFilter!=='all'&&cat!==catFilter)return;
       const key=info.name||r.sku_code;
       if(!skuMap[key])skuMap[key]={name:key,cat,gmv:0,units:0,disc:0,platforms:new Set()};
-      skuMap[key].gmv+=r.gmv;skuMap[key].units+=r.units;skuMap[key].disc+=(r.disc||0);
+      const rowDisc=(p==='Zepto')?((_zpDG[r.day]>0)?(_zpDD[r.day]*r.gmv/_zpDG[r.day]):0):(r.disc||0);
+      skuMap[key].gmv+=r.gmv;skuMap[key].units+=r.units;skuMap[key].disc+=rowDisc;
       skuMap[key].platforms.add(p);
     });
   });
