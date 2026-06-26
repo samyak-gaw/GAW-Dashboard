@@ -2611,27 +2611,43 @@ function _ovSpark(vals){
   const lx=pad+((n-1)*(w-2*pad)/Math.max(n-1,1)), ly=ht-pad-((vals[n-1]-mn)/rng)*(ht-2*pad);
   return '<svg width="'+w+'" height="'+ht+'" viewBox="0 0 '+w+' '+ht+'" style="display:block"><polyline points="'+pts+'" fill="none" stroke="#1B2B45" stroke-width="1.5"/><circle cx="'+lx.toFixed(1)+'" cy="'+ly.toFixed(1)+'" r="2.5" fill="#D4860A"/></svg>';
 }
+function _hexA(hex,a){const m=String(hex||'#1B2B45').replace('#','');const r=parseInt(m.substr(0,2),16)||27,g=parseInt(m.substr(2,2),16)||43,b=parseInt(m.substr(4,2),16)||69;return 'rgba('+r+','+g+','+b+','+a+')';}
 function _ovDrillHtml(p){
   const td=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
+  const ac=(typeof PC!=='undefined'&&PC[p])?PC[p]:'#1B2B45';
+  const lbl=t=>'<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:'+ac+';border-left:3px solid '+ac+';padding-left:7px;margin:14px 0 6px">'+t+'</div>';
+  const thS='padding:5px 8px;font-size:9px;text-transform:uppercase;letter-spacing:.3px;color:#5b6675;font-weight:800';
+  const head=cols=>'<thead><tr style="background:'+_hexA(ac,0.10)+'">'+cols.map((c,i)=>'<th style="'+thS+';text-align:'+(i===0?'left':'right')+'">'+c+'</th>').join('')+'</tr></thead>';
   // Top 5 SKUs (MTD by GMV)
   const agg={}; (DB.april[p].sku||[]).forEach(r=>{ if(r.day<=td){ const nm=skuLookup(p,r.sku_code).name; if(!agg[nm])agg[nm]={gmv:0,units:0}; agg[nm].gmv+=r.gmv||0; agg[nm].units+=r.units||0; } });
   const tot=Object.values(agg).reduce((s,o)=>s+o.gmv,0)||1;
   const top5=Object.entries(agg).sort((a,b)=>b[1].gmv-a[1].gmv).slice(0,5);
-  const skuRows=top5.length?top5.map((e,i)=>'<tr><td style="padding:3px 6px;font-size:11px">'+(i+1)+'. '+e[0]+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;font-weight:700">'+fC(e[1].gmv)+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;color:var(--muted)">'+fN(e[1].units)+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;color:var(--muted)">'+Math.round(e[1].gmv/tot*100)+'%</td></tr>').join(''):'<tr><td style="padding:6px;color:var(--muted);font-size:11px">No SKU data</td></tr>';
-  // City-wise GMV + DRR (granular; MTD)
+  const tdS='padding:5px 8px;font-size:11px';
+  const skuRows=top5.length?top5.map((e,i)=>'<tr style="background:'+(i%2?'#fafbfc':'#fff')+'">'
+      +'<td style="'+tdS+'"><span style="display:inline-block;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:4px;background:'+_hexA(ac,0.16)+';color:'+ac+';font-weight:800;font-size:9px;margin-right:6px">'+(i+1)+'</span>'+e[0]+'</td>'
+      +'<td style="'+tdS+';text-align:right;font-weight:800;color:#1B2B45">'+fC(e[1].gmv)+'</td>'
+      +'<td style="'+tdS+';text-align:right;color:#475569">'+fN(e[1].units)+'</td>'
+      +'<td style="'+tdS+';text-align:right"><span style="background:'+_hexA(ac,0.12)+';color:'+ac+';font-weight:700;padding:1px 6px;border-radius:10px;font-size:10px">'+Math.round(e[1].gmv/tot*100)+'%</span></td></tr>').join(''):'<tr><td style="padding:8px;color:var(--muted);font-size:11px">No SKU data</td></tr>';
+  // City-wise GMV + DRR (MTD)
   const cs=(typeof cmCitySku==='function')?cmCitySku(p):{map:{},nDays:1}; const nD=cs.nDays||1;
   const cityAgg={}; Object.keys(cs.map||{}).forEach(c=>{let g=0,u=0;Object.values(cs.map[c]).forEach(o=>{g+=o.gmv||0;u+=o.units||0;});cityAgg[c]={gmv:g,drr:Math.round(u/nD)};});
   const topC=Object.entries(cityAgg).sort((a,b)=>b[1].gmv-a[1].gmv).slice(0,6);
-  const cityRows=topC.length?topC.map(e=>'<tr><td style="padding:3px 6px;font-size:11px">'+e[0]+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;font-weight:700">'+fC(e[1].gmv)+'</td><td style="padding:3px 6px;font-size:11px;text-align:right;color:#16a085">'+e[1].drr.toLocaleString('en-IN')+' u/d</td></tr>').join(''):'<tr><td style="padding:6px;color:var(--muted);font-size:11px">No city data for '+p+'</td></tr>';
+  const cityRows=topC.length?topC.map((e,i)=>'<tr style="background:'+(i%2?'#fafbfc':'#fff')+'">'
+      +'<td style="'+tdS+';font-weight:600">'+e[0]+'</td>'
+      +'<td style="'+tdS+';text-align:right;font-weight:800;color:#1B2B45">'+fC(e[1].gmv)+'</td>'
+      +'<td style="'+tdS+';text-align:right;color:#0e9f6e;font-weight:700">'+e[1].drr.toLocaleString('en-IN')+' u/d</td></tr>').join(''):'<tr><td style="padding:8px;color:var(--muted);font-size:11px">No city data for '+p+'</td></tr>';
   // 7-day GMV sparkline
   const days=[]; for(let d=Math.max(1,td-6);d<=td;d++)days.push(d);
   const vals=days.map(d=>{const r=getForDay(p,d);return r?r.gmv:0;});
-  const spark=vals.some(v=>v>0)?('<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:3px">Last 7 days GMV</div>'+_ovSpark(vals)+'<div style="font-size:10px;color:var(--muted)">'+MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]+' '+days[0]+' \u2192 '+days[days.length-1]+'</div></div>'):'';
-  return spark
-    +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin:4px 0 2px">Top 5 SKUs \u00B7 MTD</div>'
-    +'<table style="width:100%;border-collapse:collapse">'+skuRows+'</table>'
-    +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin:10px 0 2px">City-wise GMV \u00B7 DRR</div>'
-    +'<table style="width:100%;border-collapse:collapse">'+cityRows+'</table>';
+  const mo=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];
+  const spark=vals.some(v=>v>0)?(lbl('Last 7 days GMV')+'<div style="background:'+_hexA(ac,0.05)+';border:1px solid '+_hexA(ac,0.15)+';border-radius:8px;padding:8px 10px"><div style="display:flex;justify-content:space-between;align-items:flex-end"><div>'+_ovSpark(vals)+'</div><div style="text-align:right"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:700">Latest</div><div style="font-size:13px;font-weight:800;color:'+ac+'">'+fC(vals[vals.length-1])+'</div></div></div><div style="font-size:9px;color:var(--muted);margin-top:2px">'+mo+' '+days[0]+' \u2192 '+mo+' '+days[days.length-1]+'</div></div>'):'';
+  return '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px">'
+    +spark
+    +lbl('Top 5 SKUs \u00B7 MTD')
+    +'<table style="width:100%;border-collapse:collapse">'+head(['SKU','GMV','Units','Share'])+'<tbody>'+skuRows+'</tbody></table>'
+    +lbl('City-wise GMV \u00B7 DRR')
+    +'<table style="width:100%;border-collapse:collapse">'+head(['City','GMV','DRR'])+'<tbody>'+cityRows+'</tbody></table>'
+    +'</div>';
 }
 function ovToggleDrill(p){
   const el=document.getElementById('ovDrill_'+p); if(!el)return;
