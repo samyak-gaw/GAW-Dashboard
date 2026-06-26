@@ -1115,8 +1115,8 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     </div>
   </div>
 
-  <!-- Dark Store Count — Zepto / Blinkit / IM only -->
-  <div style="font-size:11px;font-weight:700;color:#1a3a6e;text-transform:uppercase;margin:14px 0 8px 0">Dark Store Counts (Zepto / Blinkit / IM only) — auto-reuses last upload</div>
+  <!-- Dark Store Count -->
+  <div style="font-size:11px;font-weight:700;color:#1a3a6e;text-transform:uppercase;margin:14px 0 8px 0">Dark Store Counts (Zepto / Blinkit / IM / Flipkart / BigBasket) — auto-reuses last upload</div>
   <div class="g3" style="margin-bottom:14px">
     <div>
       <div class="upload-zone" ondragover="dov(event,'zpDscZone')" ondragleave="dlv('zpDscZone')" ondrop="dop(event,'zpDsc')" id="zpDscZone" onclick="document.getElementById('zpDscFile').click()" style="min-height:80px;padding:14px">
@@ -1137,6 +1137,20 @@ body{padding-bottom:env(safe-area-inset-bottom)}
         <div class="up-icon" style="font-size:22px">🏪</div><div class="up-title" style="font-size:13px">Instamart Dark Store Count</div>
         <div class="up-sub" id="imDscSub" style="font-size:11px">IM_Dark_Store_Count.xlsx</div>
         <input class="file-input" id="imDscFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'imDsc')">
+      </div>
+    </div>
+    <div>
+      <div class="upload-zone" ondragover="dov(event,'fkDscZone')" ondragleave="dlv('fkDscZone')" ondrop="dop(event,'fkDsc')" id="fkDscZone" onclick="document.getElementById('fkDscFile').click()" style="min-height:80px;padding:14px">
+        <div class="up-icon" style="font-size:22px">🏪</div><div class="up-title" style="font-size:13px">Flipkart Dark Store Count</div>
+        <div class="up-sub" id="fkDscSub" style="font-size:11px">Dark_Store_Count_Flipkart.xlsx</div>
+        <input class="file-input" id="fkDscFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'fkDsc')">
+      </div>
+    </div>
+    <div>
+      <div class="upload-zone" ondragover="dov(event,'bbDscZone')" ondragleave="dlv('bbDscZone')" ondrop="dop(event,'bbDsc')" id="bbDscZone" onclick="document.getElementById('bbDscFile').click()" style="min-height:80px;padding:14px">
+        <div class="up-icon" style="font-size:22px">🏪</div><div class="up-title" style="font-size:13px">BigBasket Dark Store Count</div>
+        <div class="up-sub" id="bbDscSub" style="font-size:11px">Dark_Store_Count_BigBasket.xlsx</div>
+        <input class="file-input" id="bbDscFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'bbDsc')">
       </div>
     </div>
   </div>
@@ -4036,6 +4050,8 @@ function processFile(file,type){
         else if(type==='zpDsc')ok=procDsc('Zepto',rows);
         else if(type==='blDsc')ok=procDsc('Blinkit',rows);
         else if(type==='imDsc')ok=procDsc('Instamart',rows);
+        else if(type==='bbDsc')ok=procDsc('BigBasket',rows);
+        else if(type==='fkDsc')ok=procDsc('Flipkart',rows);
       }catch(procErr){
         console.error('[upload] Processor threw:', procErr);
         alert('❌ Processor error: '+procErr.message+'\n\nCheck the browser console for details.');
@@ -4045,7 +4061,7 @@ function processFile(file,type){
       if(ok){
         const zoneId={blS:'blSZone',blD:'blDZone',imS:'imSZone',imD:'imDZone',zp:'zpZone',zpD:'zpDZone',az:'azZone',fk:'fkZone',bb:'bbZone'}[type]||type+'Zone';
         document.getElementById(zoneId)?.classList.add('ok');
-        const subId={blS:'blSSub',blD:'blDSub',imS:'imSSub',imD:'imDSub',zp:'zpSub',zpD:'zpDSub',az:'azSub',fk:'fkSub',bb:'bbSub'}[type];
+        const subId={blS:'blSSub',blD:'blDSub',imS:'imSSub',imD:'imDSub',zp:'zpSub',zpD:'zpDSub',az:'azSub',fk:'fkSub',bb:'bbSub',zpDsc:'zpDscSub',blDsc:'blDscSub',imDsc:'imDscSub',bbDsc:'bbDscSub',fkDsc:'fkDscSub'}[type];
         // Build diagnostic summary
         let summary=`✅ ${file.name} loaded!`;
         if(type==='zp'&&window._zpLastResult){
