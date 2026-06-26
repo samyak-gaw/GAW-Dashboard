@@ -5910,6 +5910,17 @@ function _sohOpenPO(plat,canon,city){
   var t=0; Object.keys(po).forEach(function(c){ if(po[c]&&po[c][canon])t+=po[c][canon]; }); return t;
 }
 function _sohPoCell(v){ return (v==null)?'<span style="color:#9aa1a8">\u2014</span>':(v===0)?'<span style="color:#9aa1a8">0</span>':'<span style="color:#1a7a3a;font-weight:700">'+v.toLocaleString('en-IN')+'u</span>'; }
+// All cities that have an open PO for this SKU -> {city:qty}. Used to reconcile the BY-CITY table with the SKU total.
+function _sohOpenPOCities(plat,canon){
+  try{ if(typeof cmBuildOpenPO==='function' && (typeof _cmOpenPO==='undefined'||!_cmOpenPO) && typeof _cmTracker!=='undefined' && _cmTracker && typeof _cmSN!=='undefined' && _cmSN){ cmBuildOpenPO(); } }catch(e){}
+  var liveAll=(typeof _cmOpenPO!=='undefined'&&_cmOpenPO&&_cmOpenPO.po)?_cmOpenPO.po:null;
+  var vm=(typeof getViewingMonth==='function')?getViewingMonth():null;
+  var syncedAll=(typeof DB!=='undefined'&&DB.open_po&&DB.open_po.po&&(!vm||DB.open_po.month===vm))?DB.open_po.po:null;
+  var all=liveAll||syncedAll; var po=all?all[plat]:null; var out={};
+  if(!po)return out;
+  Object.keys(po).forEach(function(c){ var q=po[c]&&po[c][canon]; if(q>0)out[c]=(out[c]||0)+q; });
+  return out;
+}
 function _sohExportXlsx(){
   var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
   var styled=!!window.XLSXStyle;
@@ -6057,7 +6068,10 @@ function _availRenderSohCityTable(){
   // (we have city SOH but not city-level sales velocity, so approximate days-to-stockout per city).
   // Use the SOH file's own by_city (raw numbers) — NOT the OSA-derived cityDetail (objects).
   const byCity=_sohGranularByCity(plat,k); // granular cities via WH mapping
-  const cities=Object.keys(byCity).filter(c=>(byCity[c]||0)>0).sort((a,b)=>(byCity[b]||0)-(byCity[a]||0));
+  // Reconcile with the SKU-level Incoming PO: include cities that have an open PO even if they hold no current SOH.
+  const _poCities=(plat!=='Amazon')?_sohOpenPOCities(plat,info.name):{};
+  const _citySet=new Set([...Object.keys(byCity).filter(c=>(byCity[c]||0)>0), ...Object.keys(_poCities)]);
+  const cities=[..._citySet].sort((a,b)=>((byCity[b]||0)-(byCity[a]||0))||((_poCities[b]||0)-(_poCities[a]||0)));
   // Facility data (if platform provides it): k.by_facility = {facName:{...}} or {facName:units}
   const byFac=k.by_facility||{};
   const hasFac=Object.keys(byFac).length>0;
@@ -6083,11 +6097,12 @@ function _availRenderSohCityTable(){
     const cdts=_sohDaysToStockout(csoh,cityDrr);
     const cpo=_sohOpenPO(plat,info.name,c);
     const cf=_frForSkuCity(plat,info.name,c); const cfCol=_frColor(cf&&cf.fr);
-    return `<tr>
-      <td style="padding:8px 10px;font-size:12px"><b>${c}</b></td>
+    const _incomingOnly=(csoh<=0&&cpo>0);
+    return `<tr${_incomingOnly?' style="background:#fbfcfe"':''}>
+      <td style="padding:8px 10px;font-size:12px"><b>${c}</b>${_incomingOnly?' <span style="font-size:9px;color:#1a7a3a;font-weight:700;background:#e8f5ee;padding:1px 5px;border-radius:8px">incoming</span>':''}</td>
       <td style="padding:8px 10px;font-size:12px;font-weight:700">${Math.round(csoh).toLocaleString('en-IN')}</td>
       <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${totalSoh>0?((csoh/totalSoh)*100).toFixed(0):0}%</td>
-      <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(cdts)};font-weight:700">${_sohFmtDTS(cdts)}</td>
+      <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(cdts)};font-weight:700">${csoh<=0?'\u2014':_sohFmtDTS(cdts)}</td>
       <td style="padding:8px 10px;font-size:12px">${_sohPoCell(cpo)}</td>
       <td style="padding:8px 10px;font-size:12px;color:${cfCol};font-weight:700" title="True per-city fill rate · issued ÷ indent · 10d delivered">${cf?_frFmt(cf.fr):'\u2014'}</td>
     </tr>`;
