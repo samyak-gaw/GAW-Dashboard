@@ -277,6 +277,8 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   .kpi-row{gap:10px}
   .content{padding-bottom:76px}
   .sec-title{margin:14px 0 8px}
+  /* wide tables already use .scroll-table wrappers; just keep them within the viewport */
+  .scroll-table{max-width:100%;-webkit-overflow-scrolling:touch}
 }
 /* Bottom nav — mobile only */
 .bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px solid var(--border);padding-bottom:env(safe-area-inset-bottom);z-index:300;box-shadow:0 -4px 16px rgba(0,0,0,.10)}
@@ -1493,7 +1495,7 @@ function renderNLCSection(){
   host.innerHTML = '<div class="card" style="margin-bottom:16px">'
     + '<h3>\uD83D\uDCB0 NLC / Realized Revenue <span class="pill" style="color:var(--muted)">units \u00D7 NLC \u00B7 '+mk+'</span></h3>'
     + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">What GAW nets per platform (NLC) vs consumer GMV. Realization % = realized \u00F7 GMV.</div>'
-    + '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#1a3a6e;color:#fff">'
+    + '<div class="scroll-table"><table style="width:100%;min-width:560px;border-collapse:collapse"><thead><tr style="background:#1a3a6e;color:#fff">'
     + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">SKU</th>'
     + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">NLC</th>'
     + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">MTD Units</th>'
@@ -1504,7 +1506,7 @@ function renderNLCSection(){
     + '<tfoot><tr style="border-top:2px solid #1a3a6e"><td colspan="3" style="padding:8px 10px;font-size:12px;font-weight:800;text-align:center">Grand total realized</td>'
     + '<td style="padding:8px 10px;font-size:13px;font-weight:800;text-align:center">'+fC(totRealized)+'</td>'
     + '<td style="padding:8px 10px;font-size:12px;text-align:center">'+fC(totGmv)+'</td>'
-    + '<td style="padding:8px 10px;font-size:12px;text-align:center">'+(totGmv>0?Math.round(totRealized/totGmv*100)+'%':'\u2014')+'</td></tr></tfoot></table>'
+    + '<td style="padding:8px 10px;font-size:12px;text-align:center">'+(totGmv>0?Math.round(totRealized/totGmv*100)+'%':'\u2014')+'</td></tr></tfoot></table></div>'
     + (anyPending ? '<div style="font-size:11px;color:#c07700;margin-top:8px">\u23F3 Amazon NLC (3 SKUs) effective Jul-2026 \u2014 excluded until pre-NLC SOH is exhausted.</div>' : '')
     + '</div>';
 }
@@ -2618,9 +2620,9 @@ function _ovDrillHtml(p){
   return '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px">'
     +spark
     +lbl('Top 5 SKUs \u00B7 MTD')
-    +'<table style="width:100%;border-collapse:collapse">'+head(['SKU','GMV','Units','Share'])+'<tbody>'+skuRows+'</tbody></table>'
+    +'<div class="scroll-table"><table style="width:100%;min-width:420px;border-collapse:collapse">'+head(['SKU','GMV','Units','Share'])+'<tbody>'+skuRows+'</tbody></table></div>'
     +lbl('City-wise GMV \u00B7 DRR')
-    +'<table style="width:100%;border-collapse:collapse">'+head(['City','GMV','DRR'])+'<tbody>'+cityRows+'</tbody></table>'
+    +'<div class="scroll-table"><table style="width:100%;min-width:420px;border-collapse:collapse">'+head(['City','GMV','DRR'])+'<tbody>'+cityRows+'</tbody></table></div>'
     +'</div>';
 }
 function ovToggleDrill(p){
@@ -5646,7 +5648,7 @@ function availRenderSkuTable(){
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr||0)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:#c0392b;font-weight:700">${_availFmtRupees(r.lost_gmv)}</td>
   </tr>`).join('');
-  document.getElementById('availSkuTable').innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA Today</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA MTD</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('availSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:760px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA Today</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA MTD</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function availDrillToSku(plat,sku){
@@ -5694,7 +5696,7 @@ function _availRenderCityTable(){
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">MRP</div><div style="font-size:16px;font-weight:800">${info.mrp?'₹'+info.mrp:'—'}</div></div>
   </div>
   <div style="font-size:10px;color:var(--muted);margin-bottom:8px">City rows below show MTD averages.</div>`;
-  document.getElementById('availCityTable').innerHTML=summary+`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Stores (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('availCityTable').innerHTML=summary+`<div class="scroll-table"><table style="width:100%;min-width:560px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Stores (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function availBackToPlatforms(){
@@ -6002,7 +6004,7 @@ function _availRenderSohSkuTable(){
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${r.nCities} cities</td>
   </tr>`;}).join('');
-  document.getElementById('availSohSkuTable').innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Reorder (14d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table>
+  document.getElementById('availSohSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:680px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Reorder (14d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table></div>
   <div style="font-size:10px;color:var(--muted);margin-top:8px">Days to Stockout: ${plat==='Instamart'?'Instamart native DaysOnHand':'SOH ÷ DRR'}. Reorder (14d) = units to add for 14-day cover, net of current stock. Open PO = open indent units inbound (tracker \u00D7 SN) \u2014 upload both in the Upload tab. Rows tinted <span style="color:#c0392b">red &lt;3d</span> / <span style="color:#d4860a">amber &lt;7d</span>.</div>`;
 }
 
@@ -6068,7 +6070,7 @@ function _availRenderSohCityTable(){
     </tr>`;
   }).join('');
   const cityTable=`<div style="font-size:11px;font-weight:700;color:#1a3a6e;text-transform:uppercase;margin:4px 0 8px">By City</div>
-    <table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Share</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout*</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="True per-city fill rate (issued ÷ indent), 10d delivered POs">FR% (10d)</th></tr></thead><tbody>${cityRows}</tbody></table>`;
+    <div class="scroll-table"><table style="width:100%;min-width:640px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Share</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout*</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="True per-city fill rate (issued ÷ indent), 10d delivered POs">FR% (10d)</th></tr></thead><tbody>${cityRows}</tbody></table></div>`;
 
   // Facility table (only platforms that report it: Blinkit/IM/FK/Amazon)
   let facTable='';
