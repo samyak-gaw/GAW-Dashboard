@@ -1005,6 +1005,11 @@ body{padding-bottom:env(safe-area-inset-bottom)}
         <div class="up-sub" id="bbAvSub" style="font-size:11px">bbnow_availability.csv</div>
         <input class="file-input" id="bbAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'bbAv')">
       </div>
+      <div class="upload-zone" ondragover="dov(event,'azAvZone')" ondragleave="dlv('azAvZone')" ondrop="dop(event,'azAv')" id="azAvZone" onclick="document.getElementById('azAvFile').click()" style="min-height:80px;padding:14px">
+        <div class="up-icon" style="font-size:22px">🟠</div><div class="up-title" style="font-size:13px">Amazon Availability</div>
+        <div class="up-sub" id="azAvSub" style="font-size:11px">download_builder_export.csv</div>
+        <input class="file-input" id="azAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'azAv')">
+      </div>
     </div>
     <div></div>
   </div>
@@ -1057,7 +1062,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   </div>
 
   <!-- Dark Store Count -->
-  <div style="font-size:11px;font-weight:700;color:#1a3a6e;text-transform:uppercase;margin:14px 0 8px 0">Dark Store Counts (Zepto / Blinkit / IM / Flipkart / BigBasket) — auto-reuses last upload</div>
+  <div style="font-size:11px;font-weight:700;color:#1a3a6e;text-transform:uppercase;margin:14px 0 8px 0">Dark Store Counts (All Platforms) — auto-reuses last upload</div>
   <div class="g3" style="margin-bottom:14px">
     <div>
       <div class="upload-zone" ondragover="dov(event,'zpDscZone')" ondragleave="dlv('zpDscZone')" ondrop="dop(event,'zpDsc')" id="zpDscZone" onclick="document.getElementById('zpDscFile').click()" style="min-height:80px;padding:14px">
@@ -1094,6 +1099,11 @@ body{padding-bottom:env(safe-area-inset-bottom)}
         <input class="file-input" id="bbDscFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'bbDsc')">
       </div>
     </div>
+      <div class="upload-zone" ondragover="dov(event,'azDscZone')" ondragleave="dlv('azDscZone')" ondrop="dop(event,'azDsc')" id="azDscZone" onclick="document.getElementById('azDscFile').click()" style="min-height:80px;padding:14px">
+        <div class="up-icon" style="font-size:22px">🏪</div><div class="up-title" style="font-size:13px">Amazon Dark Store Count</div>
+        <div class="up-sub" id="azDscSub" style="font-size:11px">Dark_Store_Count.xlsx</div>
+        <input class="file-input" id="azDscFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'azDsc')">
+      </div>
   </div>
 
   <!-- DIAGNOSTICS PANEL -->
@@ -4156,6 +4166,7 @@ function processFile(file,type){
         else if(type==='imAv')ok=procAvail('Instamart',rows);
         else if(type==='fkAv')ok=procAvail('Flipkart',rows);
         else if(type==='bbAv')ok=procAvail('BigBasket',rows);
+        else if(type==='azAv')ok=procAvail('Amazon',rows);
         // SOH files
         else if(type==='zpSoh')ok=procSoh('Zepto',rows);
         else if(type==='blSoh')ok=procSoh('Blinkit',rows);
@@ -4169,6 +4180,7 @@ function processFile(file,type){
         else if(type==='imDsc')ok=procDsc('Instamart',rows);
         else if(type==='bbDsc')ok=procDsc('BigBasket',rows);
         else if(type==='fkDsc')ok=procDsc('Flipkart',rows);
+        else if(type==='azDsc')ok=procDsc('Amazon',rows);
       }catch(procErr){
         console.error('[upload] Processor threw:', procErr);
         alert('❌ Processor error: '+procErr.message+'\n\nCheck the browser console for details.');
@@ -4178,7 +4190,7 @@ function processFile(file,type){
       if(ok){
         const zoneId={blS:'blSZone',blD:'blDZone',imS:'imSZone',imD:'imDZone',zp:'zpZone',zpD:'zpDZone',az:'azZone',fk:'fkZone',bb:'bbZone'}[type]||type+'Zone';
         document.getElementById(zoneId)?.classList.add('ok');
-        const subId={blS:'blSSub',blD:'blDSub',imS:'imSSub',imD:'imDSub',zp:'zpSub',zpD:'zpDSub',az:'azSub',fk:'fkSub',bb:'bbSub',zpDsc:'zpDscSub',blDsc:'blDscSub',imDsc:'imDscSub',bbDsc:'bbDscSub',fkDsc:'fkDscSub'}[type];
+        const subId={blS:'blSSub',blD:'blDSub',imS:'imSSub',imD:'imDSub',zp:'zpSub',zpD:'zpDSub',az:'azSub',fk:'fkSub',bb:'bbSub',zpDsc:'zpDscSub',blDsc:'blDscSub',imDsc:'imDscSub',bbDsc:'bbDscSub',fkDsc:'fkDscSub',azDsc:'azDscSub'}[type]||type+'Sub';
         // Build diagnostic summary
         let summary=`✅ ${file.name} loaded!`;
         if(type==='zp'&&window._zpLastResult){
@@ -4764,7 +4776,7 @@ function procAvail(platform,rows){
   if(!skuCol)skuCol=skuColCandidates[0];
   const cityCol=sk.find(k=>k==='City')||sk.find(k=>/^city$/i.test(k))||'City';
   // OSA in LS column — handle both "Wt. OSA in LS" (Q-comm) and "Wt. OSA% in LS" (BB/FK)
-  const osaLsCol=sk.find(k=>/wt\.?\s*osa%?\s*in\s*ls/i.test(k))||sk.find(k=>/wt\.?\s*osa\s*in\s*ls/i.test(k))||'Wt. OSA in LS';
+  const osaLsCol=sk.find(k=>/wt\.?\s*osa\s*%?\s*in\s*ls/i.test(k))||sk.find(k=>/wt\.?\s*osa\s*in\s*ls/i.test(k))||'Wt. OSA in LS';
   // DS Listing column — handle both "DS Listing" and "DS Listing %"
   const dsCol=sk.find(k=>/^ds\.?\s*listing\s*%?$/i.test(k))||'DS Listing';
   const bundleCol=sk.find(k=>/is\.?\s*platform\.?\s*bundle/i.test(k))||null;
@@ -5101,7 +5113,7 @@ function _sohFK(rows){
 }
 
 // ───────────────────────────────────────────────────────────────
-// DARK STORE COUNT PARSER (Zepto / Blinkit / IM only)
+// DARK STORE COUNT PARSER (all platforms)
 // ───────────────────────────────────────────────────────────────
 function procDsc(platform,rows){
   if(!rows||!rows.length){alert(platform+' Dark Store Count: empty file');return false;}
@@ -5153,8 +5165,8 @@ function exportCSV(){
 // ══════════════════════════════════════════════
 // AVAILABILITY TAB (Stage 2) — Render functions
 // ══════════════════════════════════════════════
-const _AVAIL_PLATFORMS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket'];
-const _SOH_PLATFORMS=_AVAIL_PLATFORMS.concat(['Amazon']);  // SOH Explorer includes Amazon (SOH-only)
+const _AVAIL_PLATFORMS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket','Amazon']; // Amazon promoted Jul-2026: OSA feed live
+const _SOH_PLATFORMS=_AVAIL_PLATFORMS.slice(); // SOH Explorer = same set
 const OSA_LOSS_FLOOR=15;  // floor OSA at 15% when extrapolating lost GMV (avoids absurd ₹ for very-low-OSA SKUs; 85% = realistic target)
 // Display window for OSA/DS metrics: 'today' (latest day) or 'mtd' (month-to-date avg).
 // Lost GMV and DOI are always MTD/period concepts and don't change with this toggle.
