@@ -1255,6 +1255,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
         <button class="cloud-save-btn" onclick="saveGitHubConfig()" style="background:#1a3a6e">💾 Save GitHub Config</button>
         <button class="exp-btn" onclick="githubPush(true)">⬆️ Push to GitHub Now</button>
         <button class="exp-btn" onclick="githubPull(true)">⬇️ Pull from GitHub Now</button>
+        <button class="exp-btn" onclick="compactMonths()" title="Backup, then remove raw data for frozen months — shrinks the cloud file">🧹 Compact Data</button>
         <button class="exp-btn" onclick="clearGitHubConfig()" style="color:#c0392b;border-color:#c0392b">🔌 Clear Config</button>
       </div>
       <div id="ghStatusMsg" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;background:#f0f3fa;margin-top:10px;line-height:1.5;font-family:monospace"></div>
@@ -1387,6 +1388,9 @@ function daysInMonth(monthKey){
 // Weekday (Mon–Thu) = 30%, Weekend (Fri–Sun) = 32%. Editable here if the policy changes.
 // FK-funded portion is excluded (not our cost). Effective from June 2026 onward only.
 const FK_BF_DISC = { weekday: 0.30, weekend: 0.32, effectiveFrom: 'Jun-2026' };
+// Per-month rate overrides. Jul-2026 = flat 32% all days. Unmapped months fall back to the split above.
+const FK_BF_RATES = { 'Jul-2026': { weekday: 0.32, weekend: 0.32 } };
+function _fkBfRate(monthKey){ return FK_BF_RATES[monthKey] || { weekday: FK_BF_DISC.weekday, weekend: FK_BF_DISC.weekend }; }
 // Returns true if (monthKey, day) falls on Fri/Sat/Sun.
 function _fkIsWeekend(monthKey, day){
   const m = MONTH_NUM_FROM_KEY(monthKey), y = YEAR_FROM_KEY(monthKey);
@@ -1396,7 +1400,8 @@ function _fkIsWeekend(monthKey, day){
 // Derived BF discount amount for a Flipkart day given its GMV.
 function _fkBfDisc(monthKey, day, gmv){
   if(!gmv || gmv<=0) return 0;
-  const rate = _fkIsWeekend(monthKey, day) ? FK_BF_DISC.weekend : FK_BF_DISC.weekday;
+  const r = _fkBfRate(monthKey);
+  const rate = _fkIsWeekend(monthKey, day) ? r.weekend : r.weekday;
   return Math.round(gmv * rate * 100) / 100;
 }
 // Is this month at/after the effective month for the dynamic-discount rule?
@@ -2256,6 +2261,37 @@ function resetData() {
 // Freezes the current active month's built data into _delta.frozen[oldKey],
 // switches active_month to newKey, and pre-fills targets if not set.
 // ══════════════════════════════════════════════
+
+// ── Data compaction: raw months[] duplicated by frozen[] snapshots ──
+function _downloadDeltaBackup(tag){
+  try{
+    const d=JSON.stringify({_delta:_delta,ts:Date.now(),backup:tag||'manual'});
+    const b=new Blob([d],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(b);
+    a.download='GAW_backup_'+(tag||'manual')+'_'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    return true;
+  }catch(e){console.error('[backup]',e);alert('\u274c Backup download failed: '+e.message+'\n\nCompaction aborted \u2014 nothing was deleted.');return false;}
+}
+function _purgeableMonths(){
+  const am=getActiveMonth();
+  return Object.keys(_delta.months||{}).filter(mk=>mk!==am
+    && _delta.frozen && _delta.frozen[mk]
+    && PN.every(p=>_delta.frozen[mk][p]&&Array.isArray(_delta.frozen[mk][p].daily))
+    && Object.keys(_delta.months[mk]||{}).length>0);
+}
+function compactMonths(){
+  const purgeable=_purgeableMonths();
+  if(!purgeable.length){alert('Nothing to compact \u2014 no frozen months still carrying raw data.');return;}
+  if(!confirm('Compact data?\n\n1. Full backup downloads first (keep it safe)\n2. Raw month slots removed: '+purgeable.join(', ')+'\n   (frozen archive copies stay \u2014 archived views unaffected)\n3. Auto-push to GitHub shrinks the cloud file\n\nProceed?'))return;
+  if(!_downloadDeltaBackup('pre-compact'))return;
+  purgeable.forEach(mk=>{delete _delta.months[mk];});
+  saveDB();renderAll();
+  if(typeof getGHToken==='function'&&getGHToken()){githubPush(false);alert('\u2705 Compacted: '+purgeable.join(', ')+' raw slots removed.\n\nPushing to GitHub now \u2014 cloud file will shrink.');}
+  else alert('\u2705 Compacted: '+purgeable.join(', ')+' raw slots removed.\n\nPush to GitHub (Cloud Sync) to shrink the cloud file.');
+}
+
 function rollOverToMonth(newMonthKey){
   const oldKey = getActiveMonth();
   if (newMonthKey === oldKey) return;
@@ -2299,6 +2335,9 @@ function rollOverToMonth(newMonthKey){
   // 5. Ensure new month's slot exists (empty)
   if (!_delta.months) _delta.months = {};
   if (!_delta.months[newMonthKey]) _delta.months[newMonthKey] = {};
+
+  // 6. Compact: old month now served from frozen[]; drop its raw slot (backup downloaded first)
+  if(_downloadDeltaBackup('rollover-'+oldKey)){ delete _delta.months[oldKey]; }
 
   saveDB();
   if (window._cloudAwareSaveDB) window._cloudAwareSaveDB();
@@ -6682,6 +6721,8 @@ function _applyGHPayload(payload,logFn,manual){
       ghDelta.months = { 'Apr-2026': ghDelta.april };
       delete ghDelta.april;
     }
+    // v11 payloads may still carry the dropped legacy `april` duplicate — discard it
+    if (ghDelta.april && ghDelta.months) delete ghDelta.april;
 
     // Smart merge: GH is source of truth but preserve local-only data not yet pushed
     const merged=JSON.parse(JSON.stringify(ghDelta));
@@ -6823,6 +6864,14 @@ function _applyGHPayload(payload,logFn,manual){
 
     // open_po: single small map, keep newer by ts (admin computes; viewers pull). Never let an empty local clobber cloud.
     { const lt=(_delta.open_po&&_delta.open_po.ts)||0; const ct=(merged.open_po&&merged.open_po.ts)||0; if(lt>=ct && lt>0) merged.open_po=_delta.open_po; }
+
+    // Compaction guard: months served from frozen[] don't need raw slots — keeps purge sticky across pulls
+    Object.keys(merged.frozen||{}).forEach(mk=>{
+      if(mk===merged.active_month)return;
+      const fz=merged.frozen[mk];
+      const complete=fz && PN.every(p=>fz[p]&&Array.isArray(fz[p].daily)&&fz[p].daily.length>0);
+      if(complete && merged.months && merged.months[mk]) delete merged.months[mk];
+    });
 
     // proj_hist: monthKey → {asOfDay,byPlat,ts}. Frozen once per month; union so a sync can't wipe the forecast archive.
     merged.proj_hist=Object.assign({},merged.proj_hist||{},_delta.proj_hist||{});
@@ -6972,12 +7021,9 @@ async function githubPush(manual=false){
     // Build payload with backward-compat: also include legacy `april` field
     // so any v10 viewer cached in the wild can still read recent data.
     // _delta has v11 shape (months[], frozen[]); we additionally project active month → legacy `april`.
-    const _activeMonthKey = getActiveMonth();
-    const _activeMonthData = (_delta.months && _delta.months[_activeMonthKey]) || {};
-    const _backCompatDelta = Object.assign({}, _delta, {
-      april: _activeMonthData  // v10 viewers read this
-      // months[] still present for v11 viewers
-    });
+    // v10 legacy `april` field dropped (2026-07): duplicated active month, bloated payload.
+    // Pre-v11 cached viewers must hard-refresh once.
+    const _backCompatDelta = _delta;
     // NOTE: `db` is intentionally omitted — it is rebuilt from `_delta` on pull (see _applyGHPayload),
     // so sending it duplicated the entire dataset and bloated the file past GitHub's 1MB Contents-API limit.
     const payload={_delta:_backCompatDelta,ts:Date.now(),pushedBy:'owner',schema_version:11};
