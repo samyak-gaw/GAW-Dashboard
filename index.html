@@ -5361,10 +5361,12 @@ function _availComputeMTD(){
       result[plat].summary.lost_gmv=skuList.reduce((s,k)=>s+k.lost_gmv,0);
     }
   });
-  // ── Amazon: SOH-only platform (no OSA/DS availability yet). Built from SOH snapshot + Amazon
-  //    sales for DRR, so it shows in the SOH Explorer. Excluded from OSA/CM views by design. ──
-  (function(){
-    const plat='Amazon';
+  // ── SOH-only fallback: any platform with a SOH snapshot but no OSA availability yet
+  //    (Amazon permanently; others at month start before the first OSA upload). Builds
+  //    cards from SOH + sales DRR so the SOH Explorer works. Flagged soh_only so
+  //    OSA/CM views can exclude them. ──
+  _SOH_PLATFORMS.forEach(function(plat){
+    if(result[plat]&&result[plat].summary&&result[plat].summary.has_data)return;
     const platSoh=(sohM[plat]||{}).data||{};
     const aprilPlatData=(DB.april[plat]&&DB.april[plat].sku)||[];
     const skuSet=new Set(Object.keys(platSoh));
@@ -5393,8 +5395,8 @@ function _availComputeMTD(){
       };
     });
     const skuList=Object.values(result[plat].skus);
-    if(skuList.length){ result[plat].summary.active_skus=skuList.length; result[plat].summary.has_data=true; }
-  })();
+    if(skuList.length){ result[plat].summary.active_skus=skuList.length; result[plat].summary.has_data=true; result[plat].summary.soh_only=true; }
+  });
 
   return result;
 }
@@ -5434,7 +5436,7 @@ function renderAvailability(){
   // Update month label
   const mEl=document.getElementById('availMonth');if(mEl)mEl.textContent=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];
   // Show data-missing banner if no platforms have data
-  const platformsWithData=_AVAIL_PLATFORMS.filter(p=>window._availMTD[p].summary.has_data);
+  const platformsWithData=_AVAIL_PLATFORMS.filter(p=>window._availMTD[p].summary.has_data&&!window._availMTD[p].summary.soh_only);
   const banner=document.getElementById('availMissingDataBanner');
   if(!platformsWithData.length){
     banner.style.display='block';
@@ -5493,8 +5495,9 @@ function _availRenderPlatformCards(){
   const cards=_AVAIL_PLATFORMS.map(plat=>{
     const s=mtd[plat].summary;
     const c=colorMap[plat];
-    if(!s.has_data){
-      return `<div class="card" style="opacity:.5"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px">${plat}</b></div><div style="font-size:11px;color:var(--muted)">No data yet — upload OSA + SOH files</div></div>`;
+    if(!s.has_data||s.soh_only){
+      const msg=s.soh_only?'OSA pending — SOH loaded (see SOH Explorer)':'No data yet — upload OSA + SOH files';
+      return `<div class="card" style="opacity:.5"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px">${plat}</b></div><div style="font-size:11px;color:var(--muted)">${msg}</div></div>`;
     }
     const primaryOsa=_availSummaryOsa(s), secondaryOsa=(_availWindow==='mtd'?s.day_osa_ls:s.wt_osa_ls);
     const primaryDs=_availSummaryDs(s), secondaryDs=(_availWindow==='mtd'?s.day_ds_listing:s.ds_listing);
@@ -6519,7 +6522,7 @@ function buildAlerts(){
       const AV_PLATS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket'];
       AV_PLATS.forEach(p=>{
         const pd=av[p];
-        if(!pd||!pd.summary||!pd.summary.has_data)return;
+        if(!pd||!pd.summary||!pd.summary.has_data||pd.summary.soh_only)return;
         // (1) Platform-level critical OSA (MTD GMV-weighted, today's view)
         const dayOsa=pd.summary.day_osa_ls;
         if(dayOsa!=null&&dayOsa<70){
@@ -6997,6 +7000,20 @@ async function _ghPutWithRetry(url,headers,body,refetchSha,logGH){
   }
   throw lastErr||new Error('PUT failed after 4 attempts');
 }
+const GH_DATA_BRANCH='data'; // data commits isolated from Pages builds (main = HTML only)
+async function _ghEnsureDataBranch(token,user,repo){
+  const H={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+  const r=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/git/ref/heads/'+GH_DATA_BRANCH,{headers:H});
+  if(r.ok)return true;
+  if(r.status!==404)throw new Error('branch check failed: HTTP '+r.status);
+  const m=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/git/ref/heads/main',{headers:H});
+  if(!m.ok)throw new Error('main ref lookup failed: HTTP '+m.status);
+  const sha=(await m.json()).object.sha;
+  const c=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/git/refs',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},H),body:JSON.stringify({ref:'refs/heads/'+GH_DATA_BRANCH,sha})});
+  if(!c.ok&&c.status!==422)throw new Error('branch create failed: HTTP '+c.status); // 422 = raced, already exists
+  logGH('Created data branch \u2014 data commits no longer trigger Pages builds');
+  return true;
+}
 async function githubPush(manual=false){
   const token=getGHToken(),user=getGHUser(),repo=getGHRepo(),path=getGHPath();
   if(!token||!user||!repo){if(manual)alert('GitHub sync not configured. Fill in the fields above.');return;}
@@ -7007,8 +7024,9 @@ async function githubPush(manual=false){
   window._ghPushInFlight=true;
   setSyncStatus('syncing','Pushing to GitHub…');
   try{
+    await _ghEnsureDataBranch(token,user,repo);
     let sha=null;
-    const getRes=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path,{
+    const getRes=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path+'?ref='+GH_DATA_BRANCH,{
       headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
     });
     if(getRes.ok){
@@ -7034,17 +7052,17 @@ async function githubPush(manual=false){
     const content=btoa(bin);
     const kb=(content.length*0.75/1024).toFixed(1);
 
-    const body={message:'GAW data update '+new Date().toISOString().slice(0,16),content};
+    const body={message:'GAW data update '+new Date().toISOString().slice(0,16),content,branch:GH_DATA_BRANCH};
     if(sha)body.sha=sha;
 
     // PUT with robust retry: handles 409 (SHA race), 5xx, and transient "Failed to fetch" network errors.
-    const _ghUrl='https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path;
+    const _ghUrl='https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path+'?ref='+GH_DATA_BRANCH;
     const _ghHdr={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'};
     const _refetchSha=async()=>{ try{ const g=await fetch(_ghUrl,{headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Cache-Control':'no-cache'}}); if(g.ok){const dd=await g.json(); return dd.sha;} }catch(_e){} return null; };
     await _ghPutWithRetry(_ghUrl,_ghHdr,body,_refetchSha,logGH);
     const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
     setSyncStatus('ok','✅ GitHub · '+t+' ('+kb+'KB)');
-    logGH('Push OK · '+kb+'KB → Netlify rebuild triggered');
+    logGH('Push OK · '+kb+'KB → data branch (no Pages build)');
     setGHStatus('✅ Pushed '+kb+'KB at '+t+'. Netlify will redeploy in ~30s.',true);
     if(manual)alert('✅ Pushed to GitHub!\n\nNetlify will rebuild in ~30 seconds.\nSize: '+kb+'KB');
   }catch(e){
@@ -7068,9 +7086,11 @@ async function githubPull(manual=false){
   const token=getGHToken(),user=getGHUser(),repo=getGHRepo(),path=getGHPath();
   if(!token||!user||!repo){if(manual)alert('GitHub sync not configured.');return;}
   try{
-    const res=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path,{
-      headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
-    });
+    const H={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+    let res=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path+'?ref='+GH_DATA_BRANCH,{headers:H});
+    if(res.status===404){ // transition: data branch not created yet — read main
+      res=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path,{headers:H});
+    }
     if(!res.ok)throw new Error('HTTP '+res.status+(res.status===404?' — data file not found (push first)':''));
     const d=await res.json();
     let jsonStr;
@@ -7105,22 +7125,18 @@ async function viewerPullNow(manual=true){
   if(!user||!repo){if(manual)setVWStatus('❌ Enter GitHub username and repo name first.',false);return;}
   try{
     // cache-bust to force fresh file (avoid CDN serving stale data)
-    const url=VW_RAW_BASE+user+'/'+repo+'/main/'+path+'?t='+Date.now();
-    const res=await fetch(url);
-    if(!res.ok){
-      const url2=VW_RAW_BASE+user+'/'+repo+'/master/'+path+'?t='+Date.now();
-      const res2=await fetch(url2);
-      if(!res2.ok)throw new Error('HTTP '+res2.status+' on both main and master branches. Check username/repo/path.');
-      const txt2=await res2.text();
-      const payload2=JSON.parse(txt2);
-      _applyGHPayload(payload2,null,false);
-    } else {
-      const txt=await res.text();
-      let payload;
-      try{payload=JSON.parse(txt);}
-      catch(pe){throw new Error('JSON parse failed: '+pe.message);}
-      _applyGHPayload(payload,null,false);
+    // branch order: data (current) → main (transition) → master (legacy)
+    let txt=null,lastStatus=0;
+    for(const br of [GH_DATA_BRANCH,'main','master']){
+      const r=await fetch(VW_RAW_BASE+user+'/'+repo+'/'+br+'/'+path+'?t='+Date.now());
+      if(r.ok){txt=await r.text();break;}
+      lastStatus=r.status;
     }
+    if(txt==null)throw new Error('HTTP '+lastStatus+' on data/main/master branches. Check username/repo/path.');
+    let payload;
+    try{payload=JSON.parse(txt);}
+    catch(pe){throw new Error('JSON parse failed: '+pe.message);}
+    _applyGHPayload(payload,null,false);
     const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
     if(manual)setVWStatus('✅ Data refreshed at '+t,true);
     setSyncStatus('ok','Viewer pull · '+t);
@@ -7171,9 +7187,16 @@ function startVWSyncLoop(){
 async function autoFetchSiteData(){
   try{
     const base=window.location.origin+window.location.pathname.replace(/\/[^/]*$/,'/');
-    const url=base+'data/gaw-data.json?t='+Date.now();
-    const res=await fetch(url,{cache:'no-store'});
-    if(!res.ok)return; // file not deployed yet — silently fall back to seed data
+    const urls=[];
+    const gh=window.location.hostname.match(/^([^.]+)\.github\.io$/);
+    if(gh){ // Pages serves main only; live data sits on the data branch — try raw first
+      const repo=window.location.pathname.split('/').filter(Boolean)[0]||'';
+      if(repo)urls.push('https://raw.githubusercontent.com/'+gh[1]+'/'+repo+'/'+GH_DATA_BRANCH+'/data/gaw-data.json?t='+Date.now());
+    }
+    urls.push(base+'data/gaw-data.json?t='+Date.now());
+    let res=null;
+    for(const u of urls){ const r=await fetch(u,{cache:'no-store'}); if(r.ok){res=r;break;} }
+    if(!res)return; // file not deployed yet — silently fall back to seed data
     const payload=await res.json();
     if(payload&&(payload._delta||payload.db)){
       _applyGHPayload(payload,null,false);
