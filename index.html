@@ -1005,13 +1005,15 @@ body{padding-bottom:env(safe-area-inset-bottom)}
         <div class="up-sub" id="bbAvSub" style="font-size:11px">bbnow_availability.csv</div>
         <input class="file-input" id="bbAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'bbAv')">
       </div>
+
+    </div>
+    <div>
       <div class="upload-zone" ondragover="dov(event,'azAvZone')" ondragleave="dlv('azAvZone')" ondrop="dop(event,'azAv')" id="azAvZone" onclick="document.getElementById('azAvFile').click()" style="min-height:80px;padding:14px">
         <div class="up-icon" style="font-size:22px">🟠</div><div class="up-title" style="font-size:13px">Amazon Availability</div>
         <div class="up-sub" id="azAvSub" style="font-size:11px">download_builder_export.csv</div>
         <input class="file-input" id="azAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'azAv')">
       </div>
     </div>
-    <div></div>
   </div>
 
   <!-- SOH (Stock On Hand) snapshots — all 5 platforms -->
