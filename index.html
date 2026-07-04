@@ -968,50 +968,21 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div class="sec-title" style="margin-top:24px">📦 Availability Data <span class="pill" style="margin-left:4px;background:#1a3a6e;color:#fff">New</span></div>
   <p style="font-size:12px;color:var(--muted);margin:0 0 12px 0;line-height:1.6">Upload OSA reports, SOH snapshots, and Dark Store counts per platform. Used by the Availability tab (Stage 2 — coming next).</p>
 
-  <!-- OSA / Availability reports — all 5 platforms -->
+  <!-- OSA / Availability reports — bulk aggregator export + IM individual -->
   <div style="font-size:11px;font-weight:700;color:#1a3a6e;text-transform:uppercase;margin:6px 0 8px 0">OSA & DS Listing Reports (daily)</div>
-  <div class="g3" style="margin-bottom:14px">
+  <div class="g2" style="margin-bottom:14px">
     <div>
-      <div class="upload-zone" ondragover="dov(event,'zpAvZone')" ondragleave="dlv('zpAvZone')" ondrop="dop(event,'zpAv')" id="zpAvZone" onclick="document.getElementById('zpAvFile').click()" style="min-height:80px;padding:14px">
-        <div class="up-icon" style="font-size:22px">🟣</div><div class="up-title" style="font-size:13px">Zepto Availability</div>
-        <div class="up-sub" id="zpAvSub" style="font-size:11px">zepto-availability-data.csv</div>
-        <input class="file-input" id="zpAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'zpAv')">
-      </div>
-    </div>
-    <div>
-      <div class="upload-zone" ondragover="dov(event,'blAvZone')" ondragleave="dlv('blAvZone')" ondrop="dop(event,'blAv')" id="blAvZone" onclick="document.getElementById('blAvFile').click()" style="min-height:80px;padding:14px">
-        <div class="up-icon" style="font-size:22px">🟡</div><div class="up-title" style="font-size:13px">Blinkit Availability</div>
-        <div class="up-sub" id="blAvSub" style="font-size:11px">blinkit-availability-data.csv</div>
-        <input class="file-input" id="blAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'blAv')">
+      <div class="upload-zone" ondragover="dov(event,'bulkAvZone')" ondragleave="dlv('bulkAvZone')" ondrop="dop(event,'bulkAv')" id="bulkAvZone" onclick="document.getElementById('bulkAvFile').click()" style="min-height:80px;padding:14px">
+        <div class="up-icon" style="font-size:22px">📦</div><div class="up-title" style="font-size:13px">Bulk Availability — Zepto · Blinkit · Flipkart · BigBasket · Amazon</div>
+        <div class="up-sub" id="bulkAvSub" style="font-size:11px">download_builder_export.csv (GobbleCube aggregator · Instamart rows skipped)</div>
+        <input class="file-input" id="bulkAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'bulkAv')">
       </div>
     </div>
     <div>
       <div class="upload-zone" ondragover="dov(event,'imAvZone')" ondragleave="dlv('imAvZone')" ondrop="dop(event,'imAv')" id="imAvZone" onclick="document.getElementById('imAvFile').click()" style="min-height:80px;padding:14px">
         <div class="up-icon" style="font-size:22px">🔴</div><div class="up-title" style="font-size:13px">Instamart Availability</div>
-        <div class="up-sub" id="imAvSub" style="font-size:11px">instamart-availability-data.csv</div>
+        <div class="up-sub" id="imAvSub" style="font-size:11px">instamart-availability-data.csv (separate — bulk export IDs unmappable)</div>
         <input class="file-input" id="imAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'imAv')">
-      </div>
-    </div>
-    <div>
-      <div class="upload-zone" ondragover="dov(event,'fkAvZone')" ondragleave="dlv('fkAvZone')" ondrop="dop(event,'fkAv')" id="fkAvZone" onclick="document.getElementById('fkAvFile').click()" style="min-height:80px;padding:14px">
-        <div class="up-icon" style="font-size:22px">🔵</div><div class="up-title" style="font-size:13px">Flipkart Availability</div>
-        <div class="up-sub" id="fkAvSub" style="font-size:11px">flipkart_minutes_availability.csv</div>
-        <input class="file-input" id="fkAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'fkAv')">
-      </div>
-    </div>
-    <div>
-      <div class="upload-zone" ondragover="dov(event,'bbAvZone')" ondragleave="dlv('bbAvZone')" ondrop="dop(event,'bbAv')" id="bbAvZone" onclick="document.getElementById('bbAvFile').click()" style="min-height:80px;padding:14px">
-        <div class="up-icon" style="font-size:22px">🟢</div><div class="up-title" style="font-size:13px">BigBasket Availability</div>
-        <div class="up-sub" id="bbAvSub" style="font-size:11px">bbnow_availability.csv</div>
-        <input class="file-input" id="bbAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'bbAv')">
-      </div>
-
-    </div>
-    <div>
-      <div class="upload-zone" ondragover="dov(event,'azAvZone')" ondragleave="dlv('azAvZone')" ondrop="dop(event,'azAv')" id="azAvZone" onclick="document.getElementById('azAvFile').click()" style="min-height:80px;padding:14px">
-        <div class="up-icon" style="font-size:22px">🟠</div><div class="up-title" style="font-size:13px">Amazon Availability</div>
-        <div class="up-sub" id="azAvSub" style="font-size:11px">download_builder_export.csv</div>
-        <input class="file-input" id="azAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'azAv')">
       </div>
     </div>
   </div>
@@ -4169,6 +4140,21 @@ function processFile(file,type){
         else if(type==='fkAv')ok=procAvail('Flipkart',rows);
         else if(type==='bbAv')ok=procAvail('BigBasket',rows);
         else if(type==='azAv')ok=procAvail('Amazon',rows);
+        else if(type==='bulkAv'){
+          const _BULK_PLAT={'zepto':'Zepto','blinkit':'Blinkit','flipkart minutes':'Flipkart','flipkart':'Flipkart','bbnow':'BigBasket','bigbasket':'BigBasket','amazon now':'Amazon','amazon':'Amazon'};
+          const groups={}; let imSkipped=0, unknown=0;
+          (rows||[]).forEach(r=>{
+            const p=String(r['Platform']||'').trim().toLowerCase();
+            if(p==='instamart'){imSkipped++;return;}
+            const plat=_BULK_PLAT[p]; if(!plat){unknown++;return;}
+            (groups[plat]=groups[plat]||[]).push(r);
+          });
+          const done=[]; ok=false;
+          Object.keys(groups).forEach(plat=>{ if(procAvail(plat,groups[plat])){done.push(plat+' ('+groups[plat].length+')'); ok=true;} });
+          const stEl=document.getElementById('bulkAvSub');
+          if(stEl&&ok)stEl.textContent='\u2705 '+file.name+' \u2014 '+done.join(', ')+(imSkipped?' \u00b7 IM rows skipped: '+imSkipped:'')+(unknown?' \u00b7 unknown platform rows: '+unknown:'');
+          if(!ok)alert('Bulk availability: no rows routed \u2014 check the Platform column.');
+        }
         // SOH files
         else if(type==='zpSoh')ok=procSoh('Zepto',rows);
         else if(type==='blSoh')ok=procSoh('Blinkit',rows);
