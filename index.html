@@ -4520,7 +4520,7 @@ function procIM(){
   const ss=sr[0]||{};const sk=Object.keys(ss);
   const sDateCol=sk.find(k=>/ordered.?date/i.test(k)||/order.?date/i.test(k))||'ORDERED_DATE';
   const sGmvCol=sk.find(k=>/^gmv$/i.test(k)||/gross.?merch/i.test(k)||/revenue/i.test(k))||'GMV';
-  const sUnitCol=sk.find(k=>/units.?sold/i.test(k)||/^units$/i.test(k)||/qty/i.test(k))||'UNITS_SOLD';
+  const sUnitCol=sk.find(k=>k==='UNITS_SOLD')||sk.find(k=>!/combo/i.test(k)&&(/units.?sold/i.test(k)||/^units$/i.test(k)||/qty/i.test(k)))||'UNITS_SOLD';
   const sCityCol=sk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k))||sk.find(k=>/city/i.test(k))||'CITY';
   // Exact-match-first for SKU id; exclude *_NAME columns
   const sItemCol=sk.find(k=>k==='ITEM_CODE')||sk.find(k=>k==='PRODUCT_ID')||sk.find(k=>/^item.?code$/i.test(k))||sk.find(k=>/^product.?id$/i.test(k))||sk.find(k=>/^sku.?(id|code)$/i.test(k))||sk.find(k=>/item.?code/i.test(k)||/sku.?code/i.test(k)||/product.?id/i.test(k))||'ITEM_CODE';
