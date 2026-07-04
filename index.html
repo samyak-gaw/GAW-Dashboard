@@ -8156,29 +8156,43 @@ function uploadTracker(input){
   reader.onload=function(e){
     try{
       const wb=XLSX.read(e.target.result,{type:'array'});
-      let chosen=null;
-      wb.SheetNames.forEach(sn=>{
+      // Multi-tab merge: parse EVERY sheet carrying tracker columns, oldest month first,
+      // so the newest tab's row wins per PO (carry-forwards resolve to their July status).
+      const _MRANK={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+      const sheets=[];
+      wb.SheetNames.forEach((sn,idx)=>{
         const ws=wb.Sheets[sn]; if(!ws)return;
         const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true});
         for(let r=0;r<Math.min(4,aoa.length);r++){const row=(aoa[r]||[]).map(c=>String(c).trim());
-          if(row.indexOf('SUPPLY NOTE PO')>=0&&row.indexOf('PO STATUS')>=0){ if(!chosen||/tracker\s*$/i.test(sn))chosen={sn,hdrRow:r,aoa}; break; }}
+          if(row.indexOf('SUPPLY NOTE PO')>=0&&row.indexOf('PO STATUS')>=0){
+            const mm=sn.toLowerCase().match(/jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/);
+            sheets.push({sn,hdrRow:r,aoa,idx,rank:mm?_MRANK[mm[0]]:null}); break;
+          }}
       });
-      if(!chosen)throw new Error('No sheet with SUPPLY NOTE PO + PO STATUS columns');
-      const hdr=chosen.aoa[chosen.hdrRow].map(c=>String(c).trim());
-      const iPO=hdr.indexOf('SUPPLY NOTE PO'),iPlat=hdr.indexOf('Q COM PARTNER'),iCity=(hdr.indexOf('CITY')>=0?hdr.indexOf('CITY'):hdr.findIndex(h=>/\bcity\b/i.test(h))),iSt=hdr.indexOf('PO STATUS');
-      const iRecv=hdr.indexOf('PO RECEIVED DATE'),iPV=hdr.indexOf('PO VALUE'),iIV=hdr.indexOf('INVOICE VALUE');
-      const _trkAll={};
+      if(!sheets.length)throw new Error('No sheet with SUPPLY NOTE PO + PO STATUS columns');
+      // Dec→Jan wrap guard: if both late- and early-year months present, early months rank +12
+      const ranks=sheets.filter(s=>s.rank!=null).map(s=>s.rank);
+      if(ranks.some(r=>r>=11)&&ranks.some(r=>r<=2)) sheets.forEach(s=>{ if(s.rank!=null&&s.rank<=2)s.rank+=12; });
+      sheets.sort((a,b)=>((a.rank==null?900+a.idx:a.rank)-(b.rank==null?900+b.idx:b.rank)));
+      const _trkAll={}; const tabSummary=[];
+      sheets.forEach(sh=>{
+        const hdr=sh.aoa[sh.hdrRow].map(c=>String(c).trim());
+        const iPO=hdr.indexOf('SUPPLY NOTE PO'),iPlat=hdr.indexOf('Q COM PARTNER'),iCity=(hdr.indexOf('CITY')>=0?hdr.indexOf('CITY'):hdr.findIndex(h=>/\bcity\b/i.test(h))),iSt=hdr.indexOf('PO STATUS');
+        const iRecv=hdr.indexOf('PO RECEIVED DATE'),iPV=hdr.indexOf('PO VALUE'),iIV=hdr.indexOf('INVOICE VALUE');
+        let n=0;
+        for(let r=sh.hdrRow+1;r<sh.aoa.length;r++){const row=sh.aoa[r]||[]; const po=String(row[iPO]||'').trim(); if(!po)continue;
+          const stx=String(row[iSt]||'').trim().toLowerCase().replace(/\s+/g,' ');
+          const platx=CM_TRACK_PLAT[String(row[iPlat]||'').trim().toLowerCase()]||null;
+          const cityx=(iCity>=0?_cleanCity(row[iCity]):'Unknown'); // granular city (col N) — no metro collapse
+          _trkAll[po]={plat:platx, city:cityx, status:stx, recv:(iRecv>=0?_frParseDate(row[iRecv]):null), poVal:(iPV>=0?_frINR(row[iPV]):0), invVal:(iIV>=0?_frINR(row[iIV]):0)};
+          n++;
+        }
+        tabSummary.push(sh.sn+': '+n);
+      });
       const open={}; let cnt=0;
-      for(let r=chosen.hdrRow+1;r<chosen.aoa.length;r++){const row=chosen.aoa[r]||[]; const po=String(row[iPO]||'').trim(); if(!po)continue;
-        const stx=String(row[iSt]||'').trim().toLowerCase().replace(/\s+/g,' ');
-        const platx=CM_TRACK_PLAT[String(row[iPlat]||'').trim().toLowerCase()]||null;
-        const cityx=(iCity>=0?_cleanCity(row[iCity]):'Unknown'); // granular city (col N) — no metro collapse
-        _trkAll[po]={plat:platx, city:cityx, status:stx, recv:(iRecv>=0?_frParseDate(row[iRecv]):null), poVal:(iPV>=0?_frINR(row[iPV]):0), invVal:(iIV>=0?_frINR(row[iIV]):0)};
-        if(!CM_OPEN_STATUSES.has(stx))continue;
-        open[po]={plat:platx, city:cityx}; cnt++;
-      }
+      Object.keys(_trkAll).forEach(po=>{ const t=_trkAll[po]; if(!CM_OPEN_STATUSES.has(t.status))return; open[po]={plat:t.plat, city:t.city}; cnt++; });
       _cmTracker={open,count:cnt,fetched:new Date(),src:'upload',all:_trkAll}; _cmTrackErr=null;
-      if(st)st.textContent='\u2705 '+file.name+' \u2014 '+chosen.sn+': '+cnt+' open POs';
+      if(st)st.textContent='\u2705 '+file.name+' \u2014 merged '+sheets.length+' tab'+(sheets.length>1?'s':'')+' ('+tabSummary.join(', ')+') \u00b7 '+cnt+' open POs';
       _cmOpenPO=null; try{cmBuildOpenPO(); cmBuildFR(); if(typeof saveDB==='function')saveDB(); if(typeof githubPush==='function')githubPush();}catch(e){} if(document.getElementById('cmactions')&&document.getElementById('cmactions').classList.contains('active'))renderCMActions();
     }catch(err){ if(st)st.textContent='\u274C '+(err.message||err); }
   };
