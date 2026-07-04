@@ -2104,7 +2104,10 @@ function _trimAvailForStorage(avail){
         const keep=new Set(dayNums.slice(0,14).map(String));
         const trimmedDaily={};
         Object.keys(daily).forEach(d=>{if(keep.has(d))trimmedDaily[d]=daily[d];});
-        out[mk][plat][sku]={daily:trimmedDaily,by_city:rec.by_city||{}};
+        // daily_city already 14-day-capped at parse; keep same day-set as daily
+        const dc=rec.daily_city||{}; const trimmedDC={};
+        Object.keys(dc).forEach(d=>{if(keep.has(String(d)))trimmedDC[d]=dc[d];});
+        out[mk][plat][sku]={daily:trimmedDaily,by_city:rec.by_city||{},daily_city:trimmedDC};
       });
     });
   });
@@ -4839,7 +4842,11 @@ function procAvail(platform,rows){
           ds_listing:cityAgg[c].dsCnt?Math.round((cityAgg[c].dsSum/cityAgg[c].dsCnt)*100)/100:null
         };
       });
-      _delta.avail[mk][platform][sku]={daily,by_city};
+      // Per-day per-city snapshot (newest 14 days only — quota-safe; powers city-scoped day OSA)
+      const _dcDays=Object.keys(allDays).map(Number).sort((a,b)=>b-a).slice(0,14);
+      const daily_city={};
+      _dcDays.forEach(d=>{ const s=allDays[d]; const o={}; Object.keys(s.cities||{}).forEach(c=>{ const cv=s.cities[c]; o[c]=[cv.wt_osa_ls,cv.ds_listing]; }); daily_city[d]=o; });
+      _delta.avail[mk][platform][sku]={daily,by_city,daily_city};
     });
   });
 
@@ -5190,7 +5197,7 @@ function _availNormalizeSkuRec(skuRec){
   if(!skuRec||typeof skuRec!=='object')return {daily:{},by_city:{}};
   // New shape: has .daily or .by_city as direct properties
   if(skuRec.daily||skuRec.by_city){
-    return {daily:skuRec.daily||{},by_city:skuRec.by_city||{}};
+    return {daily:skuRec.daily||{},by_city:skuRec.by_city||{},daily_city:skuRec.daily_city||{}};
   }
   // Old shape: keys are numeric day strings, each with {wt_osa_ls, ds_listing, by_city}
   const keys=Object.keys(skuRec);
@@ -5222,6 +5229,41 @@ function _availNormalizeSkuRec(skuRec){
 }
 
 // Compute MTD aggregates per platform per SKU (avg OSA_LS, avg DS, lost GMV, DOI)
+const _MON_ABBR=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function _prevMonthKey(mk){ let m=MONTH_NUM_FROM_KEY(mk),y=YEAR_FROM_KEY(mk); m--; if(m<1){m=12;y--;} return _MON_ABBR[m-1]+'-'+y; }
+// Day-wise OSA for a SKU in a given month (normalized), or {} if absent.
+function _osaDaily(mk,plat,sku){
+  const rec=((DB.avail||{})[mk]||{})[plat]; if(!rec||!rec[sku])return {};
+  return (_availNormalizeSkuRec(rec[sku]).daily)||{};
+}
+// WoW OSA: 7-day avg vs prior 7-day avg, crossing into the previous month when needed.
+// Returns {cur,prev,delta} — null members when a window has <3 sampled days.
+function _osaWoWForSku(plat,sku){
+  const mk=getViewingMonth();
+  const cd=_osaDaily(mk,plat,sku);
+  const dayNums=Object.keys(cd).map(Number).filter(d=>cd[d]&&cd[d].wt_osa_ls!=null);
+  const selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity;
+  const L=dayNums.filter(d=>d<=selCap).sort((a,b)=>b-a)[0];
+  if(!L)return null;
+  const pmk=_prevMonthKey(mk), pDays=daysInMonth(pmk);
+  const pd=_osaDaily(pmk,plat,sku);
+  const val=d=>{ // d may be ≤0 → previous month
+    if(d>=1){ const v=cd[d]; return (v&&v.wt_osa_ls!=null)?v.wt_osa_ls:null; }
+    const dp=pDays+d; const v=pd[dp]; return (v&&v.wt_osa_ls!=null)?v.wt_osa_ls:null;
+  };
+  const win=(a,b)=>{ const xs=[]; for(let d=a;d<=b;d++){ const v=val(d); if(v!=null)xs.push(v); } return xs.length>=3?(xs.reduce((s,x)=>s+x,0)/xs.length):null; };
+  const cur=win(L-6,L), prev=win(L-13,L-7);
+  return {cur,prev,delta:(cur!=null&&prev!=null)?(cur-prev):null};
+}
+// Compact WoW badge html (pp delta)
+function _osaWoWBadge(w){
+  if(!w||w.delta==null)return '<span style="color:#9aa1a8;font-size:10px">\u2014</span>';
+  const d=w.delta;
+  if(d>=0.5)return '<span style="color:#1a7a3a;font-weight:700;font-size:11px">\u25b2 '+d.toFixed(1)+'pp</span>';
+  if(d<=-0.5)return '<span style="color:#c0392b;font-weight:700;font-size:11px">\u25bc '+Math.abs(d).toFixed(1)+'pp</span>';
+  return '<span style="color:#9aa1a8;font-weight:700;font-size:11px">\u25ac flat</span>';
+}
+
 function _availComputeMTD(){
   const mk=getViewingMonth();
   const availM=(DB.avail||{})[mk]||{};
@@ -5323,7 +5365,9 @@ function _availComputeMTD(){
         days_data:dayKeys.length,
         by_city:cityDetail,
         soh_by_city:(sohRec&&sohRec.by_city)?sohRec.by_city:{},
-        by_facility:sohRec?(sohRec.by_facility||{}):{}
+        by_facility:sohRec?(sohRec.by_facility||{}):{},
+        daily:days,
+        daily_city:skuData.daily_city||{}
       };
     });
     // Platform-level summary — GMV-weighted (only SKUs with both OSA data AND GMV contribute).
@@ -5332,6 +5376,8 @@ function _availComputeMTD(){
     if(skuList.length){
       result[plat].summary.active_skus=skuList.length;
       result[plat].summary.has_data=true;
+      // OSA WoW (7d vs prior 7d) — GMV-weighted across SKUs with both windows
+      (function(){ let wS=0,w=0; Object.keys(result[plat].skus).forEach(sk=>{ const k=result[plat].skus[sk]; const ww=_osaWoWForSku(plat,sk); if(ww&&ww.delta!=null&&(k.mtd_gmv||0)>0){ wS+=ww.delta*k.mtd_gmv; w+=k.mtd_gmv; } }); result[plat].summary.osa_wow=(w>0)?(wS/w):null; })();
       // --- MTD GMV-weighted OSA & DS ---
       // Weight = MTD GMV, but only count SKUs that have a non-null metric (avoids diluting with blanks).
       const _wavg=(metricKey)=>{
@@ -5511,7 +5557,7 @@ function _availRenderPlatformCards(){
         <span style="font-size:10px;color:var(--muted)">${s.active_skus} SKUs</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
-        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Wt. OSA (LS) — ${winLbl}</div><div style="font-size:20px;font-weight:800;color:${osaCol}">${_availFmtPct(primaryOsa)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">${otherLbl}: <b>${_availFmtPct(secondaryOsa)}</b></div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Wt. OSA (LS) — ${winLbl}</div><div style="font-size:20px;font-weight:800;color:${osaCol}">${_availFmtPct(primaryOsa)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">${otherLbl}: <b>${_availFmtPct(secondaryOsa)}</b>${(s.osa_wow!=null)?' · <span title="OSA 7d avg vs prior 7d">'+ _osaWoWBadge({delta:s.osa_wow}) +' WoW</span>':''}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DS Listing — ${winLbl}</div><div style="font-size:20px;font-weight:800;color:${dsCol}">${_availFmtPct(primaryDs)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">${otherLbl}: <b>${_availFmtPct(secondaryDs)}</b></div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Median</div><div style="font-size:20px;font-weight:800;color:${doiCol}">${_availFmtDays(s.doi,s.doi>=90?'capped':null)}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Lost GMV (MTD)</div><div style="font-size:20px;font-weight:800;color:#c0392b">${_availFmtRupees(s.lost_gmv)}</div></div>
@@ -5769,9 +5815,8 @@ function _toggleSkuFilt(view,id,on){ const st=_filtState(view); if(!st.skus)st.s
 function _skuFiltAll(view,all){ const st=_filtState(view); const plat=view==='osa'?_availCurrentPlat:_availSohPlat; st.skus=all?new Set(_availPlatFacets(plat).skus.map(s=>s.id)):null; _buildAvailFilterBar(view); _filtRender(view); }
 function _resetAvailFilters(view){ const st=_filtState(view); Object.keys(st).forEach(k=>st[k]=(k==='skus')?null:''); }
 
-function availRenderSkuTable(){
-  const plat=_availCurrentPlat;
-  if(!plat)return;
+// Shared pipeline: search + filters + city scoping + WoW + sort. Used by table render AND Excel export.
+function _osaScopedList(plat){
   const mtd=window._availMTD[plat]||{skus:{}};
   const search=(document.getElementById('availSkuSearch')?.value||'').toLowerCase().trim();
   const sortBy=document.getElementById('availSkuSort')?.value||'lost_gmv';
@@ -5781,6 +5826,39 @@ function availRenderSkuTable(){
   });
   if(search)list=list.filter(r=>(r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search));
   list=_applyAvailFilters(list,plat,'osa');
+  // City scope: when a city filter is active, every metric becomes that city's number.
+  const _cityScope=_filtState('osa').city||null;
+  if(_cityScope){
+    const selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity;
+    const csRows=((DB.april[plat]&&DB.april[plat].citysku)||{});
+    const daysElapsed=(function(){const s=new Set();Object.keys(csRows).forEach(d=>{if(+d<=selCap)s.add(+d);});return s.size||1;})();
+    list=list.map(r=>{
+      const o=Object.assign({},r);
+      const bc=(r.by_city||{})[_cityScope]||{};
+      o.wt_osa_ls=(bc.wt_osa_ls!=null)?bc.wt_osa_ls:null;
+      o.ds_listing=(bc.ds_listing!=null)?bc.ds_listing:null; o.day_ds_listing=o.ds_listing;
+      // day OSA from newest daily_city day ≤ selected
+      o.day_osa_ls=null;
+      const dcd=Object.keys(r.daily_city||{}).map(Number).filter(d=>d<=selCap).sort((a,b)=>b-a);
+      for(const d of dcd){ const cv=(r.daily_city[d]||{})[_cityScope]; if(cv&&cv[0]!=null){o.day_osa_ls=cv[0]; if(cv[1]!=null){o.ds_listing=cv[1];o.day_ds_listing=cv[1];} break;} }
+      o.soh=(r.soh_by_city||{})[_cityScope]||0;
+      // city DRR + MTD GMV from sales citysku
+      let cu=0,cg=0; Object.keys(csRows).forEach(d=>{ if(+d>selCap)return; const cs=(csRows[d]||{})[_cityScope]; const v=cs&&cs[r.sku]; if(v){cu+=(v.units||0);cg+=(v.gmv||0);} });
+      o.drr=cu/daysElapsed; o.mtd_gmv=cg;
+      o.doi=(o.drr>0.05&&o.soh>0)?Math.min(o.soh/o.drr,90):null; o.doi_flag=(o.doi===90)?'capped':((o.soh>0&&o.drr<=0.05)?'no_velocity':null);
+      const osaEff=(o.wt_osa_ls!=null&&o.wt_osa_ls>0)?Math.max(o.wt_osa_ls,OSA_LOSS_FLOOR):null;
+      o.lost_gmv=(osaEff&&osaEff<100)?cg*(100-osaEff)/osaEff:0;
+      o._cityWoW=(function(){ // city 7d vs prior 7d from daily_city (14d retained)
+        const dd=r.daily_city||{}; const ds=Object.keys(dd).map(Number).filter(d=>d<=selCap&&dd[d]&&dd[d][_cityScope]&&dd[d][_cityScope][0]!=null).sort((a,b)=>b-a);
+        if(!ds.length)return null; const L=ds[0];
+        const w=(a,b)=>{const xs=[];for(let d=a;d<=b;d++){const cv=dd[d]&&dd[d][_cityScope];if(cv&&cv[0]!=null)xs.push(cv[0]);}return xs.length>=3?(xs.reduce((s,x)=>s+x,0)/xs.length):null;};
+        const cur=w(L-6,L),prev=w(L-13,L-7);
+        return {cur,prev,delta:(cur!=null&&prev!=null)?(cur-prev):null};
+      })();
+      return o;
+    });
+  }
+  list.forEach(r=>{ r._wow=_cityScope?(r._cityWoW||null):_osaWoWForSku(plat,r.sku); });
   list.sort((a,b)=>{
     if(sortBy==='lost_gmv')return b.lost_gmv-a.lost_gmv;
     if(sortBy==='osa_asc')return (a.wt_osa_ls??101)-(b.wt_osa_ls??101);
@@ -5789,12 +5867,21 @@ function availRenderSkuTable(){
     if(sortBy==='name')return a.name.localeCompare(b.name);
     return 0;
   });
+
+  return {list,cityScope:_filtState('osa').city||null};
+}
+
+function availRenderSkuTable(){
+  const plat=_availCurrentPlat;
+  if(!plat)return;
+  const {list}=_osaScopedList(plat);
   if(!list.length){document.getElementById('availSkuTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No SKUs match — try clearing the search.</div>';return;}
   const _showFR=(function(){var f=(typeof _frState==='function')?_frState():((typeof _cmFR!=='undefined')?_cmFR:null);return !!(f&&((f.hasSku)||(f.byPlat&&Object.keys(f.byPlat).length)));})();
   const rows=list.map(r=>`<tr style="cursor:pointer" onclick="availDrillToSku('${plat}','${r.sku}')">
     <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.day_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.day_osa_ls)}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.wt_osa_ls)}</td>
+    <td style="padding:8px 10px;font-size:12px" title="7-day avg vs prior 7-day avg">${_osaWoWBadge(r._wow)}</td>
     ${_showFR?_frCellHtml(plat,r.name):''}
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(_availDs(r),'ds')};font-weight:700">${_availFmtPct(_availDs(r))}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
@@ -5802,7 +5889,7 @@ function availRenderSkuTable(){
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr||0)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:#c0392b;font-weight:700">${_availFmtRupees(r.lost_gmv)}</td>
   </tr>`).join('');
-  document.getElementById('availSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:760px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA Today</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA MTD</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  document.getElementById('availSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:820px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA Today</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA MTD</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="7d avg vs prior 7d">OSA WoW</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function availDrillToSku(plat,sku){
@@ -6063,7 +6150,7 @@ function _sohExportXlsx(){
     if(styled){
       var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
       for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
-      for(var r2=0;r2<list.length;r2++){for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue; cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}}
+      for(var r2=0;r2<rows.length;r2++){for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue; cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}}
     }
     var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
     X.utils.book_append_sheet(wb,ws,safe);
@@ -6086,24 +6173,39 @@ function _osaExportXlsx(){
   if(!plats.length){alert('No OSA data loaded to export.');return;}
   var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
   var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var head=['SKU','Category','OSA Today','OSA MTD','FR% (10d)','DS Listing','DOI','SOH','DRR (u/day)','Lost GMV'];
+  var head=['SKU','Category','OSA Today','OSA MTD','OSA WoW (pp)','FR% (10d)','DS Listing','DOI','SOH','DRR (u/day)','Lost GMV'];
   var wb=X.utils.book_new();
   var _pct=function(v){return (v==null||isNaN(v))?'':Math.round(v*10)/10;};
+  var _cityTag='';
   plats.forEach(function(plat){
-    var pd=window._availMTD[plat]||{skus:{}};
-    var list=Object.keys(pd.skus).map(function(sku){
-      var info=skuLookup(plat,sku), k=pd.skus[sku];
-      var dsVal=(typeof _availDs==='function')?_availDs(k):k.ds_listing;
-      var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name):null;
-      var _frv=_f?(_f.level==='sku'?Math.round(_f.fr):Math.round(_f.fr)+' (plat)'):'';
-      var doiv=(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':''):Math.round(k.doi)+(k.doi_flag==='capped'?'+':'');
-      return {name:info.name,cat:info.cat||'',osaToday:k.day_osa_ls,osaMtd:k.wt_osa_ls,fr:_frv,ds:dsVal,doi:doiv,soh:Math.round(k.soh||0),drr:Math.round(k.drr||0),lost:Math.round(k.lost_gmv||0)};
-    }).filter(function(r){return r.soh>0||r.drr>0||r.osaMtd!=null;}).sort(function(a,b){return (b.lost||0)-(a.lost||0);});
-    var aoa=[['GAW · '+plat+' · OSA / Availability · '+mk,'','','','','','','','',''],head];
-    list.forEach(function(r){ aoa.push([r.name,r.cat,_pct(r.osaToday),_pct(r.osaMtd),r.fr,_pct(r.ds),r.doi,r.soh,r.drr,r.lost]); });
+    var rows,cityScope=null;
+    if(plat===_availCurrentPlat && typeof _osaScopedList==='function'){
+      var sc=_osaScopedList(plat); cityScope=sc.cityScope; _cityTag=cityScope?('_'+cityScope):'';
+      rows=sc.list.map(function(k){
+        var _f=cityScope?((typeof _frForSkuCity==='function')?_frForSkuCity(plat,k.name,cityScope):null):((typeof _frForSku==='function')?_frForSku(plat,k.name):null);
+        var _frv=_f?(_f.level==='sku'||cityScope?Math.round(_f.fr):Math.round(_f.fr)+' (plat)'):'';
+        var doiv=(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':''):Math.round(k.doi)+(k.doi_flag==='capped'?'+':'');
+        var wow=(k._wow&&k._wow.delta!=null)?(Math.round(k._wow.delta*10)/10):'';
+        return {name:k.name,cat:k.cat||'',osaToday:k.day_osa_ls,osaMtd:k.wt_osa_ls,wow:wow,fr:_frv,ds:(typeof _availDs==='function')?_availDs(k):k.ds_listing,doi:doiv,soh:Math.round(k.soh||0),drr:Math.round(k.drr||0),lost:Math.round(k.lost_gmv||0)};
+      });
+    }else{
+      var pd=window._availMTD[plat]||{skus:{}};
+      rows=Object.keys(pd.skus).map(function(sku){
+        var info=skuLookup(plat,sku), k=pd.skus[sku];
+        var dsVal=(typeof _availDs==='function')?_availDs(k):k.ds_listing;
+        var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name):null;
+        var _frv=_f?(_f.level==='sku'?Math.round(_f.fr):Math.round(_f.fr)+' (plat)'):'';
+        var doiv=(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':''):Math.round(k.doi)+(k.doi_flag==='capped'?'+':'');
+        var ww=(typeof _osaWoWForSku==='function')?_osaWoWForSku(plat,sku):null;
+        var wow=(ww&&ww.delta!=null)?(Math.round(ww.delta*10)/10):'';
+        return {name:info.name,cat:info.cat||'',osaToday:k.day_osa_ls,osaMtd:k.wt_osa_ls,wow:wow,fr:_frv,ds:dsVal,doi:doiv,soh:Math.round(k.soh||0),drr:Math.round(k.drr||0),lost:Math.round(k.lost_gmv||0)};
+      }).filter(function(r){return r.soh>0||r.drr>0||r.osaMtd!=null;}).sort(function(a,b){return (b.lost||0)-(a.lost||0);});
+    }
+    var aoa=[['GAW · '+plat+(cityScope?' · '+cityScope:'')+' · OSA / Availability · '+mk,'','','','','','','','','',''],head];
+    rows.forEach(function(r){ aoa.push([r.name,r.cat,_pct(r.osaToday),_pct(r.osaMtd),r.wow,r.fr,_pct(r.ds),r.doi,r.soh,r.drr,r.lost]); });
     var ws=X.utils.aoa_to_sheet(aoa);
-    ws['!cols']=[{wch:38},{wch:18},{wch:11},{wch:11},{wch:12},{wch:12},{wch:11},{wch:12},{wch:12},{wch:14}];
-    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:9}}];
+    ws['!cols']=[{wch:38},{wch:18},{wch:11},{wch:11},{wch:12},{wch:12},{wch:12},{wch:11},{wch:12},{wch:12},{wch:14}];
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:10}}];
     if(styled){
       var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
       for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
@@ -6112,7 +6214,7 @@ function _osaExportXlsx(){
     var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
     X.utils.book_append_sheet(wb,ws,safe);
   });
-  X.writeFile(wb,'GAW_OSA_'+(plats.length===1?plats[0]+'_':'')+(mk||'export')+'.xlsx');
+  X.writeFile(wb,'GAW_OSA_'+(plats.length===1?plats[0]+_cityTag+'_':'')+(mk||'export')+'.xlsx');
 }
 
 // Replenishment plan: one urgency-ranked PO sheet, net of open PO, sized to a 14-day cover.
