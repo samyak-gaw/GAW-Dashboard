@@ -5251,17 +5251,20 @@ function _osaWoWForSku(plat,sku){
     if(d>=1){ const v=cd[d]; return (v&&v.wt_osa_ls!=null)?v.wt_osa_ls:null; }
     const dp=pDays+d; const v=pd[dp]; return (v&&v.wt_osa_ls!=null)?v.wt_osa_ls:null;
   };
-  const win=(a,b)=>{ const xs=[]; for(let d=a;d<=b;d++){ const v=val(d); if(v!=null)xs.push(v); } return xs.length>=3?(xs.reduce((s,x)=>s+x,0)/xs.length):null; };
-  const cur=win(L-6,L), prev=win(L-13,L-7);
-  return {cur,prev,delta:(cur!=null&&prev!=null)?(cur-prev):null};
+  const win=(a,b)=>{ const xs=[]; for(let d=a;d<=b;d++){ const v=val(d); if(v!=null)xs.push(v); } return xs.length>=3?{avg:(xs.reduce((s,x)=>s+x,0)/xs.length),n:xs.length}:null; };
+  const c=win(L-6,L), p=win(L-13,L-7);
+  const cur=c?c.avg:null, prev=p?p.avg:null;
+  return {cur,prev,delta:(cur!=null&&prev!=null)?(cur-prev):null,curN:c?c.n:0,prevN:p?p.n:0};
 }
 // Compact WoW badge html (pp delta)
 function _osaWoWBadge(w){
   if(!w||w.delta==null)return '<span style="color:#9aa1a8;font-size:10px">\u2014</span>';
   const d=w.delta;
-  if(d>=0.5)return '<span style="color:#1a7a3a;font-weight:700;font-size:11px">\u25b2 '+d.toFixed(1)+'pp</span>';
-  if(d<=-0.5)return '<span style="color:#c0392b;font-weight:700;font-size:11px">\u25bc '+Math.abs(d).toFixed(1)+'pp</span>';
-  return '<span style="color:#9aa1a8;font-weight:700;font-size:11px">\u25ac flat</span>';
+  const partial=(w.curN!=null&&w.curN<7)||(w.prevN!=null&&w.prevN<7);
+  const note=partial?('<span style="color:#9aa1a8;font-size:9px" title="7d vs prior 7d — partial window ('+(w.curN||'?')+'d vs '+(w.prevN||'?')+'d sampled)"> '+(w.curN||0)+'/'+(w.prevN||0)+'d</span>'):'';
+  if(d>=0.5)return '<span style="color:#1a7a3a;font-weight:700;font-size:11px">\u25b2 '+d.toFixed(1)+'pp</span>'+note;
+  if(d<=-0.5)return '<span style="color:#c0392b;font-weight:700;font-size:11px">\u25bc '+Math.abs(d).toFixed(1)+'pp</span>'+note;
+  return '<span style="color:#9aa1a8;font-weight:700;font-size:11px">\u25ac flat</span>'+note;
 }
 
 function _availComputeMTD(){
@@ -5851,9 +5854,9 @@ function _osaScopedList(plat){
       o._cityWoW=(function(){ // city 7d vs prior 7d from daily_city (14d retained)
         const dd=r.daily_city||{}; const ds=Object.keys(dd).map(Number).filter(d=>d<=selCap&&dd[d]&&dd[d][_cityScope]&&dd[d][_cityScope][0]!=null).sort((a,b)=>b-a);
         if(!ds.length)return null; const L=ds[0];
-        const w=(a,b)=>{const xs=[];for(let d=a;d<=b;d++){const cv=dd[d]&&dd[d][_cityScope];if(cv&&cv[0]!=null)xs.push(cv[0]);}return xs.length>=3?(xs.reduce((s,x)=>s+x,0)/xs.length):null;};
-        const cur=w(L-6,L),prev=w(L-13,L-7);
-        return {cur,prev,delta:(cur!=null&&prev!=null)?(cur-prev):null};
+        const w=(a,b)=>{const xs=[];for(let d=a;d<=b;d++){const cv=dd[d]&&dd[d][_cityScope];if(cv&&cv[0]!=null)xs.push(cv[0]);}return xs.length>=3?{avg:(xs.reduce((s,x)=>s+x,0)/xs.length),n:xs.length}:null;};
+        const c=w(L-6,L),p=w(L-13,L-7); const cur=c?c.avg:null,prev=p?p.avg:null;
+        return {cur,prev,delta:(cur!=null&&prev!=null)?(cur-prev):null,curN:c?c.n:0,prevN:p?p.n:0};
       })();
       return o;
     });
