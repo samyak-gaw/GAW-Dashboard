@@ -3562,9 +3562,27 @@ function _wkWeekends(){
   out.forEach((w,i)=>{ w.id=i; w.label=(w.sat&&w.sun)?`${mn} ${w.sat}–${w.sun}`:(w.sat?`${mn} ${w.sat}`:`${mn} ${w.sun}`); });
   return out;
 }
+// ---- Cross-month WoW: last weekend of the prior (frozen) month ----
+// Used when the latest weekend is the first weekend of the viewing month
+// (e.g. Jul 4–5 vs Jun 27–28). GMV/units/disc only — no OSA/lift for PM weekends.
+function _wkPMDow(day){ const k=priorMonthKey(getViewingMonth()); return new Date(YEAR_FROM_KEY(k), MONTH_NUM_FROM_KEY(k)-1, day).getDay(); }
+function _wkPMLastWeekend(){
+  const k=priorMonthKey(getViewingMonth()); const M=daysInMonth(k); const pm=priorMonthBuilt();
+  const wknds=[];
+  if(_wkPMDow(1)===0) wknds.push({days:[1]});
+  for(let d=1;d<=M;d++){ if(_wkPMDow(d)===6){ const sun=(d+1<=M&&_wkPMDow(d+1)===0)?d+1:null; wknds.push({days:sun?[d,sun]:[d]}); } }
+  const mn=MONTH_SHORT[MONTH_NUM_FROM_KEY(k)-1];
+  for(let i=wknds.length-1;i>=0;i--){
+    const w={...wknds[i],pm:true,label:mn+' '+wknds[i].days.join('–')};
+    let g=0; PN.forEach(p=>{const dl=(pm[p]&&pm[p].daily)||[]; w.days.forEach(d=>{const r=dl.find(x=>x.day===d); if(r)g+=r.gmv||0;});});
+    if(g>0) return w;
+  }
+  return null;
+}
 function _wkPlat(p,w){
   let gmv=0,units=0,disc=0,dd=0;
-  w.days.forEach(d=>{const r=getForDay(p,d);if(r){gmv+=r.gmv||0;units+=r.units||0;disc+=r.disc||0;if((r.gmv||0)>0)dd++;}});
+  const _pmDl=w.pm?(((priorMonthBuilt()[p])||{}).daily||[]):null;
+  w.days.forEach(d=>{const r=w.pm?(_pmDl.find(x=>x.day===d)||null):getForDay(p,d);if(r){gmv+=r.gmv||0;units+=r.units||0;disc+=r.disc||0;if((r.gmv||0)>0)dd++;}});
   return {gmv,units,disc,daysWithData:dd,discPct:gmv>0?disc/gmv*100:0,dailyAvg:dd>0?gmv/dd:0};
 }
 function _wkAll(w){
@@ -3642,7 +3660,7 @@ function renderWeekend(){
   if(!wks.length){ if(empty)empty.style.display='block'; if(body)body.style.display='none'; return; }
   if(empty)empty.style.display='none'; if(body)body.style.display='';
 
-  const latest=wks[wks.length-1], prev=wks.length>=2?wks[wks.length-2]:null;
+  const latest=wks[wks.length-1], prev=wks.length>=2?wks[wks.length-2]:_wkPMLastWeekend(); // cross-month: last weekend of frozen prior month
   const L=_wkAll(latest), P=prev?_wkAll(prev):null;
   const lift=_wkLiftPct(latest,null);
   const wow=P&&P.gmv>0?((L.gmv-P.gmv)/P.gmv*100):null;
@@ -3654,7 +3672,7 @@ function renderWeekend(){
 
   // KPIs
   document.getElementById('wkKpis').innerHTML=`
-    <div class="kpi p"><div class="label">Weekend GMV · ${latest.label}</div><div class="value">${fC(L.gmv)}</div><div class="sub">${wow!==null?`<span style="color:${wow>=0?'#1a7a3a':'#c0392b'}">${wow>=0?'▲':'▼'} ${Math.abs(wow).toFixed(1)}% WoW</span>`:'first weekend'}</div></div>
+    <div class="kpi p"><div class="label">Weekend GMV · ${latest.label}</div><div class="value">${fC(L.gmv)}</div><div class="sub">${wow!==null?`<span style="color:${wow>=0?'#1a7a3a':'#c0392b'}">${wow>=0?'▲':'▼'} ${Math.abs(wow).toFixed(1)}% WoW</span>${prev&&prev.pm?` <span style="color:var(--muted);font-size:10px">vs ${prev.label}</span>`:''}`:'first weekend'}</div></div>
     <div class="kpi g"><div class="label">Units</div><div class="value">${fN(L.units)}</div><div class="sub">${L.days} day${L.days>1?'s':''} of data</div></div>
     <div class="kpi r"><div class="label">Blended Discount</div><div class="value">${L.discPct.toFixed(1)}%</div><div class="sub">${fC(L.disc)} spend</div></div>
     <div class="kpi"><div class="label">Weekend Lift vs Weekday</div><div class="value" style="color:${lift===null?'#1a1a2e':(lift>=0?'#1a7a3a':'#c0392b')}">${lift===null?'—':(lift>=0?'+':'')+lift.toFixed(1)+'%'}</div><div class="sub">avg daily GMV, Sat–Sun vs Mon–Fri</div></div>
@@ -3717,7 +3735,7 @@ function renderWeekend(){
   // Rolling weekends table
   document.getElementById('wkRollBody').innerHTML=wks.slice(-8).map((w,i,arr)=>{
     const a=_wkAll(w); const lf=_wkLiftPct(w,null);
-    const pr=i>0?_wkAll(arr[i-1]):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
+    const prW=i>0?arr[i-1]:_wkPMLastWeekend(); const pr=prW?_wkAll(prW):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
     const o=_wkOsaAll(w); const oCell=o.osa!=null?`<span style="color:${_availColor(o.osa,'osa')};font-weight:700">${o.osa.toFixed(0)}%</span>`:'<span style="color:#9aa1a8">—</span>';
     return `<tr><td><b>${w.label}</b></td><td>${fC(a.gmv)}</td><td>${fN(a.units)}</td><td>${a.discPct.toFixed(1)}%</td><td>${oCell}</td><td style="color:${lf===null?'#6b7a99':(lf>=0?'#1a7a3a':'#c0392b')}">${lf===null?'—':(lf>=0?'+':'')+lf.toFixed(0)+'%'}</td><td style="color:${ww===null?'#6b7a99':(ww>=0?'#1a7a3a':'#c0392b')}">${ww===null?'—':(ww>=0?'▲':'▼')+Math.abs(ww).toFixed(0)+'%'}</td></tr>`;
   }).join('');
@@ -3762,11 +3780,11 @@ function exportWeekendCSV(){
     PN.forEach(p=>{
       const d=_wkPlat(p,w); if(d.gmv<=0)return;
       const lf=_wkLiftPct(w,p); const op=_wkOsaPlat(p,w);
-      const pr=i>0?_wkPlat(p,arr[i-1]):null; const ww=pr&&pr.gmv>0?((d.gmv-pr.gmv)/pr.gmv*100):null;
+      const prW=i>0?arr[i-1]:_wkPMLastWeekend(); const pr=prW?_wkPlat(p,prW):null; const ww=pr&&pr.gmv>0?((d.gmv-pr.gmv)/pr.gmv*100):null;
       rows.push([w.label,p,Math.round(d.gmv),Math.round(d.units),Math.round(d.disc),d.discPct.toFixed(1),(op&&op.osa!=null)?op.osa.toFixed(1):'',(op&&op.lostGmv)?Math.round(op.lostGmv):'',lf===null?'':lf.toFixed(1),ww===null?'':ww.toFixed(1)]);
     });
     const a=_wkAll(w); const lf=_wkLiftPct(w,null); const oa=_wkOsaAll(w);
-    const pr=i>0?_wkAll(arr[i-1]):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
+    const prW2=i>0?arr[i-1]:_wkPMLastWeekend(); const pr=prW2?_wkAll(prW2):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
     rows.push([w.label,'ALL',Math.round(a.gmv),Math.round(a.units),Math.round(a.disc),a.discPct.toFixed(1),oa.osa!=null?oa.osa.toFixed(1):'',oa.lostGmv?Math.round(oa.lostGmv):'',lf===null?'':lf.toFixed(1),ww===null?'':ww.toFixed(1)]);
   });
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
@@ -7630,6 +7648,7 @@ function renderCityIntel(){
 }
 
 function renderCityHeatmap(){
+  _ciHeatSel=null; // re-render wipes any open drilldown row
   const td=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
   const cities=['Delhi NCR','Bangalore','Mumbai','Hyderabad','Pune','Chennai','Kolkata','Ahmedabad','Kochi','Rest'];
   const el=document.getElementById('cityHeatmap');if(!el)return;
@@ -7692,7 +7711,7 @@ function renderCityHeatmap(){
       else if(ratio>=0.8){bg='#fff8e6';textCol='#c07700';dotCol='#c07700';}
       else{bg='#fdecea';textCol='#c0392b';dotCol='#c0392b';}
       cells+=`<td style="padding:4px 6px;text-align:center">
-        <div onclick="ciDrillCity('${city}','${p}')" style="background:${bg};color:${textCol};border-radius:8px;padding:5px 8px;font-weight:700;font-size:11px;white-space:nowrap;cursor:pointer;transition:all .15s;border:1px solid ${bg==='transparent'?'transparent':textCol+'22'}">
+        <div onclick="ciHeatDrill('${city}','${p}')" style="background:${bg};color:${textCol};border-radius:8px;padding:5px 8px;font-weight:700;font-size:11px;white-space:nowrap;cursor:pointer;transition:all .15s;border:1px solid ${bg==='transparent'?'transparent':textCol+'22'}">
           ${gmv>0?fC(gmv):'—'}
         </div></td>`;
     });
@@ -7703,7 +7722,7 @@ function renderCityHeatmap(){
     const sdlwChg=sdlwV&&sdlwV>0?parseFloat(pct(rowTotal,sdlwV)):null;
     const sdlwStr=sdlwChg!==null?`<span style="color:${sdlwChg>=0?'#1a7a3a':'#c0392b'};font-weight:700;font-size:11px">${sdlwChg>=0?'▲':'▼'}${Math.abs(sdlwChg.toFixed(1))}%</span>`:'<span style="color:var(--muted)">—</span>';
     const cityColor=CI_CITY_COLORS[city]||'#7f8c8d';
-    html+=`<tr style="border-radius:8px">
+    html+=`<tr style="border-radius:8px" data-city="${city}">
       <td style="padding:6px 12px;font-weight:700;font-size:12px;color:${cityColor};white-space:nowrap;vertical-align:middle">${city}</td>
       ${cells}
       <td style="padding:6px 10px;text-align:right;font-weight:800;font-size:12px;color:#1a1a2e;white-space:nowrap">${rowTotal>0?fC(rowTotal):'—'}</td>
@@ -7763,6 +7782,49 @@ function renderCityMixPanel(){
   '</tbody></table>';
 }
 
+// Inline heatmap drilldown — click a city×platform cell → top-SKU split row under that city.
+// Uses real citysku data when present; falls back to city-share ratio estimation (badged "est.").
+let _ciHeatSel=null;
+function ciHeatDrill(city,plat){
+  const key=city+'|'+plat;
+  const existing=document.getElementById('ciHeatDetailRow');
+  if(existing)existing.remove();
+  if(_ciHeatSel===key){_ciHeatSel=null;return;} // second click toggles closed
+  _ciHeatSel=key;
+  const td=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
+  let rows=[],est=false;
+  const citySku=((DB.april[plat].citysku||{})[td]||{})[city];
+  if(citySku&&Object.keys(citySku).length){
+    rows=Object.entries(citySku).map(([sc,v])=>{const info=skuLookup(plat,sc);return{name:info.name,cat:normCat(info.cat),gmv:v.gmv||0,units:v.units||0};});
+  }else{
+    est=true;
+    const platTot=(DB.april[plat].sku||[]).filter(r=>r.day===td).reduce((s,r)=>s+r.gmv,0);
+    const cityTot=((DB.april[plat].city||[]).find(r=>r.day===td&&r.city_group===city)||{gmv:0}).gmv;
+    const ratio=platTot>0?cityTot/platTot:0;
+    if(ratio>0)rows=(DB.april[plat].sku||[]).filter(r=>r.day===td).map(r=>{const info=skuLookup(plat,r.sku_code);return{name:info.name,cat:normCat(info.cat),gmv:(r.gmv||0)*ratio,units:(r.units||0)*ratio};});
+  }
+  rows=rows.filter(r=>r.gmv>0).sort((a,b)=>b.gmv-a.gmv);
+  const tot=rows.reduce((s,r)=>s+r.gmv,0);
+  const top=rows.slice(0,8);
+  const tr=document.querySelector(`#cityHeatmap tr[data-city="${CSS.escape(city)}"]`);
+  if(!tr)return;
+  const detail=document.createElement('tr'); detail.id='ciHeatDetailRow';
+  const mn=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];
+  const inner = top.length ? top.map((r,i)=>{
+    const sh=tot>0?(r.gmv/tot*100).toFixed(1):0;
+    return `<tr><td style="color:var(--muted);font-size:10px;padding:3px 8px">#${i+1}</td><td style="font-weight:600;font-size:11px;padding:3px 8px">${r.name}</td><td style="padding:3px 8px"><span class="pill">${r.cat}</span></td><td style="padding:3px 8px">${fC(Math.round(r.gmv))}</td><td style="padding:3px 8px">${Math.round(r.units).toLocaleString('en-IN')}</td><td style="padding:3px 8px;color:var(--muted)">${sh}%</td></tr>`;
+  }).join('') : '<tr><td colspan="6" style="color:var(--muted);padding:8px;text-align:center">No SKU data for this cell</td></tr>';
+  detail.innerHTML=`<td colspan="${tr.children.length}" style="padding:0 12px 10px">
+    <div style="background:#f7f9fd;border:1px solid #e4e9f4;border-left:3px solid ${PC[plat]};border-radius:10px;padding:10px 12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-weight:800;font-size:11px;color:#1a1a2e">${city} · <span style="color:${PC[plat]}">${plat}</span> · ${mn} ${td} — top SKUs${est?' <span style="background:#fff3e0;color:#c07700;border-radius:6px;padding:1px 6px;font-size:9px;font-weight:700">est. · city-share ratio</span>':''}</div>
+        <div onclick="ciHeatDrill('${city}','${plat}')" style="cursor:pointer;color:var(--muted);font-size:11px;font-weight:700;padding:2px 8px">✕ close</div>
+      </div>
+      <table style="border-collapse:collapse;font-size:11px;width:100%"><thead><tr style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.5px"><th style="text-align:left;padding:2px 8px">#</th><th style="text-align:left;padding:2px 8px">SKU</th><th style="text-align:left;padding:2px 8px">Category</th><th style="text-align:left;padding:2px 8px">GMV</th><th style="text-align:left;padding:2px 8px">Units</th><th style="text-align:left;padding:2px 8px">Share</th></tr></thead><tbody>${inner}</tbody></table>
+    </div></td>`;
+  tr.after(detail);
+  ciDrillCity(city,plat); // keep lower panels (Top-5 chart, trend) in sync
+}
 function ciDrillCity(city,plat){
   _ciSelectedCity=city;
   _ciSelectedPlat=plat;
