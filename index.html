@@ -5704,7 +5704,7 @@ function _availRenderCrossPlatform(){
   if(!flagged.length){host.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No cross-platform variance detected — SKUs perform similarly across platforms.</div>';return;}
   // Heatmap-style table
   const head=`<thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted);min-width:180px">SKU</th>${_AVAIL_PLATFORMS.map(p=>`<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)">${p}</th>`).join('')}<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead>`;
-  const rows=flagged.slice(0,15).map(r=>{
+  const rows=flagged.map(r=>{ // show ALL flagged SKUs (was capped at 15)
     const cells=_AVAIL_PLATFORMS.map(p=>{
       const v=r.plats[p];
       if(!v||v.osa==null)return `<td style="padding:8px;font-size:11px;color:var(--muted);text-align:center;background:#f8f9fb">—</td>`;
@@ -5714,7 +5714,7 @@ function _availRenderCrossPlatform(){
     }).join('');
     return `<tr><td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>${cells}<td style="padding:8px;font-size:12px;text-align:center;color:#c0392b;font-weight:700">${r.range.toFixed(0)}pp</td></tr>`;
   }).join('');
-  host.innerHTML=`<table style="width:100%;border-collapse:collapse">${head}<tbody>${rows}</tbody></table>`;
+  host.innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px">${flagged.length} SKUs with &ge;20pp cross-platform OSA spread</div><div class="scroll-table" style="max-height:560px;overflow-y:auto"><table style="width:100%;border-collapse:collapse">${head}<tbody>${rows}</tbody></table></div>`;
 }
 
 function _availRenderRestockQueue(){
