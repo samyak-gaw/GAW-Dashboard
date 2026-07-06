@@ -1600,7 +1600,7 @@ const CAT_NORM={
   'Ice Popsicle':'Popsicle','ice popsicle':'Popsicle',
 };
 function normCat(c){const s=String(c||'').trim();return CAT_NORM[s]||CAT_NORM[s.toLowerCase()]||s;}
-const DNCR=new Set(['delhi','gurgaon','gurugram','tcigurgaon','noida','noida 1','rohtak','meerut','faridabad','ghaziabad','dasna','kundli','farukhnagar','farrukhnagar','hapur','bahadurgarh','sonipat','panipat','karnal','agra','mathura','aligarh','chandigarh','amritsar','ludhiana','jalandhar','patiala']);
+const DNCR=new Set(['delhi','gurgaon','gurugram','tcigurgaon','noida','noida 1','rohtak','meerut','faridabad','ghaziabad','dasna','kundli','farukhnagar','farrukhnagar','hapur','bahadurgarh','sonipat','panipat','rewari','bhiwadi','dadri']); // Chandigarh/Punjab belt + Agra/Mathura/Aligarh/Karnal removed per Sam 6-Jul; Panipat & Sonipat retained
 const CALIAS={bengaluru:'Bangalore',banglore:'Bangalore',mysore:'Bangalore',mysuru:'Bangalore',
 'navi mumbai':'Mumbai',thane:'Mumbai','cochin':'Kochi',ernakulam:'Kochi',
 'gurugram':'Delhi NCR',noida:'Delhi NCR',ghaziabad:'Delhi NCR',faridabad:'Delhi NCR',
@@ -1608,7 +1608,7 @@ gurgaon:'Delhi NCR',delhi:'Delhi NCR','new delhi':'Delhi NCR',secunderabad:'Hyde
 // Flipkart city mappings (UPPERCASE from Flipkart files)
 ncr:'Delhi NCR',
 bahadurgarh:'Delhi NCR',meerut:'Delhi NCR',rohtak:'Delhi NCR',sonipat:'Delhi NCR',
-rewari:'Delhi NCR',bhiwadi:'Delhi NCR',dadri:'Delhi NCR',agra:'Delhi NCR',
+rewari:'Delhi NCR',bhiwadi:'Delhi NCR',dadri:'Delhi NCR',
 gurgaon:'Delhi NCR',faridabad:'Delhi NCR',ghaziabad:'Delhi NCR',
 bangalore:'Bangalore',hoskote:'Bangalore',kolar:'Bangalore',anekal:'Bangalore',
 hosur:'Bangalore',tumkur:'Bangalore',mandya:'Bangalore',
@@ -1637,7 +1637,7 @@ nashik:'Rest',vadodara:'Rest',
 const PRIO=['Mumbai','Delhi NCR','Bangalore','Hyderabad','Pune','Goa','Chennai','Kolkata','Ahmedabad','Kochi'];
 // Metro keyword fingerprints — if any word in the city string contains one of these, map to that metro
 const METRO_KEYWORDS={
-  'Delhi NCR':['delhi','ncr','gurgaon','gurugram','noida','ghaziabad','faridabad','meerut','rohtak','sonipat','bahadurgarh','rewari','bhiwadi','dadri','agra','hapur','panipat','karnal','mathura','aligarh','chandigarh','amritsar','ludhiana','jalandhar','patiala'],
+  'Delhi NCR':['delhi','ncr','gurgaon','gurugram','noida','ghaziabad','faridabad','meerut','rohtak','sonipat','bahadurgarh','rewari','bhiwadi','dadri','panipat'], // 'agra'/'hapur' removed: substring false-positives (Prayagraj, Kolhapur); Hapur still exact-matches via DNCR
   'Bangalore':['bangalore','bengaluru','bengalore','banglore','mysore','mysuru','hoskote','kolar','anekal','hosur','tumkur','mandya','electronic city','whitefield','hebbal'],
   'Mumbai':['mumbai','navi mumbai','thane','kalyan','badlapur','ulhasnagar','bhiwandi','mira road','vasai','virar','panvel','dombivli','ambernath','raigarh'],
   'Hyderabad':['hyderabad','secunderabad','shamshabad','medak','warangal','rangareddy','cyberabad','lb nagar','kukatpally','ameerpet'],
@@ -1732,6 +1732,13 @@ function _sohGranularByCity(plat,k){
     if(attributed>0 && (tot===0 || attributed>=tot*0.5)) return out;
   }
   return k.soh_by_city||{};
+}
+// Collapse a granular soh_by_city map (Delhi, Gurugram, Gurgaon, Noida, Noida 1, Meerut, Rohtak, ...)
+// into dashboard city groups via nCity — so the Availability views never split Delhi NCR.
+function _sohCityGrouped(m){
+  const out={};
+  Object.keys(m||{}).forEach(c=>{const g=nCity(c);out[g]=(out[g]||0)+(m[c]||0);});
+  return out;
 }
 
 let CR={};
@@ -4735,7 +4742,7 @@ const FK_CITY_MAP={
   // Front-end store columns (FE)
   'Ahmedabad_store':'Ahmedabad','Mumbai_store':'Mumbai','Pune_store':'Pune','Surat_store':'Rest',
   'Bhopal_store':'Rest','Vadodara_store':'Rest','Nashik_store':'Rest','Nagpur_store':'Rest','Indore_store':'Rest','Bharuch_store':'Rest','Ujjain_store':'Rest','Raipur_store':'Rest','Jabalpur_store':'Rest','Satna_store':'Rest','Bilaspur_store':'Rest',
-  'Ghaziabad_store':'Delhi NCR','Gurgaon_store':'Delhi NCR','New Delhi_store':'Delhi NCR','Noida_store':'Delhi NCR','Faridabad_store':'Delhi NCR','Sonipat_store':'Delhi NCR','Rohtak_store':'Delhi NCR','Bahadurgarh_store':'Delhi NCR','Panchkula_store':'Delhi NCR','Rewari_store':'Delhi NCR','Bhiwadi_store':'Delhi NCR','Mohali_store':'Delhi NCR','Ambala_store':'Delhi NCR','Chandigarh_store':'Delhi NCR','Kharar_store':'Delhi NCR','Zirakpur_store':'Delhi NCR',
+  'Ghaziabad_store':'Delhi NCR','Gurgaon_store':'Delhi NCR','New Delhi_store':'Delhi NCR','Noida_store':'Delhi NCR','Faridabad_store':'Delhi NCR','Sonipat_store':'Delhi NCR','Rohtak_store':'Delhi NCR','Bahadurgarh_store':'Delhi NCR','Panchkula_store':'Rest','Rewari_store':'Delhi NCR','Bhiwadi_store':'Delhi NCR','Mohali_store':'Rest','Ambala_store':'Rest','Chandigarh_store':'Rest','Kharar_store':'Rest','Zirakpur_store':'Rest',
   'Bangalore_store':'Bangalore','Mysore_store':'Bangalore','Hosur_store':'Bangalore','Mandya_store':'Bangalore','Tumkur_store':'Bangalore','Chitradurga_store':'Bangalore','Dharwad_store':'Bangalore','Belgaum_store':'Bangalore','Hubli_store':'Bangalore','Davangere_store':'Bangalore','Shimoga_store':'Bangalore','Hospet_store':'Bangalore','Bellary_store':'Bangalore','Kakinada_store':'Rest',
   'Chennai_store':'Chennai','Coimbatore_store':'Chennai','Trichy_store':'Chennai','Salem_store':'Chennai','Erode_store':'Chennai','Tirupur_store':'Chennai','Karur_store':'Chennai','Vellore_store':'Chennai','Dindigul_store':'Chennai','Thanjavur_store':'Chennai',
   'Hyderabad_store':'Hyderabad','Warangal_store':'Hyderabad','Karimnagar_store':'Hyderabad','Khammam_store':'Hyderabad','Vijayawada_store':'Hyderabad','Guntur_store':'Hyderabad','Vishakhapatnam_store':'Hyderabad','Rajahmundry_store':'Hyderabad','Kurnool_store':'Hyderabad','Bhubaneshwar_store':'Hyderabad','Puri_store':'Hyderabad','Cuttack_store':'Hyderabad','Dhenkanal_store':'Hyderabad',
@@ -5331,7 +5338,7 @@ function _availComputeMTD(){
         cityDetail[c]={
           wt_osa_ls:cv.wt_osa_ls,
           ds_listing:cv.ds_listing,
-          soh:(platSoh[sku]&&platSoh[sku].by_city)?(platSoh[sku].by_city[c]||0):0
+          soh:(platSoh[sku]&&platSoh[sku].by_city)?(_sohCityGrouped(platSoh[sku].by_city)[c]||0):0
         };
       });
       // MTD GMV for this SKU
@@ -5770,7 +5777,8 @@ function _availPlatFacets(plat){
     const info=skuLookup(plat,sku),k=pd.skus[sku];
     if(info.cat)cats.add(info.cat);
     Object.keys(k.by_city||{}).forEach(c=>cities.add(c));
-    Object.keys(k.soh_by_city||{}).forEach(c=>{if((k.soh_by_city[c]||0)>0)cities.add(c);});
+    const _sg=_sohCityGrouped(k.soh_by_city);
+    Object.keys(_sg).forEach(c=>{if((_sg[c]||0)>0)cities.add(c);});
     skus.push({id:sku,name:info.name});
   });
   skus.sort((a,b)=>a.name.localeCompare(b.name));
@@ -5779,7 +5787,7 @@ function _availPlatFacets(plat){
 function _availSkuInCity(plat,sku,city){
   const k=((window._availMTD||{})[plat]||{skus:{}}).skus[sku]; if(!k)return false;
   if(k.by_city&&k.by_city[city])return true;
-  if(k.soh_by_city&&(k.soh_by_city[city]||0)>0)return true;
+  if((_sohCityGrouped(k.soh_by_city)[city]||0)>0)return true;
   return false;
 }
 function _frBand(fr){ if(fr==null)return null; return fr>=95?'hi':(fr>=85?'mid':'lo'); }
@@ -5862,7 +5870,7 @@ function _osaScopedList(plat){
       o.day_osa_ls=null;
       const dcd=Object.keys(r.daily_city||{}).map(Number).filter(d=>d<=selCap).sort((a,b)=>b-a);
       for(const d of dcd){ const cv=(r.daily_city[d]||{})[_cityScope]; if(cv&&cv[0]!=null){o.day_osa_ls=cv[0]; if(cv[1]!=null){o.ds_listing=cv[1];o.day_ds_listing=cv[1];} break;} }
-      o.soh=(r.soh_by_city||{})[_cityScope]||0;
+      o.soh=_sohCityGrouped(r.soh_by_city)[_cityScope]||0; // granular Delhi/Gurugram/Noida rolls into Delhi NCR
       // city DRR + MTD GMV from sales citysku
       let cu=0,cg=0; Object.keys(csRows).forEach(d=>{ if(+d>selCap)return; const cs=(csRows[d]||{})[_cityScope]; const v=cs&&cs[r.sku]; if(v){cu+=(v.units||0);cg+=(v.gmv||0);} });
       o.drr=cu/daysElapsed; o.mtd_gmv=cg;
