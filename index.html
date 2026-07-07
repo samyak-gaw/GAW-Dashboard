@@ -1600,7 +1600,7 @@ const CAT_NORM={
   'Ice Popsicle':'Popsicle','ice popsicle':'Popsicle',
 };
 function normCat(c){const s=String(c||'').trim();return CAT_NORM[s]||CAT_NORM[s.toLowerCase()]||s;}
-const DNCR=new Set(['delhi','gurgaon','gurugram','tcigurgaon','noida','noida 1','rohtak','meerut','faridabad','ghaziabad','dasna','kundli','farukhnagar','farrukhnagar','hapur','bahadurgarh','sonipat','panipat','rewari','bhiwadi','dadri']); // Chandigarh/Punjab belt + Agra/Mathura/Aligarh/Karnal removed per Sam 6-Jul; Panipat & Sonipat retained
+const DNCR=new Set(['delhi','gurgaon','gurugram','tcigurgaon','noida','noida 1','rohtak','meerut','faridabad','ghaziabad','dasna','kundli','farukhnagar','farrukhnagar','hapur','bahadurgarh','sonipat','panipat','karnal','agra','mathura','aligarh','chandigarh','amritsar','ludhiana','jalandhar','patiala']);
 const CALIAS={bengaluru:'Bangalore',banglore:'Bangalore',mysore:'Bangalore',mysuru:'Bangalore',
 'navi mumbai':'Mumbai',thane:'Mumbai','cochin':'Kochi',ernakulam:'Kochi',
 'gurugram':'Delhi NCR',noida:'Delhi NCR',ghaziabad:'Delhi NCR',faridabad:'Delhi NCR',
@@ -1608,7 +1608,7 @@ gurgaon:'Delhi NCR',delhi:'Delhi NCR','new delhi':'Delhi NCR',secunderabad:'Hyde
 // Flipkart city mappings (UPPERCASE from Flipkart files)
 ncr:'Delhi NCR',
 bahadurgarh:'Delhi NCR',meerut:'Delhi NCR',rohtak:'Delhi NCR',sonipat:'Delhi NCR',
-rewari:'Delhi NCR',bhiwadi:'Delhi NCR',dadri:'Delhi NCR',
+rewari:'Delhi NCR',bhiwadi:'Delhi NCR',dadri:'Delhi NCR',agra:'Delhi NCR',
 gurgaon:'Delhi NCR',faridabad:'Delhi NCR',ghaziabad:'Delhi NCR',
 bangalore:'Bangalore',hoskote:'Bangalore',kolar:'Bangalore',anekal:'Bangalore',
 hosur:'Bangalore',tumkur:'Bangalore',mandya:'Bangalore',
@@ -1637,7 +1637,7 @@ nashik:'Rest',vadodara:'Rest',
 const PRIO=['Mumbai','Delhi NCR','Bangalore','Hyderabad','Pune','Goa','Chennai','Kolkata','Ahmedabad','Kochi'];
 // Metro keyword fingerprints — if any word in the city string contains one of these, map to that metro
 const METRO_KEYWORDS={
-  'Delhi NCR':['delhi','ncr','gurgaon','gurugram','noida','ghaziabad','faridabad','meerut','rohtak','sonipat','bahadurgarh','rewari','bhiwadi','dadri','panipat'], // 'agra'/'hapur' removed: substring false-positives (Prayagraj, Kolhapur); Hapur still exact-matches via DNCR
+  'Delhi NCR':['delhi','ncr','gurgaon','gurugram','noida','ghaziabad','faridabad','meerut','rohtak','sonipat','bahadurgarh','rewari','bhiwadi','dadri','agra','hapur','panipat','karnal','mathura','aligarh','chandigarh','amritsar','ludhiana','jalandhar','patiala'],
   'Bangalore':['bangalore','bengaluru','bengalore','banglore','mysore','mysuru','hoskote','kolar','anekal','hosur','tumkur','mandya','electronic city','whitefield','hebbal'],
   'Mumbai':['mumbai','navi mumbai','thane','kalyan','badlapur','ulhasnagar','bhiwandi','mira road','vasai','virar','panvel','dombivli','ambernath','raigarh'],
   'Hyderabad':['hyderabad','secunderabad','shamshabad','medak','warangal','rangareddy','cyberabad','lb nagar','kukatpally','ameerpet'],
@@ -1732,13 +1732,6 @@ function _sohGranularByCity(plat,k){
     if(attributed>0 && (tot===0 || attributed>=tot*0.5)) return out;
   }
   return k.soh_by_city||{};
-}
-// Collapse a granular soh_by_city map (Delhi, Gurugram, Gurgaon, Noida, Noida 1, Meerut, Rohtak, ...)
-// into dashboard city groups via nCity — so the Availability views never split Delhi NCR.
-function _sohCityGrouped(m){
-  const out={};
-  Object.keys(m||{}).forEach(c=>{const g=nCity(c);out[g]=(out[g]||0)+(m[c]||0);});
-  return out;
 }
 
 let CR={};
@@ -3569,27 +3562,9 @@ function _wkWeekends(){
   out.forEach((w,i)=>{ w.id=i; w.label=(w.sat&&w.sun)?`${mn} ${w.sat}–${w.sun}`:(w.sat?`${mn} ${w.sat}`:`${mn} ${w.sun}`); });
   return out;
 }
-// ---- Cross-month WoW: last weekend of the prior (frozen) month ----
-// Used when the latest weekend is the first weekend of the viewing month
-// (e.g. Jul 4–5 vs Jun 27–28). GMV/units/disc only — no OSA/lift for PM weekends.
-function _wkPMDow(day){ const k=priorMonthKey(getViewingMonth()); return new Date(YEAR_FROM_KEY(k), MONTH_NUM_FROM_KEY(k)-1, day).getDay(); }
-function _wkPMLastWeekend(){
-  const k=priorMonthKey(getViewingMonth()); const M=daysInMonth(k); const pm=priorMonthBuilt();
-  const wknds=[];
-  if(_wkPMDow(1)===0) wknds.push({days:[1]});
-  for(let d=1;d<=M;d++){ if(_wkPMDow(d)===6){ const sun=(d+1<=M&&_wkPMDow(d+1)===0)?d+1:null; wknds.push({days:sun?[d,sun]:[d]}); } }
-  const mn=MONTH_SHORT[MONTH_NUM_FROM_KEY(k)-1];
-  for(let i=wknds.length-1;i>=0;i--){
-    const w={...wknds[i],pm:true,label:mn+' '+wknds[i].days.join('–')};
-    let g=0; PN.forEach(p=>{const dl=(pm[p]&&pm[p].daily)||[]; w.days.forEach(d=>{const r=dl.find(x=>x.day===d); if(r)g+=r.gmv||0;});});
-    if(g>0) return w;
-  }
-  return null;
-}
 function _wkPlat(p,w){
   let gmv=0,units=0,disc=0,dd=0;
-  const _pmDl=w.pm?(((priorMonthBuilt()[p])||{}).daily||[]):null;
-  w.days.forEach(d=>{const r=w.pm?(_pmDl.find(x=>x.day===d)||null):getForDay(p,d);if(r){gmv+=r.gmv||0;units+=r.units||0;disc+=r.disc||0;if((r.gmv||0)>0)dd++;}});
+  w.days.forEach(d=>{const r=getForDay(p,d);if(r){gmv+=r.gmv||0;units+=r.units||0;disc+=r.disc||0;if((r.gmv||0)>0)dd++;}});
   return {gmv,units,disc,daysWithData:dd,discPct:gmv>0?disc/gmv*100:0,dailyAvg:dd>0?gmv/dd:0};
 }
 function _wkAll(w){
@@ -3667,7 +3642,7 @@ function renderWeekend(){
   if(!wks.length){ if(empty)empty.style.display='block'; if(body)body.style.display='none'; return; }
   if(empty)empty.style.display='none'; if(body)body.style.display='';
 
-  const latest=wks[wks.length-1], prev=wks.length>=2?wks[wks.length-2]:_wkPMLastWeekend(); // cross-month: last weekend of frozen prior month
+  const latest=wks[wks.length-1], prev=wks.length>=2?wks[wks.length-2]:null;
   const L=_wkAll(latest), P=prev?_wkAll(prev):null;
   const lift=_wkLiftPct(latest,null);
   const wow=P&&P.gmv>0?((L.gmv-P.gmv)/P.gmv*100):null;
@@ -3679,7 +3654,7 @@ function renderWeekend(){
 
   // KPIs
   document.getElementById('wkKpis').innerHTML=`
-    <div class="kpi p"><div class="label">Weekend GMV · ${latest.label}</div><div class="value">${fC(L.gmv)}</div><div class="sub">${wow!==null?`<span style="color:${wow>=0?'#1a7a3a':'#c0392b'}">${wow>=0?'▲':'▼'} ${Math.abs(wow).toFixed(1)}% WoW</span>${prev&&prev.pm?` <span style="color:var(--muted);font-size:10px">vs ${prev.label}</span>`:''}`:'first weekend'}</div></div>
+    <div class="kpi p"><div class="label">Weekend GMV · ${latest.label}</div><div class="value">${fC(L.gmv)}</div><div class="sub">${wow!==null?`<span style="color:${wow>=0?'#1a7a3a':'#c0392b'}">${wow>=0?'▲':'▼'} ${Math.abs(wow).toFixed(1)}% WoW</span>`:'first weekend'}</div></div>
     <div class="kpi g"><div class="label">Units</div><div class="value">${fN(L.units)}</div><div class="sub">${L.days} day${L.days>1?'s':''} of data</div></div>
     <div class="kpi r"><div class="label">Blended Discount</div><div class="value">${L.discPct.toFixed(1)}%</div><div class="sub">${fC(L.disc)} spend</div></div>
     <div class="kpi"><div class="label">Weekend Lift vs Weekday</div><div class="value" style="color:${lift===null?'#1a1a2e':(lift>=0?'#1a7a3a':'#c0392b')}">${lift===null?'—':(lift>=0?'+':'')+lift.toFixed(1)+'%'}</div><div class="sub">avg daily GMV, Sat–Sun vs Mon–Fri</div></div>
@@ -3742,7 +3717,7 @@ function renderWeekend(){
   // Rolling weekends table
   document.getElementById('wkRollBody').innerHTML=wks.slice(-8).map((w,i,arr)=>{
     const a=_wkAll(w); const lf=_wkLiftPct(w,null);
-    const prW=i>0?arr[i-1]:_wkPMLastWeekend(); const pr=prW?_wkAll(prW):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
+    const pr=i>0?_wkAll(arr[i-1]):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
     const o=_wkOsaAll(w); const oCell=o.osa!=null?`<span style="color:${_availColor(o.osa,'osa')};font-weight:700">${o.osa.toFixed(0)}%</span>`:'<span style="color:#9aa1a8">—</span>';
     return `<tr><td><b>${w.label}</b></td><td>${fC(a.gmv)}</td><td>${fN(a.units)}</td><td>${a.discPct.toFixed(1)}%</td><td>${oCell}</td><td style="color:${lf===null?'#6b7a99':(lf>=0?'#1a7a3a':'#c0392b')}">${lf===null?'—':(lf>=0?'+':'')+lf.toFixed(0)+'%'}</td><td style="color:${ww===null?'#6b7a99':(ww>=0?'#1a7a3a':'#c0392b')}">${ww===null?'—':(ww>=0?'▲':'▼')+Math.abs(ww).toFixed(0)+'%'}</td></tr>`;
   }).join('');
@@ -3787,11 +3762,11 @@ function exportWeekendCSV(){
     PN.forEach(p=>{
       const d=_wkPlat(p,w); if(d.gmv<=0)return;
       const lf=_wkLiftPct(w,p); const op=_wkOsaPlat(p,w);
-      const prW=i>0?arr[i-1]:_wkPMLastWeekend(); const pr=prW?_wkPlat(p,prW):null; const ww=pr&&pr.gmv>0?((d.gmv-pr.gmv)/pr.gmv*100):null;
+      const pr=i>0?_wkPlat(p,arr[i-1]):null; const ww=pr&&pr.gmv>0?((d.gmv-pr.gmv)/pr.gmv*100):null;
       rows.push([w.label,p,Math.round(d.gmv),Math.round(d.units),Math.round(d.disc),d.discPct.toFixed(1),(op&&op.osa!=null)?op.osa.toFixed(1):'',(op&&op.lostGmv)?Math.round(op.lostGmv):'',lf===null?'':lf.toFixed(1),ww===null?'':ww.toFixed(1)]);
     });
     const a=_wkAll(w); const lf=_wkLiftPct(w,null); const oa=_wkOsaAll(w);
-    const prW2=i>0?arr[i-1]:_wkPMLastWeekend(); const pr=prW2?_wkAll(prW2):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
+    const pr=i>0?_wkAll(arr[i-1]):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
     rows.push([w.label,'ALL',Math.round(a.gmv),Math.round(a.units),Math.round(a.disc),a.discPct.toFixed(1),oa.osa!=null?oa.osa.toFixed(1):'',oa.lostGmv?Math.round(oa.lostGmv):'',lf===null?'':lf.toFixed(1),ww===null?'':ww.toFixed(1)]);
   });
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
@@ -4742,7 +4717,7 @@ const FK_CITY_MAP={
   // Front-end store columns (FE)
   'Ahmedabad_store':'Ahmedabad','Mumbai_store':'Mumbai','Pune_store':'Pune','Surat_store':'Rest',
   'Bhopal_store':'Rest','Vadodara_store':'Rest','Nashik_store':'Rest','Nagpur_store':'Rest','Indore_store':'Rest','Bharuch_store':'Rest','Ujjain_store':'Rest','Raipur_store':'Rest','Jabalpur_store':'Rest','Satna_store':'Rest','Bilaspur_store':'Rest',
-  'Ghaziabad_store':'Delhi NCR','Gurgaon_store':'Delhi NCR','New Delhi_store':'Delhi NCR','Noida_store':'Delhi NCR','Faridabad_store':'Delhi NCR','Sonipat_store':'Delhi NCR','Rohtak_store':'Delhi NCR','Bahadurgarh_store':'Delhi NCR','Panchkula_store':'Rest','Rewari_store':'Delhi NCR','Bhiwadi_store':'Delhi NCR','Mohali_store':'Rest','Ambala_store':'Rest','Chandigarh_store':'Rest','Kharar_store':'Rest','Zirakpur_store':'Rest',
+  'Ghaziabad_store':'Delhi NCR','Gurgaon_store':'Delhi NCR','New Delhi_store':'Delhi NCR','Noida_store':'Delhi NCR','Faridabad_store':'Delhi NCR','Sonipat_store':'Delhi NCR','Rohtak_store':'Delhi NCR','Bahadurgarh_store':'Delhi NCR','Panchkula_store':'Delhi NCR','Rewari_store':'Delhi NCR','Bhiwadi_store':'Delhi NCR','Mohali_store':'Delhi NCR','Ambala_store':'Delhi NCR','Chandigarh_store':'Delhi NCR','Kharar_store':'Delhi NCR','Zirakpur_store':'Delhi NCR',
   'Bangalore_store':'Bangalore','Mysore_store':'Bangalore','Hosur_store':'Bangalore','Mandya_store':'Bangalore','Tumkur_store':'Bangalore','Chitradurga_store':'Bangalore','Dharwad_store':'Bangalore','Belgaum_store':'Bangalore','Hubli_store':'Bangalore','Davangere_store':'Bangalore','Shimoga_store':'Bangalore','Hospet_store':'Bangalore','Bellary_store':'Bangalore','Kakinada_store':'Rest',
   'Chennai_store':'Chennai','Coimbatore_store':'Chennai','Trichy_store':'Chennai','Salem_store':'Chennai','Erode_store':'Chennai','Tirupur_store':'Chennai','Karur_store':'Chennai','Vellore_store':'Chennai','Dindigul_store':'Chennai','Thanjavur_store':'Chennai',
   'Hyderabad_store':'Hyderabad','Warangal_store':'Hyderabad','Karimnagar_store':'Hyderabad','Khammam_store':'Hyderabad','Vijayawada_store':'Hyderabad','Guntur_store':'Hyderabad','Vishakhapatnam_store':'Hyderabad','Rajahmundry_store':'Hyderabad','Kurnool_store':'Hyderabad','Bhubaneshwar_store':'Hyderabad','Puri_store':'Hyderabad','Cuttack_store':'Hyderabad','Dhenkanal_store':'Hyderabad',
@@ -5338,7 +5313,7 @@ function _availComputeMTD(){
         cityDetail[c]={
           wt_osa_ls:cv.wt_osa_ls,
           ds_listing:cv.ds_listing,
-          soh:(platSoh[sku]&&platSoh[sku].by_city)?(_sohCityGrouped(platSoh[sku].by_city)[c]||0):0
+          soh:(platSoh[sku]&&platSoh[sku].by_city)?(platSoh[sku].by_city[c]||0):0
         };
       });
       // MTD GMV for this SKU
@@ -5704,7 +5679,7 @@ function _availRenderCrossPlatform(){
   if(!flagged.length){host.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No cross-platform variance detected — SKUs perform similarly across platforms.</div>';return;}
   // Heatmap-style table
   const head=`<thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted);min-width:180px">SKU</th>${_AVAIL_PLATFORMS.map(p=>`<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)">${p}</th>`).join('')}<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead>`;
-  const rows=flagged.map(r=>{ // show ALL flagged SKUs (was capped at 15)
+  const rows=flagged.slice(0,15).map(r=>{
     const cells=_AVAIL_PLATFORMS.map(p=>{
       const v=r.plats[p];
       if(!v||v.osa==null)return `<td style="padding:8px;font-size:11px;color:var(--muted);text-align:center;background:#f8f9fb">—</td>`;
@@ -5714,7 +5689,7 @@ function _availRenderCrossPlatform(){
     }).join('');
     return `<tr><td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>${cells}<td style="padding:8px;font-size:12px;text-align:center;color:#c0392b;font-weight:700">${r.range.toFixed(0)}pp</td></tr>`;
   }).join('');
-  host.innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px">${flagged.length} SKUs with &ge;20pp cross-platform OSA spread</div><div class="scroll-table" style="max-height:560px;overflow-y:auto"><table style="width:100%;border-collapse:collapse">${head}<tbody>${rows}</tbody></table></div>`;
+  host.innerHTML=`<table style="width:100%;border-collapse:collapse">${head}<tbody>${rows}</tbody></table>`;
 }
 
 function _availRenderRestockQueue(){
@@ -5777,8 +5752,7 @@ function _availPlatFacets(plat){
     const info=skuLookup(plat,sku),k=pd.skus[sku];
     if(info.cat)cats.add(info.cat);
     Object.keys(k.by_city||{}).forEach(c=>cities.add(c));
-    const _sg=_sohCityGrouped(k.soh_by_city);
-    Object.keys(_sg).forEach(c=>{if((_sg[c]||0)>0)cities.add(c);});
+    Object.keys(k.soh_by_city||{}).forEach(c=>{if((k.soh_by_city[c]||0)>0)cities.add(c);});
     skus.push({id:sku,name:info.name});
   });
   skus.sort((a,b)=>a.name.localeCompare(b.name));
@@ -5787,7 +5761,7 @@ function _availPlatFacets(plat){
 function _availSkuInCity(plat,sku,city){
   const k=((window._availMTD||{})[plat]||{skus:{}}).skus[sku]; if(!k)return false;
   if(k.by_city&&k.by_city[city])return true;
-  if((_sohCityGrouped(k.soh_by_city)[city]||0)>0)return true;
+  if(k.soh_by_city&&(k.soh_by_city[city]||0)>0)return true;
   return false;
 }
 function _frBand(fr){ if(fr==null)return null; return fr>=95?'hi':(fr>=85?'mid':'lo'); }
@@ -5870,7 +5844,7 @@ function _osaScopedList(plat){
       o.day_osa_ls=null;
       const dcd=Object.keys(r.daily_city||{}).map(Number).filter(d=>d<=selCap).sort((a,b)=>b-a);
       for(const d of dcd){ const cv=(r.daily_city[d]||{})[_cityScope]; if(cv&&cv[0]!=null){o.day_osa_ls=cv[0]; if(cv[1]!=null){o.ds_listing=cv[1];o.day_ds_listing=cv[1];} break;} }
-      o.soh=_sohCityGrouped(r.soh_by_city)[_cityScope]||0; // granular Delhi/Gurugram/Noida rolls into Delhi NCR
+      o.soh=(r.soh_by_city||{})[_cityScope]||0;
       // city DRR + MTD GMV from sales citysku
       let cu=0,cg=0; Object.keys(csRows).forEach(d=>{ if(+d>selCap)return; const cs=(csRows[d]||{})[_cityScope]; const v=cs&&cs[r.sku]; if(v){cu+=(v.units||0);cg+=(v.gmv||0);} });
       o.drr=cu/daysElapsed; o.mtd_gmv=cg;
@@ -7656,7 +7630,6 @@ function renderCityIntel(){
 }
 
 function renderCityHeatmap(){
-  _ciHeatSel=null; // re-render wipes any open drilldown row
   const td=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
   const cities=['Delhi NCR','Bangalore','Mumbai','Hyderabad','Pune','Chennai','Kolkata','Ahmedabad','Kochi','Rest'];
   const el=document.getElementById('cityHeatmap');if(!el)return;
@@ -7719,7 +7692,7 @@ function renderCityHeatmap(){
       else if(ratio>=0.8){bg='#fff8e6';textCol='#c07700';dotCol='#c07700';}
       else{bg='#fdecea';textCol='#c0392b';dotCol='#c0392b';}
       cells+=`<td style="padding:4px 6px;text-align:center">
-        <div onclick="ciHeatDrill('${city}','${p}')" style="background:${bg};color:${textCol};border-radius:8px;padding:5px 8px;font-weight:700;font-size:11px;white-space:nowrap;cursor:pointer;transition:all .15s;border:1px solid ${bg==='transparent'?'transparent':textCol+'22'}">
+        <div onclick="ciDrillCity('${city}','${p}')" style="background:${bg};color:${textCol};border-radius:8px;padding:5px 8px;font-weight:700;font-size:11px;white-space:nowrap;cursor:pointer;transition:all .15s;border:1px solid ${bg==='transparent'?'transparent':textCol+'22'}">
           ${gmv>0?fC(gmv):'—'}
         </div></td>`;
     });
@@ -7730,7 +7703,7 @@ function renderCityHeatmap(){
     const sdlwChg=sdlwV&&sdlwV>0?parseFloat(pct(rowTotal,sdlwV)):null;
     const sdlwStr=sdlwChg!==null?`<span style="color:${sdlwChg>=0?'#1a7a3a':'#c0392b'};font-weight:700;font-size:11px">${sdlwChg>=0?'▲':'▼'}${Math.abs(sdlwChg.toFixed(1))}%</span>`:'<span style="color:var(--muted)">—</span>';
     const cityColor=CI_CITY_COLORS[city]||'#7f8c8d';
-    html+=`<tr style="border-radius:8px" data-city="${city}">
+    html+=`<tr style="border-radius:8px">
       <td style="padding:6px 12px;font-weight:700;font-size:12px;color:${cityColor};white-space:nowrap;vertical-align:middle">${city}</td>
       ${cells}
       <td style="padding:6px 10px;text-align:right;font-weight:800;font-size:12px;color:#1a1a2e;white-space:nowrap">${rowTotal>0?fC(rowTotal):'—'}</td>
@@ -7790,49 +7763,6 @@ function renderCityMixPanel(){
   '</tbody></table>';
 }
 
-// Inline heatmap drilldown — click a city×platform cell → top-SKU split row under that city.
-// Uses real citysku data when present; falls back to city-share ratio estimation (badged "est.").
-let _ciHeatSel=null;
-function ciHeatDrill(city,plat){
-  const key=city+'|'+plat;
-  const existing=document.getElementById('ciHeatDetailRow');
-  if(existing)existing.remove();
-  if(_ciHeatSel===key){_ciHeatSel=null;return;} // second click toggles closed
-  _ciHeatSel=key;
-  const td=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
-  let rows=[],est=false;
-  const citySku=((DB.april[plat].citysku||{})[td]||{})[city];
-  if(citySku&&Object.keys(citySku).length){
-    rows=Object.entries(citySku).map(([sc,v])=>{const info=skuLookup(plat,sc);return{name:info.name,cat:normCat(info.cat),gmv:v.gmv||0,units:v.units||0};});
-  }else{
-    est=true;
-    const platTot=(DB.april[plat].sku||[]).filter(r=>r.day===td).reduce((s,r)=>s+r.gmv,0);
-    const cityTot=((DB.april[plat].city||[]).find(r=>r.day===td&&r.city_group===city)||{gmv:0}).gmv;
-    const ratio=platTot>0?cityTot/platTot:0;
-    if(ratio>0)rows=(DB.april[plat].sku||[]).filter(r=>r.day===td).map(r=>{const info=skuLookup(plat,r.sku_code);return{name:info.name,cat:normCat(info.cat),gmv:(r.gmv||0)*ratio,units:(r.units||0)*ratio};});
-  }
-  rows=rows.filter(r=>r.gmv>0).sort((a,b)=>b.gmv-a.gmv);
-  const tot=rows.reduce((s,r)=>s+r.gmv,0);
-  const top=rows.slice(0,8);
-  const tr=document.querySelector(`#cityHeatmap tr[data-city="${CSS.escape(city)}"]`);
-  if(!tr)return;
-  const detail=document.createElement('tr'); detail.id='ciHeatDetailRow';
-  const mn=MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1];
-  const inner = top.length ? top.map((r,i)=>{
-    const sh=tot>0?(r.gmv/tot*100).toFixed(1):0;
-    return `<tr><td style="color:var(--muted);font-size:10px;padding:3px 8px">#${i+1}</td><td style="font-weight:600;font-size:11px;padding:3px 8px">${r.name}</td><td style="padding:3px 8px"><span class="pill">${r.cat}</span></td><td style="padding:3px 8px">${fC(Math.round(r.gmv))}</td><td style="padding:3px 8px">${Math.round(r.units).toLocaleString('en-IN')}</td><td style="padding:3px 8px;color:var(--muted)">${sh}%</td></tr>`;
-  }).join('') : '<tr><td colspan="6" style="color:var(--muted);padding:8px;text-align:center">No SKU data for this cell</td></tr>';
-  detail.innerHTML=`<td colspan="${tr.children.length}" style="padding:0 12px 10px">
-    <div style="background:#f7f9fd;border:1px solid #e4e9f4;border-left:3px solid ${PC[plat]};border-radius:10px;padding:10px 12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div style="font-weight:800;font-size:11px;color:#1a1a2e">${city} · <span style="color:${PC[plat]}">${plat}</span> · ${mn} ${td} — top SKUs${est?' <span style="background:#fff3e0;color:#c07700;border-radius:6px;padding:1px 6px;font-size:9px;font-weight:700">est. · city-share ratio</span>':''}</div>
-        <div onclick="ciHeatDrill('${city}','${plat}')" style="cursor:pointer;color:var(--muted);font-size:11px;font-weight:700;padding:2px 8px">✕ close</div>
-      </div>
-      <table style="border-collapse:collapse;font-size:11px;width:100%"><thead><tr style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.5px"><th style="text-align:left;padding:2px 8px">#</th><th style="text-align:left;padding:2px 8px">SKU</th><th style="text-align:left;padding:2px 8px">Category</th><th style="text-align:left;padding:2px 8px">GMV</th><th style="text-align:left;padding:2px 8px">Units</th><th style="text-align:left;padding:2px 8px">Share</th></tr></thead><tbody>${inner}</tbody></table>
-    </div></td>`;
-  tr.after(detail);
-  ciDrillCity(city,plat); // keep lower panels (Top-5 chart, trend) in sync
-}
 function ciDrillCity(city,plat){
   _ciSelectedCity=city;
   _ciSelectedPlat=plat;
@@ -8058,11 +7988,12 @@ function ciDrillToCity(city){
   const catOf={}; CI_PLATS.forEach(p=>{const m=DB.sku_master[p]||{}; Object.values(m).forEach(s=>{if(s&&s.name&&!(s.name in catOf))catOf[s.name]=s.cat||'';});});
   const names=new Set(); CI_PLATS.forEach(p=>Object.keys(perPlat[p]).forEach(n=>names.add(n)));
   const list=[...names].map(nm=>{
-    let gmv=0,units=0; const pv={};
-    CI_PLATS.forEach(p=>{const o=perPlat[p][nm]; pv[p]=o?o.gmv:0; gmv+=o?o.gmv:0; units+=o?(o.units||0):0;});
-    return {nm,cat:catOf[nm]||'',gmv,units,drr:Math.round(units/nD),pv};
+    let gmv=0,units=0; const pv={},puv={};
+    CI_PLATS.forEach(p=>{const o=perPlat[p][nm]; pv[p]=o?o.gmv:0; puv[p]=o?(o.units||0):0; gmv+=o?o.gmv:0; units+=o?(o.units||0):0;});
+    return {nm,cat:catOf[nm]||'',gmv,units,drr:Math.round(units/nD),pv,puv};
   }).filter(r=>r.gmv>0||r.units>0).sort((a,b)=>b.gmv-a.gmv);
   const totGmv=list.reduce((s,r)=>s+r.gmv,0), totUnits=list.reduce((s,r)=>s+r.units,0);
+  const _pcell=(g,u)=>g>0?('<b>'+fC(g)+'</b><br><span style="font-size:9px;color:#16a085;font-weight:700">'+Math.round(u/nD).toLocaleString('en-IN')+' u/day</span>'):'<span style="color:var(--muted)">—</span>';
   const body=document.getElementById('ciDrillBody');
   if(!list.length){ body.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No SKU-level data for '+city+'.</div>'; }
   else{
@@ -8073,14 +8004,14 @@ function ciDrillToCity(city){
       <td><b>${fC(r.gmv)}</b></td>
       <td>${(r.units||0).toLocaleString('en-IN')}</td>
       <td style="font-weight:700;color:#16a085">${(r.drr||0).toLocaleString('en-IN')}</td>
-      <td>${r.pv.Zepto>0?fC(r.pv.Zepto):'<span style="color:var(--muted)">—</span>'}</td>
-      <td>${r.pv.Blinkit>0?fC(r.pv.Blinkit):'<span style="color:var(--muted)">—</span>'}</td>
-      <td>${r.pv.Instamart>0?fC(r.pv.Instamart):'<span style="color:var(--muted)">—</span>'}</td>
-      <td>${r.pv.Flipkart>0?fC(r.pv.Flipkart):'<span style="color:var(--muted)">—</span>'}</td>
-      <td>${r.pv.BigBasket>0?fC(r.pv.BigBasket):'<span style="color:var(--muted)">—</span>'}</td>
+      <td>${_pcell(r.pv.Zepto,r.puv.Zepto)}</td>
+      <td>${_pcell(r.pv.Blinkit,r.puv.Blinkit)}</td>
+      <td>${_pcell(r.pv.Instamart,r.puv.Instamart)}</td>
+      <td>${_pcell(r.pv.Flipkart,r.puv.Flipkart)}</td>
+      <td>${_pcell(r.pv.BigBasket,r.puv.BigBasket)}</td>
     </tr>`).join('');
     body.innerHTML=`<div class="scroll-table"><table class="tbl">
-      <thead><tr><th>#</th><th>SKU</th><th>Cat</th><th>GMV</th><th>Units</th><th>DRR<br><span style="font-weight:400;font-size:9px;color:var(--muted)">u/day · MTD</span></th><th>Zepto</th><th>Blinkit</th><th>Instamart</th><th>Flipkart</th><th>BigBasket</th></tr></thead>
+      <thead><tr><th>#</th><th>SKU</th><th>Cat</th><th>GMV</th><th>Units</th><th>DRR<br><span style="font-weight:400;font-size:9px;color:var(--muted)">u/day · MTD</span></th><th>Zepto<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th><th>Blinkit<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th><th>Instamart<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th><th>Flipkart<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th><th>BigBasket<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr style="border-top:2px solid #1B2B45"><td></td><td colspan="2"><b>Total · ${list.length} SKUs</b></td><td><b>${fC(totGmv)}</b></td><td><b>${totUnits.toLocaleString('en-IN')}</b></td><td colspan="6"></td></tr></tfoot>
     </table></div>`;
