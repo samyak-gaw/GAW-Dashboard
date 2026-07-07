@@ -6153,7 +6153,20 @@ function _sohExportXlsx(){
     if(styled){
       var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
       for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
-      for(var r2=0;r2<rows.length;r2++){for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue; cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}}
+      var _num=function(v){ if(v==null||v==='')return null; var n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?null:n; };
+      var _rag=function(kind,v){ if(v==null)return null;
+        if(kind==='osa')return v>=90?'g':(v>=75?'a':'r');
+        if(kind==='fr') return v>=95?'g':(v>=85?'a':'r');
+        if(kind==='ds') return v>=90?'g':(v>=80?'a':'r');
+        if(kind==='doi')return v>=14?'g':(v>=7?'a':'r'); return null; };
+      var _RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, _RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'}, _colKind={2:'osa',3:'osa',5:'fr',6:'ds',7:'doi'};
+      for(var r2=0;r2<rows.length;r2++){var R=rows[r2];
+        var vmap={2:_num(R.osaToday),3:_num(R.osaMtd),5:_num(R.fr),6:_num(R.ds),7:_num(R.doi)};
+        for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue;
+          var band=_colKind[c2]?_rag(_colKind[c2],vmap[c2]):null;
+          if(band){cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:_RAGT[band]}},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:_RAGF[band]}}};}
+          else{cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}
+        }}
     }
     var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
     X.utils.book_append_sheet(wb,ws,safe);
@@ -6212,7 +6225,20 @@ function _osaExportXlsx(){
     if(styled){
       var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
       for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
-      for(var r2=0;r2<rows.length;r2++){for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue; cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}}
+      var _num=function(v){ if(v==null||v==='')return null; var n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?null:n; };
+      var _rag=function(kind,v){ if(v==null)return null;
+        if(kind==='osa')return v>=90?'g':(v>=75?'a':'r');
+        if(kind==='fr') return v>=95?'g':(v>=85?'a':'r');
+        if(kind==='ds') return v>=90?'g':(v>=80?'a':'r');
+        if(kind==='doi')return v>=14?'g':(v>=7?'a':'r'); return null; };
+      var _RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, _RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'}, _colKind={2:'osa',3:'osa',5:'fr',6:'ds',7:'doi'};
+      for(var r2=0;r2<rows.length;r2++){var R=rows[r2];
+        var vmap={2:_num(R.osaToday),3:_num(R.osaMtd),5:_num(R.fr),6:_num(R.ds),7:_num(R.doi)};
+        for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue;
+          var band=_colKind[c2]?_rag(_colKind[c2],vmap[c2]):null;
+          if(band){cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:_RAGT[band]}},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:_RAGF[band]}}};}
+          else{cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}
+        }}
     }
     var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
     X.utils.book_append_sheet(wb,ws,safe);
