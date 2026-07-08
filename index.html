@@ -2550,6 +2550,59 @@ function getToday(p){return getForDay(p,effectiveDay(p));}
 function getYest(p){return getForDay(p,effectiveDay(p)-1);}
 function getMTD(p){return validDays(DB.april[p].daily).reduce((a,r)=>({gmv:a.gmv+r.gmv,units:a.units+r.units,disc:a.disc+(r.disc||0)}),{gmv:0,units:0,disc:0});}
 function getCityToday(p){const d=effectiveDay(p);return(DB.april[p].city||[]).filter(r=>r.day===d);}
+
+// ── SKU RCA drilldown (platform tab): availability + SOH + FR inline expand ──
+function platSkuRca(prefix,plat,skuCode,rowEl){
+  try{
+    // toggle off if already open
+    const next=rowEl.nextElementSibling;
+    if(next&&next.classList.contains('rca-row')){next.remove();return;}
+    rowEl.parentElement.querySelectorAll('.rca-row').forEach(x=>x.remove());
+    if(!window._availMTD)window._availMTD=_availComputeMTD();
+    const pd=(window._availMTD||{})[plat];
+    const cols=rowEl.children.length;
+    const tr=document.createElement('tr');tr.className='rca-row';
+    const td=document.createElement('td');td.colSpan=cols;td.style.cssText='background:#f7f9fd;padding:12px 14px;border-left:3px solid #1a3a6e';
+    const k=pd&&pd.skus?pd.skus[String(skuCode).trim()]:null;
+    if(!k){ td.innerHTML='<span style="font-size:11px;color:var(--muted)">No availability/SOH data for this SKU — upload OSA + SOH files for '+plat+'.</span>'; tr.appendChild(td); rowEl.after(tr); return; }
+    const fr=(typeof _frForSku==='function')?_frForSku(plat,k.name):null;
+    const wow=(typeof _osaWoWForSku==='function')?_osaWoWForSku(plat,String(skuCode).trim()):null;
+    const m=(l,v,c)=>'<div style="min-width:86px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:700">'+l+'</div><div style="font-size:14px;font-weight:800;color:'+(c||'#1a1a2e')+'">'+v+'</div></div>';
+    const strip='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px">'
+      +m('OSA Today',_availFmtPct(k.day_osa_ls),_availColor(k.day_osa_ls,'osa'))
+      +m('OSA MTD',_availFmtPct(k.wt_osa_ls),_availColor(k.wt_osa_ls,'osa'))
+      +m('OSA WoW',(wow&&wow.delta!=null)?((wow.delta>=0?'▲ ':'▼ ')+Math.abs(wow.delta).toFixed(1)+'pp'):'—',(wow&&wow.delta!=null)?(wow.delta>=0?'#1a7a3a':'#c0392b'):'#9aa1a8')
+      +m('SOH',Math.round(k.soh||0).toLocaleString('en-IN')+' u')
+      +m('DOI',(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':'—'):Math.round(k.doi)+'d'+(k.doi_flag==='capped'?'+':''),_availColor(k.doi,'doi'))
+      +m('DRR',Math.round(k.drr||0)+' u/day')
+      +m('FR% 10d',fr?Math.round(fr.fr)+'%'+(fr.level!=='sku'?' (plat)':''):'—',fr?_frColor(fr.fr):'#9aa1a8')
+      +m('Lost GMV MTD',_availFmtRupees(k.lost_gmv),'#c0392b')
+      +'</div>';
+    // city mini-table: union of OSA cities + SOH cities
+    const cset=new Set([...Object.keys(k.by_city||{}),...Object.keys(k.soh_by_city||{})]);
+    let cityHtml='';
+    if(cset.size){
+      const rows=[...cset].map(c=>{
+        const bc=(k.by_city||{})[c]||{}; const s=(k.soh_by_city||{})[c]||0;
+        const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,k.name,c):null;
+        return {c,osa:bc.wt_osa_ls,soh:s,fr:cf?cf.fr:null};
+      }).sort((a,b)=>(b.soh||0)-(a.soh||0)).slice(0,12);
+      cityHtml='<div class="scroll-table"><table style="width:100%;min-width:420px;border-collapse:collapse"><thead><tr style="background:#eef2f9">'
+        +'<th style="padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;color:var(--muted)">City</th>'
+        +'<th style="padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;color:var(--muted)">OSA MTD</th>'
+        +'<th style="padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;color:var(--muted)">SOH</th>'
+        +'<th style="padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;color:var(--muted)">FR% (10d)</th></tr></thead><tbody>'
+        +rows.map(r=>'<tr><td style="padding:5px 8px;font-size:11px"><b>'+r.c+'</b></td>'
+          +'<td style="padding:5px 8px;font-size:11px;font-weight:700;color:'+_availColor(r.osa,'osa')+'">'+_availFmtPct(r.osa)+'</td>'
+          +'<td style="padding:5px 8px;font-size:11px">'+Math.round(r.soh||0).toLocaleString('en-IN')+'</td>'
+          +'<td style="padding:5px 8px;font-size:11px;font-weight:700;color:'+(r.fr!=null?_frColor(r.fr):'#9aa1a8')+'">'+(r.fr!=null?Math.round(r.fr)+'%':'—')+'</td></tr>').join('')
+        +'</tbody></table></div>';
+    }
+    td.innerHTML=strip+cityHtml;
+    tr.appendChild(td); rowEl.after(tr);
+  }catch(e){console.warn('[platSkuRca]',e);}
+}
+
 function getSkuToday(p){
   const d=effectiveDay(p);
   const sdlwDay=d-7;
@@ -2931,7 +2984,8 @@ function renderPlatform(p,prefix,target){
       const barW=totGmv>0&&skus[0]?Math.round((r.gmv/skus[0].gmv)*80):0;
       const discCell=`<td>${fC(r.disc||0)}</td>`;
       const wowCell=r.wow!==null&&r.wow!==undefined?`<td>${badgeDelta(r.wow)}</td>`:`<td><span class="cb-na">—</span></td>`;
-      return`<tr><td><span style="color:var(--muted);font-size:10px">#${i+1}</span> ${r.sku_name}</td><td><span class="pill">${r.category}</span></td><td>${fC(r.gmv)}</td><td>${fN(r.units)}</td>${discCell}${wowCell}<td><span class="sbar-bg"><span class="sbar-fill" style="width:${barW}%;background:${col}"></span></span> ${share}%</td></tr>`;
+      const _sc=String(r.sku_code).replace(/'/g,"\\'");
+      return`<tr style="cursor:pointer" title="Click for availability · SOH · FR drilldown" onclick="platSkuRca('${prefix}','${p}','${_sc}',this)"><td><span style="color:var(--muted);font-size:10px">#${i+1}</span> ${r.sku_name} <span style="font-size:9px;color:#9aa1a8">▸</span></td><td><span class="pill">${r.category}</span></td><td>${fC(r.gmv)}</td><td>${fN(r.units)}</td>${discCell}${wowCell}<td><span class="sbar-bg"><span class="sbar-fill" style="width:${barW}%;background:${col}"></span></span> ${share}%</td></tr>`;
     }).join('')||'<tr><td colspan="7" style="color:var(--muted);padding:16px">No data</td></tr>';
   }
 }
