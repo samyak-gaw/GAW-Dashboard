@@ -2565,7 +2565,8 @@ function platSkuRca(prefix,plat,skuCode,rowEl){
     const td=document.createElement('td');td.colSpan=cols;td.style.cssText='background:#f7f9fd;padding:12px 14px;border-left:3px solid #1a3a6e';
     const k=pd&&pd.skus?pd.skus[String(skuCode).trim()]:null;
     if(!k){ td.innerHTML='<span style="font-size:11px;color:var(--muted)">No availability/SOH data for this SKU — upload OSA + SOH files for '+plat+'.</span>'; tr.appendChild(td); rowEl.after(tr); return; }
-    const fr=(typeof _frForSku==='function')?_frForSku(plat,k.name):null;
+    const _nm=(typeof skuLookup==='function'?(skuLookup(plat,skuCode)||{}).name:null)||k.name;
+    const fr=(typeof _frForSku==='function')?_frForSku(plat,_nm):null;
     const wow=(typeof _osaWoWForSku==='function')?_osaWoWForSku(plat,String(skuCode).trim()):null;
     const m=(l,v,c)=>'<div style="min-width:86px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:700">'+l+'</div><div style="font-size:14px;font-weight:800;color:'+(c||'#1a1a2e')+'">'+v+'</div></div>';
     const strip='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px">'
@@ -2584,7 +2585,7 @@ function platSkuRca(prefix,plat,skuCode,rowEl){
     if(cset.size){
       const rows=[...cset].map(c=>{
         const bc=(k.by_city||{})[c]||{}; const s=(k.soh_by_city||{})[c]||0;
-        const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,k.name,c):null;
+        const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,_nm,c):null;
         return {c,osa:bc.wt_osa_ls,soh:s,fr:cf?cf.fr:null};
       }).sort((a,b)=>(b.soh||0)-(a.soh||0)).slice(0,12);
       cityHtml='<div class="scroll-table"><table style="width:100%;min-width:420px;border-collapse:collapse"><thead><tr style="background:#eef2f9">'
