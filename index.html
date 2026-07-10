@@ -5598,10 +5598,86 @@ function _availRenderDataFreshness(){
   el.innerHTML=`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:${dot};display:inline-block"></span>Availability &amp; SOH data as of <b>${stamp}</b> · ${rel}${stale?' <span style="color:#c0392b">(may be stale)</span>':''}</span>`;
 }
 
+// ---- Focus-city DOI (top 10 cities by GMV per platform) ----
+// City DOI = city SOH ÷ city DRR. Cities metro-grouped via nCity so tracker GMV
+// keys join with SOH keys (granular SOH cities collapsed to the same grouping).
+// Cap at 90d (matches SKU-level computed DOI). IM has no city-native DaysOnHand,
+// so IM city DOI is computed too (unlike its platform-level native figure).
+function _availCityDoi(plat,topN){
+  topN=topN||10;
+  const cs=(typeof cmCitySku==='function')?cmCitySku(plat):{map:{},nDays:1};
+  const nD=cs.nDays||1;
+  const cityAgg={};
+  Object.keys(cs.map||{}).forEach(c=>{
+    let g=0,u=0; Object.values(cs.map[c]).forEach(o=>{g+=o.gmv||0;u+=o.units||0;});
+    cityAgg[c]={gmv:g,units:u};
+  });
+  // City SOH: granular SOH per SKU → collapse through nCity to match tracker keys
+  const citySoh={};
+  const pd=(window._availMTD||{})[plat]||{skus:{}};
+  Object.values(pd.skus||{}).forEach(k=>{
+    const byC=(typeof _sohGranularByCity==='function')?_sohGranularByCity(plat,k):(k.soh_by_city||{});
+    Object.keys(byC).forEach(c=>{
+      const cc=nCity(c);
+      citySoh[cc]=(citySoh[cc]||0)+(byC[c]||0);
+    });
+  });
+  const rows=Object.keys(cityAgg).map(c=>{
+    const a=cityAgg[c];
+    const drr=a.units/nD;
+    const soh=citySoh[c]||0;
+    let doi=null,flag=null;
+    if(soh<=0){doi=0;}
+    else if(drr<=0.05){doi=null;flag='no_velocity';}
+    else{doi=soh/drr; if(doi>90){doi=90;flag='capped';}}
+    return {city:c,gmv:a.gmv,drr,soh,doi,flag};
+  }).filter(r=>r.gmv>0);
+  rows.sort((a,b)=>b.gmv-a.gmv);
+  return rows.slice(0,topN);
+}
+function availToggleCityDoi(ev,id){
+  if(ev){ev.stopPropagation();ev.preventDefault();}
+  const el=document.getElementById(id); if(!el)return;
+  const car=document.getElementById(id+'_car');
+  const open=el.style.display!=='none';
+  el.style.display=open?'none':'block';
+  if(car)car.textContent=open?'\u25B8':'\u25BE';
+}
+function _availCityDoiBlock(plat,idPrefix){
+  const rows=_availCityDoi(plat,10);
+  if(!rows.length)return '';
+  const id=idPrefix+'_cdoi_'+plat.replace(/[^A-Za-z]/g,'');
+  const th='padding:4px 6px;font-size:9px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);font-weight:800';
+  const td='padding:4px 6px;font-size:11px';
+  const body=rows.map((r,i)=>{
+    const col=_availColor(r.doi,'doi');
+    const doiTxt=(r.flag==='no_velocity')?'<span style="color:#9aa1a8;font-size:10px">— no velocity</span>':(r.doi===0?'<span style="color:#c0392b;font-weight:700">OUT</span>':`<span style="color:${col};font-weight:700">${Math.round(r.doi)}d${r.flag==='capped'?'<span style="font-size:9px;color:var(--muted)"> cap</span>':''}</span>`);
+    return `<tr style="background:${i%2?'#fafbfc':'#fff'}">
+      <td style="${td};font-weight:600">${r.city}</td>
+      <td style="${td};text-align:right;color:#475569">${fC(r.gmv)}</td>
+      <td style="${td};text-align:right;color:#0e9f6e;font-weight:600">${Math.round(r.drr).toLocaleString('en-IN')} u/d</td>
+      <td style="${td};text-align:right;color:#475569">${Math.round(r.soh).toLocaleString('en-IN')} u</td>
+      <td style="${td};text-align:right">${doiTxt}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
+    <div onclick="availToggleCityDoi(event,'${id}')" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none">
+      <span style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Focus Cities DOI · Top ${rows.length} by GMV</span>
+      <span id="${id}_car" style="font-size:11px;color:var(--muted)">\u25B8</span>
+    </div>
+    <div id="${id}" style="display:none;margin-top:6px" onclick="event.stopPropagation()">
+      <div class="scroll-table"><table style="width:100%;border-collapse:collapse;min-width:340px">
+        <thead><tr style="background:#f0f3fa"><th style="${th};text-align:left">City</th><th style="${th};text-align:right">MTD GMV</th><th style="${th};text-align:right">DRR</th><th style="${th};text-align:right">SOH</th><th style="${th};text-align:right">DOI</th></tr></thead>
+        <tbody>${body}</tbody></table></div>
+      <div style="font-size:9px;color:var(--muted);margin-top:3px">City DOI = city SOH ÷ city DRR · metro-grouped · capped 90d</div>
+    </div>
+  </div>`;
+}
+
 function _availRenderPlatformCards(){
   const host=document.getElementById('availPlatformCards');
   const mtd=window._availMTD;
-  const colorMap={Zepto:'#7b2d8b',Blinkit:'#d4860a',Instamart:'#c0392b',Flipkart:'#2874f0',BigBasket:'#84c225'};
+  const colorMap={Zepto:'#7b2d8b',Blinkit:'#d4860a',Instamart:'#c0392b',Flipkart:'#2874f0',BigBasket:'#84c225',Amazon:'#ff9900'};
   const cards=_AVAIL_PLATFORMS.map(plat=>{
     const s=mtd[plat].summary;
     const c=colorMap[plat];
@@ -5626,6 +5702,7 @@ function _availRenderPlatformCards(){
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Median</div><div style="font-size:20px;font-weight:800;color:${doiCol}">${_availFmtDays(s.doi,s.doi>=90?'capped':null)}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Lost GMV (MTD)</div><div style="font-size:20px;font-weight:800;color:#c0392b">${_availFmtRupees(s.lost_gmv)}</div></div>
       </div>
+      ${_availCityDoiBlock(plat,'osa')}
       <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:6px">GMV-weighted · Click to drill into SKUs →</div>
     </div>`;
   }).join('');
@@ -6121,6 +6198,7 @@ function _availRenderSohPlatformCards(){
         const arr=(w.delta==null)?'<span style="color:var(--muted)">· no prior wk</span>':(w.delta>=0.5?`<span style="color:#1a7a3a">▲ ${w.delta.toFixed(1)}pp</span>`:(w.delta<=-0.5?`<span style="color:#c0392b">▼ ${Math.abs(w.delta).toFixed(1)}pp</span>`:'<span style="color:var(--muted)">▬ flat</span>'));
         return `<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:7px;margin-top:4px"><span style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Fill Rate · 10d</span><span style="font-size:13px;font-weight:800;color:${_frColor(w.cur)}">${Math.round(w.cur)}% <span style="font-size:10px;font-weight:600">${arr} WoW</span></span></div>`;
       })()}
+      ${_availCityDoiBlock(plat,'soh')}
       <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:6px">Click to drill into SKUs →</div>
     </div>`;
   }).join('');
