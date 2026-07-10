@@ -1372,7 +1372,7 @@ function daysInMonth(monthKey){
 // FK-funded portion is excluded (not our cost). Effective from June 2026 onward only.
 const FK_BF_DISC = { weekday: 0.30, weekend: 0.32, effectiveFrom: 'Jun-2026' };
 // Per-month rate overrides. Jul-2026 = flat 32% all days. Unmapped months fall back to the split above.
-const FK_BF_RATES = { 'Jul-2026': { weekday: 0.32, weekend: 0.32 } };
+const FK_BF_RATES = { 'Jul-2026': { weekday: 0.30, weekend: 0.30 } };
 function _fkBfRate(monthKey){ return FK_BF_RATES[monthKey] || { weekday: FK_BF_DISC.weekday, weekend: FK_BF_DISC.weekend }; }
 // Returns true if (monthKey, day) falls on Fri/Sat/Sun.
 function _fkIsWeekend(monthKey, day){
@@ -1406,6 +1406,7 @@ const NLC_MAP = {
   Zepto: {
     'Blueberry Cheesecake Ice Cream Cone': 50,
     'Blueberry Cheesecake Ice Cream Tub 500ml': 175,
+    'Mango Ice Cream Tub 500ml': 175,
     'Mango Duet Stick': 32
   },
   Instamart: {
