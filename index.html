@@ -1734,6 +1734,14 @@ function _sohGranularByCity(plat,k){
   }
   return k.soh_by_city||{};
 }
+// Roll granular SOH (Gurugram, Delhi, Noida…) into nCity metro buckets (Delhi NCR)
+// so SOH joins OSA's metro-keyed by_city in drilldowns. Prevents blank/0 metro rows.
+function _metroRollupSoh(plat,k){
+  const g=(typeof _sohGranularByCity==='function')?_sohGranularByCity(plat,k):((k&&k.soh_by_city)||{});
+  const out={};
+  Object.keys(g).forEach(c=>{ const m=nCity(c); out[m]=(out[m]||0)+(g[c]||0); });
+  return out;
+}
 
 let CR={};
 let DB;
@@ -2580,12 +2588,14 @@ function platSkuRca(prefix,plat,skuCode,rowEl){
       +m('FR% 10d',fr?Math.round(fr.fr)+'%'+(fr.level!=='sku'?' (plat)':''):'—',fr?_frColor(fr.fr):'#9aa1a8')
       +m('Lost GMV MTD',_availFmtRupees(k.lost_gmv),'#c0392b')
       +'</div>';
-    // city mini-table: union of OSA cities + SOH cities
-    const cset=new Set([...Object.keys(k.by_city||{}),...Object.keys(k.soh_by_city||{})]);
+    // city mini-table: metro-grouped (nCity). OSA by_city is already metro-keyed (avg of its
+    // sub-cities); SOH is granular → roll up so Delhi NCR shows OSA avg + summed SOH, never blank.
+    const _metroSoh=_metroRollupSoh(plat,k);
+    const cset=new Set([...Object.keys(k.by_city||{}).map(nCity),...Object.keys(_metroSoh)]);
     let cityHtml='';
     if(cset.size){
       const rows=[...cset].map(c=>{
-        const bc=(k.by_city||{})[c]||{}; const s=(k.soh_by_city||{})[c]||0;
+        const bc=(k.by_city||{})[c]||{}; const s=_metroSoh[c]||0;
         const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,_nm,c):null;
         return {c,osa:bc.wt_osa_ls,soh:s,fr:cf?cf.fr:null};
       }).sort((a,b)=>(b.soh||0)-(a.soh||0)).slice(0,12);
@@ -6059,17 +6069,21 @@ function _availRenderCityTable(){
   const cities=Object.keys(data.by_city||{}).sort();
   if(!cities.length){document.getElementById('availCityTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px">No city-level data for this SKU.</div>';return;}
   const info=skuLookup(plat,sku);
+  // SOH is granular-keyed; roll it into the same metro buckets as OSA so Delhi NCR shows
+  // summed SOH of its sub-cities instead of 0.
+  const _metroSoh=_metroRollupSoh(plat,data);
   const rows=cities.map(c=>{
     const cd=data.by_city[c];
     const totalStores=dsc[c]?dsc[c].dark_stores:null;
     const listedStores=dsc[c]?dsc[c].dark_stores_listed:null;
     const storesStr=totalStores?`${listedStores||'—'}/${totalStores}`:'—';
+    const csoh=(_metroSoh[c]!=null)?_metroSoh[c]:(cd.soh||0);
     return `<tr>
       <td style="padding:8px 10px;font-size:12px"><b>${c}</b></td>
       <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(cd.wt_osa_ls)}</td>
       <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.ds_listing,'ds')};font-weight:700">${_availFmtPct(cd.ds_listing)}</td>
       <td style="padding:8px 10px;font-size:12px">${storesStr}</td>
-      <td style="padding:8px 10px;font-size:12px">${Math.round(cd.soh||0).toLocaleString('en-IN')}</td>
+      <td style="padding:8px 10px;font-size:12px">${Math.round(csoh||0).toLocaleString('en-IN')}</td>
     </tr>`;
   }).join('');
   // Summary card on top — OSA/DS reflect the active window toggle; city rows are MTD-averaged (data shape).
