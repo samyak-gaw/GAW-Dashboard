@@ -5667,7 +5667,52 @@ function _availRenderDataFreshness(){
   // Stale warning if older than 36h
   const stale=(now-newest)>36*3600*1000;
   const dot=stale?'#c0392b':'#1a7a3a';
-  el.innerHTML=`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:${dot};display:inline-block"></span>Availability &amp; SOH data as of <b>${stamp}</b> · ${rel}${stale?' <span style="color:#c0392b">(may be stale)</span>':''}</span>`;
+  el.innerHTML=`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:${dot};display:inline-block"></span>Availability &amp; SOH data as of <b>${stamp}</b> · ${rel}${stale?' <span style="color:#c0392b">(may be stale)</span>':''}${(function(){try{return _availGapStripHtml();}catch(e){return '';}})()}</span>`;
+}
+
+// ---- Data-gap detection (upload coverage) ----
+// WoW/MTD averages silently absorb missing upload days (a gap shows only as a low
+// sample count, e.g. 7/6d). This surfaces gaps explicitly so a review never runs on
+// a window that is quietly short.
+// Returns Set of day-of-month numbers that have OSA data for this platform/month.
+function _availDayCoverage(plat,mk){
+  const days=new Set();
+  const rec=((typeof DB!=='undefined'&&DB.avail)?DB.avail[mk]:null)||{};
+  const pr=rec[plat]||{};
+  Object.values(pr).forEach(r=>{
+    const d=((typeof _availNormalizeSkuRec==='function')?_availNormalizeSkuRec(r).daily:(r&&r.daily))||{};
+    Object.keys(d).forEach(k=>{ if(d[k]&&d[k].wt_osa_ls!=null)days.add(Number(k)); });
+  });
+  return days;
+}
+// Gaps across the 14-day WoW window (L-13..L), crossing into prior month like _osaWoWForSku.
+function _availWoWGaps(plat){
+  const mk=getViewingMonth();
+  const cur=_availDayCoverage(plat,mk);
+  if(!cur.size)return null;
+  const selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity;
+  const L=[...cur].filter(d=>d<=selCap).sort((a,b)=>b-a)[0];
+  if(!L)return null;
+  const pmk=_prevMonthKey(mk), pDays=daysInMonth(pmk);
+  const prev=_availDayCoverage(plat,pmk);
+  const miss=[];
+  for(let d=L-13;d<=L;d++){
+    if(d>=1){ if(!cur.has(d))miss.push({mk,day:d}); }
+    else { const dp=pDays+d; if(!prev.has(dp))miss.push({mk:pmk,day:dp}); }
+  }
+  return {latest:L,missing:miss,span:14};
+}
+function _availGapStripHtml(){
+  const out=[];
+  (_AVAIL_PLATFORMS||[]).forEach(p=>{
+    const g=_availWoWGaps(p);
+    if(g&&g.missing.length)out.push({p,n:g.missing.length,days:g.missing});
+  });
+  if(!out.length)return ' · <span style="color:#1a7a3a" title="All 14 days of the WoW window have OSA uploads on every platform">\u2713 no upload gaps (14d)</span>';
+  const _lbl=x=>{const mn=(typeof MONTH_SHORT!=='undefined'&&typeof MONTH_NUM_FROM_KEY==='function')?MONTH_SHORT[MONTH_NUM_FROM_KEY(x.mk)-1]:'';return mn+' '+x.day;};
+  const tip=out.map(o=>o.p+': missing '+o.days.map(_lbl).join(', ')).join(' | ');
+  const tot=out.reduce((s,o)=>s+o.n,0);
+  return ` · <span style="color:#b0700a;cursor:help" title="${tip.replace(/"/g,'&quot;')}">\u26A0 ${tot} missing upload day${tot>1?'s':''} in 14d window (${out.map(o=>o.p).join(', ')}) — hover for dates</span>`;
 }
 
 // ---- Focus-city DOI (top 10 cities by GMV per platform) ----
@@ -6161,7 +6206,7 @@ function _availRenderCityTable(){
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">MRP</div><div style="font-size:16px;font-weight:800">${info.mrp?'₹'+info.mrp:'—'}</div></div>
   </div>
   <div style="font-size:10px;color:var(--muted);margin-bottom:8px">City rows below show MTD averages.</div>`;
-  document.getElementById('availCityTable').innerHTML=summary+`<div class="scroll-table"><table style="width:100%;min-width:560px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Stores (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  document.getElementById('availCityTable').innerHTML=summary+`<div class="scroll-table"><table style="width:100%;min-width:560px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's store presence — % of stores carrying this exact SKU">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Brand-level dark-store coverage across ALL GAW SKUs — not specific to this SKU. Differs from DS Listing by design.">Brand DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function availBackToPlatforms(){
@@ -6339,6 +6384,30 @@ function _sohOpenPO(plat,canon,city){
 }
 function _sohPoCell(v){ return (v==null)?'<span style="color:#9aa1a8">\u2014</span>':(v===0)?'<span style="color:#9aa1a8">0</span>':'<span style="color:#1a7a3a;font-weight:700">'+v.toLocaleString('en-IN')+'u</span>'; }
 // All cities that have an open PO for this SKU -> {city:qty}. Used to reconcile the BY-CITY table with the SKU total.
+// Open PO joins Tracker CITY to SOH city by raw string. A spelling drift
+// ("Gurgaon" vs "Gurugram") silently yields 0 open PO rather than erroring —
+// the worst failure class. This flags Tracker cities carrying open qty that
+// match no SOH city key. Amazon is national (no city join) → skipped.
+function cmDetectCityDrift(po){
+  const out=[];
+  Object.keys(po||{}).forEach(function(plat){
+    if(plat==='Amazon')return;
+    const soh=new Set();
+    const pd=(window._availMTD||{})[plat];
+    if(pd&&pd.skus){
+      Object.values(pd.skus).forEach(function(k){
+        const g=(typeof _sohGranularByCity==='function')?_sohGranularByCity(plat,k):((k&&k.soh_by_city)||{});
+        Object.keys(g).forEach(function(c){soh.add(c);});
+      });
+    }
+    if(!soh.size)return; // SOH not loaded for this platform → cannot judge
+    Object.keys(po[plat]||{}).forEach(function(c){
+      const q=Object.values(po[plat][c]||{}).reduce(function(a,b){return a+(b||0);},0);
+      if(q>0&&!soh.has(c))out.push({plat:plat,city:c,qty:q});
+    });
+  });
+  return out.length?out:null;
+}
 function _sohOpenPOCities(plat,canon){
   try{ if(typeof cmBuildOpenPO==='function' && (typeof _cmOpenPO==='undefined'||!_cmOpenPO) && typeof _cmTracker!=='undefined' && _cmTracker && typeof _cmSN!=='undefined' && _cmSN){ cmBuildOpenPO(); } }catch(e){}
   var liveAll=(typeof _cmOpenPO!=='undefined'&&_cmOpenPO&&_cmOpenPO.po)?_cmOpenPO.po:null;
@@ -8385,7 +8454,7 @@ const CM_POC={Zepto:'Shreya',Blinkit:'Banee',Instamart:'Kshitij',Flipkart:'Soura
 const CM_PLATS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket'];
 const CM_TRACK_PLAT={'big basket':'BigBasket','bigbasket':'BigBasket','blinkit':'Blinkit','zepto':'Zepto','instamart':'Instamart','swiggy instamart':'Instamart','flipkart':'Flipkart','amazon':'Amazon'};
 let _cmTrackLoading=false;
-let _cmPlat='Zepto', _cmTracker=null, _cmTrackErr=null, _cmSN=null, _cmOpenPO=null, _cmUnmapped=null, _cmLines=null, _cmExcl={}, _cmFR=null;
+let _cmPlat='Zepto', _cmTracker=null, _cmTrackErr=null, _cmSN=null, _cmOpenPO=null, _cmUnmapped=null, _cmLines=null, _cmExcl={}, _cmFR=null, _cmCityDrift=null;
 
 const CM_SKU_MAP={"chocolatebrowniefudgeicecream100ml": "Chocolate Brownie Fudge Ice Cream Cup 100ml", "conedarkchocolate110ml": "Dark Chocolate Ice Cream Cone", "coneblueberrycheesecake110ml": "Blueberry Cheesecake Ice Cream Cone", "belgianchocolateicecream100ml": "Belgian Chocolate Ice Cream Cup 100ml", "blueberrycheesecakeicecream100ml": "Blueberry Cheesecake Ice Cream Cup 100ml", "browniecrunchbars": "Brownie Crunch Ice Cream Bar", "hazelnutcrunchbars": "Choco Hazelnut Crunch Ice Cream Bar", "deathbychocolatejar": "Death By Chocolate Jar", "mangoicecream100ml": "Mango Ice Cream Cup 100ml", "hazelnutchococheesecakejar": "Hazelnut Choco Cheesecake Jar", "blueberrycheesecakejar": "Blueberry Cheesecake Jar", "tiramisujar": "Tiramisu Jar", "blackforesticecreampastry": "Black Forest Ice Cream Pastry", "raspberryduet60ml": "Raspberry Duet Stick", "conebrowniechocolate110ml": "Chocolate Brownie Ice Cream Cone", "triplechocolateicecreamcake300gm": "Triple Chocolate Ice Cream Cake", "blueberrycheesecakeicecream500ml": "Blueberry Cheesecake Ice Cream Tub 500ml", "mangocassata125ml": "Mango Cassata", "belgianchocolateicecream500ml": "Belgian Chocolate Ice Cream Tub 500ml", "malaikulfi": "Malai Kulfi Stick", "mangoduet60ml": "Mango Duet Stick", "chocolatebrowniefudgeicecream500ml": "Chocolate Brownie Fudge Ice Cream Tub 500ml", "darktrufflebar": "Dark Truffle Ice Cream Bar", "mudpieicecreamcake300gm": "Mudpie Ice Cream Cake", "chocobrowniecookieicecreamsandwich": "Choco Brownie Cookie Ice Cream Sandwich", "almondcrunchbar": "Almond Crunch Ice Cream Bar", "strawberrycheesecakejar": "Strawberry Cheesecake Jar", "vanillachocobar": "Vanilla Chocobar", "chocolatecassata125ml": "Chocolate Cassata", "mangoicecream500ml": "Mango Ice Cream Tub 500ml", "newyorkstylecheesecake95gm": "New York Style Cheesecake Slice", "mangocheesecakejar": "Mango Cheesecake Jar"};
 function cmKey(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
@@ -8658,7 +8727,7 @@ function cmBuildOpenPO(){
       (po[plat]=po[plat]||{}); (po[plat][city]=po[plat][city]||{}); po[plat][city][canon]=(po[plat][city][canon]||0)+it.q;
     });
   });
-  _cmOpenPO={po,matchedPO,missPO}; _cmUnmapped=unmapped;
+  _cmOpenPO={po,matchedPO,missPO}; _cmUnmapped=unmapped; try{_cmCityDrift=cmDetectCityDrift(po);}catch(e){_cmCityDrift=null;}
   try{ if(po&&Object.keys(po).length&&typeof _delta!=='undefined'){ _delta.open_po={po:po,ts:Date.now(),month:(typeof getViewingMonth==='function'?getViewingMonth():'')}; } }catch(e){}
 }
 
@@ -8729,6 +8798,11 @@ function renderCMActions(){
   else if(!_cmSN)banner=`<div style="background:#fff6e6;color:#9a6b00;padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:12.5px">Tracker loaded (${_cmTracker.count} open POs). Upload the SN item-wise report in the Upload tab to net open PO into stockout-risk.</div>`;
   let dq='';
   if(_cmUnmapped&&Object.keys(_cmUnmapped).length){const tot=Object.values(_cmUnmapped).reduce((a,b)=>a+b,0);dq=`<div style="background:#eef2fb;color:#445;padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:11.5px">Data gap: ${Object.keys(_cmUnmapped).length} SN item-name(s) unmapped to master (${Math.round(tot).toLocaleString('en-IN')} u) — excluded from netting, not guessed. ${Object.keys(_cmUnmapped).slice(0,3).join(', ')}</div>`;}
+  if(_cmCityDrift&&_cmCityDrift.length){
+    const tq=_cmCityDrift.reduce((a,b)=>a+(b.qty||0),0);
+    const det=_cmCityDrift.slice(0,4).map(d=>`${d.plat} · "${d.city}" (${Math.round(d.qty).toLocaleString('en-IN')} u)`).join(', ');
+    dq+=`<div style="background:#fdecec;color:#c0392b;padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:11.5px"><b>\u26A0 City name drift:</b> ${_cmCityDrift.length} Tracker city name(s) match no SOH city (${Math.round(tq).toLocaleString('en-IN')} u open PO). These show as <b>0 open PO</b> in city views instead of erroring. Fix the Tracker spelling or the city mapping. ${det}${_cmCityDrift.length>4?' …':''}</div>`;
+  }
   el.innerHTML=`
     <div class="card" style="margin-bottom:14px">
       <h3 style="margin:0 0 4px">🎯 CM Action Center</h3>
