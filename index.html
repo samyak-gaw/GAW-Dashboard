@@ -2172,7 +2172,8 @@ function saveDB() {
   const heavySoh = _trimSohForStorage(_delta.soh || {});
   const heavyDsc = _delta.dark_store_counts || {};
   // Build trimmed delta for the main key
-  const trimmedDelta = Object.assign({}, _delta, { avail: {}, soh: {}, dark_store_counts: {} });
+  const trimmedDelta = Object.assign({}, _delta, { avail: {}, soh: {}, dark_store_counts: {},
+                                                   frozen: _trimFrozenForStorage(_delta.frozen) });
   let errors = [];
   try { localStorage.setItem(DELTA_KEY, JSON.stringify(trimmedDelta)); }
   catch(e){ errors.push('main: '+e.message); }
@@ -2195,12 +2196,38 @@ function saveDB() {
     // Quota errors are non-fatal: in-memory data is intact and GitHub cloud sync carries the
     // full dataset. Log quietly instead of alarming the user with a modal on every upload.
     console.warn('[saveDB] localStorage quota — some slots not persisted locally (cloud sync unaffected):', errors);
+    // A failed `main` write is NOT cosmetic: the in-memory delta is the only copy until a
+    // push lands, so a refresh before pushing silently reverts the work. Say so loudly.
+    if(errors.some(e=>e.indexOf('main:')===0)){
+      console.error('%c[saveDB] MAIN DELTA NOT SAVED LOCALLY — push to GitHub before refreshing, or this change is lost.','color:#c0392b;font-weight:bold');
+      window._gawUnsavedMain=true;
+    } else { window._gawUnsavedMain=false; }
   }
   _buildDB(); // keep in-memory DB in sync after every save
 }
 // Trim SOH for localStorage: keep full by_facility ONLY for the active month; for older months
 // keep totals + by_city (drop by_facility). If forceMinimal=true, drop by_facility everywhere.
 // In-memory _delta.soh and cloud sync always retain the full data — this only affects local persistence.
+// Trim frozen months for localStorage: drop `citysku`, which is ~69% of the frozen bulk
+// (measured Jul-2026: 2,440KB of 3,568KB across Apr/May/Jun). Without this the delta alone
+// is 4.2MB and localStorage silently rejects every write — which is how a repaired month
+// could revert on refresh.
+// In-memory _delta.frozen and the GitHub payload always retain the full data (githubPush
+// sends `_delta`, not this trimmed copy). On pull, _applyGHPayload deep-copies cloud frozen
+// and only falls back to local for months cloud lacks, so citysku repopulates from cloud.
+// Same contract as _trimSohForStorage: local persistence only, never the source of truth.
+function _trimFrozenForStorage(frozen){
+  if(!frozen)return {};
+  const out={};
+  Object.keys(frozen).forEach(mk=>{
+    out[mk]={};
+    Object.keys(frozen[mk]||{}).forEach(plat=>{
+      const f=frozen[mk][plat]||{};
+      out[mk][plat]=Object.assign({},f,{citysku:{}});
+    });
+  });
+  return out;
+}
 function _trimSohForStorage(soh, forceMinimal){
   if(!soh)return {};
   const activeMk=(typeof getActiveMonth==='function')?getActiveMonth():null;
@@ -3380,10 +3407,13 @@ function uploadSkuMaster(input,platform){
         const idCol=headers.findIndex(h=>h==='sku_id'||h==='id'||h==='sku'||h==='code');
         const nameCol=headers.findIndex(h=>h==='name'||h==='sku_name'||h==='product_name'||h==='skuname');
         const catCol=headers.findIndex(h=>h==='category'||h==='cat'||h==='category_name');
+        // MRP is optional in the file, but must never be silently dropped when present.
+        const mrpCol=headers.findIndex(h=>h==='mrp'||h.indexOf('mrp')>=0||h==='price'||h==='mrp (₹)');
         if(idCol<0||nameCol<0){logSkuMaster('❌ '+platform+': CSV must have sku_id and name columns. Found: '+headers.join(', '));return;}
         rows=lines.slice(1).map(l=>{
           const cols=l.split(',').map(c=>c.trim().replace(/^"|"$/g,''));
-          return{sku_id:cols[idCol],name:cols[nameCol],category:catCol>=0?cols[catCol]:''};
+          return{sku_id:cols[idCol],name:cols[nameCol],category:catCol>=0?cols[catCol]:'',
+                 mrp:mrpCol>=0?parseFloat(String(cols[mrpCol]).replace(/[^\d.]/g,'')):null};
         });
       } else {
         // XLSX
@@ -3393,11 +3423,16 @@ function uploadSkuMaster(input,platform){
         const raw=XLSX.utils.sheet_to_json(ws,{defval:''});
         const sample=raw[0]||{};const keys=Object.keys(sample).map(k=>k.toLowerCase());
         const findKey=(raw2,patterns)=>Object.keys(raw2).find(k=>patterns.some(p=>k.toLowerCase().includes(p)));
-        rows=raw.map(r=>({
-          sku_id:String(r[findKey(r,['sku_id','sku id','code','id'])]||'').trim(),
-          name:String(r[findKey(r,['name','product','sku_name','skuname'])]||'').trim(),
-          category:String(r[findKey(r,['category','cat'])]||'').trim()
-        }));
+        rows=raw.map(r=>{
+          const _mk=findKey(r,['mrp','price']);
+          const _mv=_mk?parseFloat(String(r[_mk]).replace(/[^\d.]/g,'')):NaN;
+          return{
+            sku_id:String(r[findKey(r,['sku_id','sku id','code','id'])]||'').trim(),
+            name:String(r[findKey(r,['name','product','sku_name','skuname'])]||'').trim(),
+            category:String(r[findKey(r,['category','cat'])]||'').trim(),
+            mrp:isFinite(_mv)?_mv:null
+          };
+        });
       }
       rows=rows.filter(r=>r.sku_id&&r.name);
       if(!rows.length){logSkuMaster('❌ '+platform+': No valid rows found (need sku_id + name)');return;}
@@ -3409,8 +3444,16 @@ function uploadSkuMaster(input,platform){
       rows.forEach(r=>{
         const id=_normSkuId(r.sku_id);
         const existing=DB.sku_master[platform]?.[id]; // check merged DB for existing
-        const entry={name:r.name.trim(),cat:r.category.trim()||existing?.cat||'Unknown'};
-        if(!existing){added++;}else if(existing.name!==entry.name||existing.cat!==entry.cat){updated++;}
+        // DB.sku_master merges SEED + delta with a SHALLOW per-SKU Object.assign, so a delta
+        // entry REPLACES the SEED entry wholesale. Any field omitted here is destroyed —
+        // that is how MRP was silently zeroed across a whole platform. Carry mrp forward:
+        // file value first, else whatever we already know (delta/SEED), else 0.
+        const _seedMrp=(SEED.sku_master[platform]||{})[id]?.mrp;
+        const _mrp=(r.mrp!=null&&isFinite(r.mrp)&&r.mrp>0)?r.mrp
+                  :(existing&&existing.mrp>0)?existing.mrp
+                  :(_seedMrp>0?_seedMrp:0);
+        const entry={name:r.name.trim(),cat:r.category.trim()||existing?.cat||'Unknown',mrp:_mrp};
+        if(!existing){added++;}else if(existing.name!==entry.name||existing.cat!==entry.cat||existing.mrp!==entry.mrp){updated++;}
         _delta.sku_master[platform][id]=entry;
       });
       saveDB();
