@@ -5960,8 +5960,12 @@ function _availRenderRestockQueue(){
       const mrp=info.mrp||0;
       const urgency=(100-k.wt_osa_ls)*k.drr*mrp;
       if(urgency<=0)return;
-      const reorderUnits=Math.ceil(k.drr*14); // 14-day cover target
-      all.push({plat,sku,name:info.name,cat:info.cat,urgency,osa:k.wt_osa_ls,drr:k.drr,doi:k.doi,soh:k.soh,reorderUnits});
+      // Same engine as the SOH Explorer so both "Reorder" columns always agree:
+      // platform cover target, net of SOH and inbound open PO. 0 = stock is not the
+      // constraint (a low-OSA SKU with cover is a distribution problem, not supply).
+      const _opo=_sohOpenPO(plat,info.name,null);
+      const reorderUnits=_sohReorderQty(k,plat,_opo);
+      all.push({plat,sku,name:info.name,cat:info.cat,urgency,osa:k.wt_osa_ls,drr:k.drr,doi:k.doi,soh:k.soh,reorderUnits,cover:_sohCoverDays(plat)});
     });
   });
   all.sort((a,b)=>b.urgency-a.urgency);
@@ -5974,9 +5978,9 @@ function _availRenderRestockQueue(){
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.osa,'osa')};font-weight:700">${_availFmtPct(r.osa)}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
-    <td style="padding:8px 10px;font-size:12px;color:#1a3a6e;font-weight:700">${Math.round(r.reorderUnits).toLocaleString('en-IN')}u</td>
+    <td style="padding:8px 10px;font-size:12px;font-weight:700" title="${r.cover}-day cover, net of SOH + open PO">${r.reorderUnits==null?'<span style="color:#9aa1a8">\u2014</span>':r.reorderUnits===0?'<span style="color:#1a7a3a">\u2713 covered</span>':'<span style="color:#1a3a6e">'+Math.round(r.reorderUnits).toLocaleString('en-IN')+'u</span>'}</td>
   </tr>`).join('');
-  host.innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Rank</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Platform</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Reorder (14d)</th></tr></thead><tbody>${rows}</tbody></table>`;
+  host.innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Rank</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Platform</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Units to add to reach each platform's cover target (Blinkit 8d, others 14d), net of SOH and inbound open PO">Reorder</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // ── DRILLDOWNS ──
@@ -6339,11 +6343,90 @@ function availSohDrillToPlatform(plat){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
+// ---- Metro-level city reorder (real DRR) ----
+// The BY CITY table is facility-granular (Gurugram, Noida, Dasna…), but sales data is
+// metro-grouped at parse (nCity), so no independent granular demand signal exists.
+// A proxy DRR (platformDRR × citySOH share) would make reorder collapse to a fixed
+// proportional split of SOH — a stocked-out city would be told to reorder 0, which is
+// backwards. So city reorder is computed at METRO level only, off real per-city sales.
+//   cityDRR  = real units/day for this SKU in this metro (from citysku)
+//   citySOH  = granular SOH rolled up via nCity
+//   cityPO   = granular open PO rolled up via nCity
+//   reorder  = max(0, cityDRR×cover − citySOH − cityPO)
+function _sohCityReorder(plat,skuName,byCityGranular){
+  const cs=(typeof cmCitySku==='function')?cmCitySku(plat):null;
+  if(!cs||!cs.map)return null;
+  const nD=cs.nDays||1;
+  const cover=_sohCoverDays(plat);
+  // Real per-metro DRR for this SKU
+  const drrByMetro={};
+  Object.keys(cs.map).forEach(c=>{
+    const o=cs.map[c]&&cs.map[c][skuName];
+    if(o&&o.units>0)drrByMetro[c]=o.units/nD;
+  });
+  // Roll granular SOH → metro
+  const sohByMetro={};
+  Object.keys(byCityGranular||{}).forEach(c=>{
+    const m=nCity(c); sohByMetro[m]=(sohByMetro[m]||0)+(byCityGranular[c]||0);
+  });
+  // Roll granular open PO → metro
+  const poByMetro={};
+  const poCities=(typeof _sohOpenPOCities==='function')?_sohOpenPOCities(plat,skuName):null;
+  if(poCities){
+    Object.keys(poCities).forEach(c=>{
+      const m=nCity(c); poByMetro[m]=(poByMetro[m]||0)+(poCities[c]||0);
+    });
+  }
+  const metros=new Set([...Object.keys(drrByMetro),...Object.keys(sohByMetro)]);
+  const rows=[...metros].map(m=>{
+    const drr=drrByMetro[m]||0, soh=sohByMetro[m]||0, po=poByMetro[m]||0;
+    let reorder=null;
+    if(drr>0.05)reorder=Math.max(0,Math.ceil(drr*cover - soh - po));
+    const dts=(drr>0.05)?(soh<=0?0:Math.min(soh/drr,90)):null;
+    return {metro:m,drr,soh,po,reorder,dts};
+  }).filter(r=>r.soh>0||r.drr>0||r.po>0);
+  rows.sort((a,b)=>(b.reorder??-1)-(a.reorder??-1)||b.drr-a.drr);
+  return rows.length?{rows,cover,nDays:nD}:null;
+}
+function _sohCityReorderHtml(plat,skuName,byCityGranular){
+  const r=_sohCityReorder(plat,skuName,byCityGranular);
+  if(!r)return '';
+  const th='padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)';
+  const td='padding:8px 10px;font-size:12px';
+  const body=r.rows.map(x=>{
+    const rt=(x.reorder==null)?'<span style="color:#9aa1a8">— no velocity</span>'
+      :(x.reorder===0)?'<span style="color:#1a7a3a;font-weight:700">\u2713 covered</span>'
+      :`<span style="color:#1a3a6e;font-weight:700">${x.reorder.toLocaleString('en-IN')}u</span>`;
+    return `<tr>
+      <td style="${td}"><b>${x.metro}</b></td>
+      <td style="${td};color:${_sohColorDTS(x.dts)};font-weight:700">${x.dts==null?'\u2014':_sohFmtDTS(x.dts)}</td>
+      <td style="${td}">${Math.round(x.drr).toLocaleString('en-IN')}u/d</td>
+      <td style="${td};font-weight:700">${Math.round(x.soh).toLocaleString('en-IN')}</td>
+      <td style="${td};color:${x.po>0?'#1a7a3a':'#9aa1a8'}">${x.po>0?x.po.toLocaleString('en-IN')+'u':'0'}</td>
+      <td style="${td}">${rt}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="font-size:11px;font-weight:700;color:#1a3a6e;text-transform:uppercase;margin:16px 0 8px">Reorder by Metro <span style="font-weight:600;color:var(--muted);text-transform:none">· ${r.cover}-day cover · real city DRR</span></div>
+    <div class="scroll-table"><table style="width:100%;min-width:560px;border-collapse:collapse">
+      <thead><tr style="background:#f0f3fa"><th style="${th}">Metro</th><th style="${th}">Days to Stockout</th><th style="${th}">City DRR</th><th style="${th}">SOH</th><th style="${th}">Open PO</th><th style="${th}" title="max(0, cityDRR \u00D7 ${r.cover}d \u2212 SOH \u2212 open PO)">Reorder (${r.cover}d)</th></tr></thead>
+      <tbody>${body}</tbody></table></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">Metro level, not facility level: sales data is metro-grouped, so per-facility demand can't be split. SOH and open PO here are the granular cities rolled up. DRR from last ${r.nDays} day(s) of sales.</div>`;
+}
+
 // Best available days-to-stockout per platform:
 //  - Instamart: use its native DaysOnHand (stored as k.doi) — store-weighted, more accurate
 //  - Others: compute SOH ÷ DRR
 // Returns {days:number|null, flag:'no_velocity'|'capped'|null}. days null = no velocity.
-const _SOH_COVER_DAYS=14; // matches the 14-day reorder cover used across the dashboard
+// Reorder cover target, in days, per platform. Blinkit confirmed at 8d (Jul-2026):
+// their WH holds ~8 days across backend + frontend, and our Blinkit SOH parser composes
+// exactly that basis (backend_inv_qty + frontend_inv_qty) — so the target and the stock
+// figure are like-for-like. Others default to 14d until set individually.
+const _SOH_COVER={Blinkit:8};
+const _SOH_COVER_DEFAULT=14;
+function _sohCoverDays(plat){
+  const v=_SOH_COVER[plat];
+  return (typeof v==='number'&&v>0)?v:_SOH_COVER_DEFAULT;
+}
 function _sohBestDTS(plat,k){
   if(plat==='Instamart'&&k.doi!=null){
     let d=k.doi, flag=k.doi_flag||null;
@@ -6356,12 +6439,15 @@ function _sohBestDTS(plat,k){
   if(d>90){d=90; flag='capped';}
   return {days:d, flag};
 }
-// Reorder qty = units to add to reach the cover target, accounting for stock already held.
-// max(0, DRR×cover − SOH). Zero when already covered. Null when no velocity (can't size).
-function _sohReorderQty(k){
+// Reorder qty = units to add to reach the platform's cover target, net of stock already
+// held AND stock already inbound. max(0, DRR×cover − SOH − openPO).
+// Netting open PO prevents re-ordering against a PO that is already on its way.
+// Zero when already covered. Null when no velocity (can't size a target off no demand).
+function _sohReorderQty(k,plat,openPo){
   const drr=k.drr||0, soh=k.soh||0;
   if(!drr||drr<=0.05)return null;
-  return Math.max(0, Math.ceil(drr*_SOH_COVER_DAYS - soh));
+  const inbound=(typeof openPo==='number'&&isFinite(openPo)&&openPo>0)?openPo:0;
+  return Math.max(0, Math.ceil(drr*_sohCoverDays(plat) - soh - inbound));
 }
 // Row background tint by stockout urgency (whole-row cue).
 function _sohRowTint(days){
@@ -6426,15 +6512,16 @@ function _sohExportXlsx(){
   if(!plats.length){alert('No SOH data loaded to export.');return;}
   var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
   var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var head=['SKU','Category','SOH (units)','Days to Stockout','Open PO (units)','FR% (10d)','Reorder 14d (units)','DRR (u/day)','Cities'];
   var wb=X.utils.book_new();
   plats.forEach(function(plat){
+    // Head is per-sheet: each sheet is one platform, and cover target is platform-specific.
+    var head=['SKU','Category','SOH (units)','Days to Stockout','Open PO (units)','FR% (10d)','Reorder '+_sohCoverDays(plat)+'d (units)','DRR (u/day)','Cities'];
     var pd=window._availMTD[plat]||{skus:{}};
     var list=Object.keys(pd.skus).map(function(sku){
-      var info=skuLookup(plat,sku), k=pd.skus[sku], best=_sohBestDTS(plat,k), reorder=_sohReorderQty(k);
+      var info=skuLookup(plat,sku), k=pd.skus[sku], best=_sohBestDTS(plat,k), _opo=_sohOpenPO(plat,info.name,null), reorder=_sohReorderQty(k,plat,_opo);
       var sohCities=k.soh_by_city||{}; var nCities=Object.keys(sohCities).filter(function(c){return (sohCities[c]||0)>0;}).length;
       var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name):null; var _frv=_f?(_f.level==='sku'?Math.round(_f.fr)+'%':Math.round(_f.fr)+'% (plat)'):'';
-      return {name:info.name,cat:info.cat||'',soh:Math.round(k.soh||0),dts:best.days,drr:Math.round(k.drr||0),reorder:reorder,openpo:_sohOpenPO(plat,info.name,null),fr:_frv,nCities:nCities};
+      return {name:info.name,cat:info.cat||'',soh:Math.round(k.soh||0),dts:best.days,drr:Math.round(k.drr||0),reorder:reorder,openpo:_opo,fr:_frv,nCities:nCities};
     }).filter(function(r){return r.soh>0||r.drr>0;}).sort(function(a,b){return (a.dts==null?99999:a.dts)-(b.dts==null?99999:b.dts);});
     var aoa=[['GAW \u00B7 '+plat+' \u00B7 SOH Explorer \u00B7 '+mk,'','','','','','','',''],head];
     list.forEach(function(r){ aoa.push([r.name,r.cat,r.soh,(r.dts==null?'':Math.round(r.dts)),(r.openpo==null?'':r.openpo),r.fr,(r.reorder==null?'':r.reorder),r.drr,r.nCities]); });
@@ -6541,13 +6628,12 @@ function _osaExportXlsx(){
   X.writeFile(wb,'GAW_OSA_'+(plats.length===1?plats[0]+_cityTag+'_':'')+(mk||'export')+'.xlsx');
 }
 
-// Replenishment plan: one urgency-ranked PO sheet, net of open PO, sized to a 14-day cover.
+// Replenishment plan: one urgency-ranked PO sheet, net of open PO, sized to each platform's cover target.
 function _replenExportXlsx(){
   var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
   var styled=!!window.XLSXStyle;
   var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
   var mtd=window._availMTD; if(!mtd){alert('No availability data loaded to export.');return;}
-  var TARGET_DOH=14;
   var rows=[];
   (_AVAIL_PLATFORMS||Object.keys(mtd)).forEach(function(plat){
     var pd=mtd[plat]; if(!pd||!pd.skus)return;
@@ -6556,30 +6642,33 @@ function _replenExportXlsx(){
       var drr=k.drr||0, soh=k.soh||0, osa=k.wt_osa_ls;
       if(drr<=0)return; // no velocity → not a reorder candidate
       var openPo=(typeof _sohOpenPO==='function')?(_sohOpenPO(plat,info.name,null)||0):0;
-      var target=Math.ceil(drr*TARGET_DOH);
-      var net=Math.max(0,target-Math.round(soh)-openPo);
+      // Shared engine + per-platform cover, so this export always agrees with the UI.
+      var cover=_sohCoverDays(plat);
+      var target=Math.ceil(drr*cover);
+      var net=_sohReorderQty(k,plat,openPo);
+      if(net==null)return; // no velocity → can't size
       var mrp=info.mrp||0;
       var urgency=(osa==null?0:Math.max(0,100-osa))*drr*mrp;
       if(net<=0 && urgency<=0)return;
       rows.push({plat:plat,name:info.name,cat:info.cat||'',osa:osa,soh:Math.round(soh),drr:Math.round(drr),
-        doi:(k.doi==null)?'':Math.round(k.doi)+(k.doi_flag==='capped'?'+':''),openPo:openPo,target:target,net:net,urg:Math.round(urgency)});
+        doi:(k.doi==null)?'':Math.round(k.doi)+(k.doi_flag==='capped'?'+':''),openPo:openPo,cover:cover,target:target,net:net,urg:Math.round(urgency)});
     });
   });
   if(!rows.length){alert('No replenishment actions — stock and pipeline look covered.');return;}
   rows.sort(function(a,b){return b.urg-a.urg || b.net-a.net;});
   var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
   var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var head=['Rank','SKU','Platform','Category','OSA %','SOH','DRR (u/day)','DOI','Open PO (incoming)','Target 14d (u)','Net Reorder (u)','Urgency'];
+  var head=['Rank','SKU','Platform','Category','OSA %','SOH','DRR (u/day)','DOI','Open PO (incoming)','Cover (days)','Target (u)','Net Reorder (u)','Urgency'];
   var _pct=function(v){return (v==null||isNaN(v))?'':Math.round(v*10)/10;};
-  var aoa=[['GAW · Replenishment Plan · net of open PO · 14-day cover · '+mk,'','','','','','','','','','',''],head];
-  rows.forEach(function(r,i){ aoa.push([i+1,r.name,r.plat,r.cat,_pct(r.osa),r.soh,r.drr,r.doi,r.openPo,r.target,r.net,r.urg]); });
+  var aoa=[['GAW · Replenishment Plan · net of open PO · per-platform cover (Blinkit 8d, others 14d) · '+mk,'','','','','','','','','','','',''],head];
+  rows.forEach(function(r,i){ aoa.push([i+1,r.name,r.plat,r.cat,_pct(r.osa),r.soh,r.drr,r.doi,r.openPo,r.cover,r.target,r.net,r.urg]); });
   var ws=X.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:6},{wch:38},{wch:12},{wch:18},{wch:9},{wch:10},{wch:12},{wch:9},{wch:18},{wch:14},{wch:15},{wch:12}];
+  ws['!cols']=[{wch:6},{wch:38},{wch:12},{wch:18},{wch:9},{wch:10},{wch:12},{wch:9},{wch:18},{wch:12},{wch:12},{wch:15},{wch:12}];
   if(ws['!merges'])ws['!merges'].push({s:{r:0,c:0},e:{r:0,c:head.length-1}}); else ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:head.length-1}}];
   if(styled){
     var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
     for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
-    for(var r2=0;r2<rows.length;r2++){for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue; var hot=(c2===10&&rows[r2].net>0); cell.s={font:{name:'Calibri',sz:10,bold:hot,color:hot?{rgb:'B0390A'}:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}}
+    for(var r2=0;r2<rows.length;r2++){for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue; var hot=(c2===11&&rows[r2].net>0); cell.s={font:{name:'Calibri',sz:10,bold:hot,color:hot?{rgb:'B0390A'}:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}}
   }
   var wb=X.utils.book_new(); X.utils.book_append_sheet(wb,ws,'Replenishment');
   X.writeFile(wb,'GAW_Replenishment_'+(mk||'plan')+'.xlsx');
@@ -6596,10 +6685,11 @@ function _availRenderSohSkuTable(){
     const info=skuLookup(plat,sku);
     const k=pd.skus[sku];
     const best=_sohBestDTS(plat,k);
-    const reorder=_sohReorderQty(k);
+    const _opo=_sohOpenPO(plat,info.name,null);
+    const reorder=_sohReorderQty(k,plat,_opo);
     const sohCities=k.soh_by_city||{};
     const nCities=Object.keys(sohCities).filter(c=>(sohCities[c]||0)>0).length;
-    return {sku,name:info.name,cat:info.cat,soh:k.soh||0,dts:best.days,dts_flag:best.flag,drr:k.drr||0,reorder,nCities,openpo:_sohOpenPO(plat,info.name,null)};
+    return {sku,name:info.name,cat:info.cat,soh:k.soh||0,dts:best.days,dts_flag:best.flag,drr:k.drr||0,reorder,nCities,openpo:_opo};
   }).filter(r=>r.soh>0||r.drr>0); // only SKUs with stock or sales
   if(search)list=list.filter(r=>(r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search));
   list=_applyAvailFilters(list,plat,'soh');
@@ -6628,8 +6718,8 @@ function _availRenderSohSkuTable(){
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${r.nCities} cities</td>
   </tr>`;}).join('');
-  document.getElementById('availSohSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:680px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Reorder (14d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table></div>
-  <div style="font-size:10px;color:var(--muted);margin-top:8px">Days to Stockout: ${plat==='Instamart'?'Instamart native DaysOnHand':'SOH ÷ DRR'}. Reorder (14d) = units to add for 14-day cover, net of current stock. Open PO = open indent units inbound (tracker \u00D7 SN) \u2014 upload both in the Upload tab. Rows tinted <span style="color:#c0392b">red &lt;3d</span> / <span style="color:#d4860a">amber &lt;7d</span>.</div>`;
+  document.getElementById('availSohSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:680px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Units to add for ${_sohCoverDays(plat)}-day cover, net of SOH and inbound open PO">Reorder (${_sohCoverDays(plat)}d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div style="font-size:10px;color:var(--muted);margin-top:8px">Days to Stockout: ${plat==='Instamart'?'Instamart native DaysOnHand':'SOH ÷ DRR'}. Reorder (${_sohCoverDays(plat)}d) = units to add for ${_sohCoverDays(plat)}-day cover, net of current stock and inbound open PO.${plat==='Blinkit'?' Blinkit uses an 8-day target — their WH holds ~8d across backend + frontend.':''} Open PO = open indent units inbound (tracker \u00D7 SN) \u2014 upload both in the Upload tab. Rows tinted <span style="color:#c0392b">red &lt;3d</span> / <span style="color:#d4860a">amber &lt;7d</span>.</div>`;
 }
 
 function availSohDrillToSku(plat,sku){
@@ -6664,13 +6754,13 @@ function _availRenderSohCityTable(){
 
   // Summary strip — unified Days to Stockout (best source per platform) + reorder qty
   const best=_sohBestDTS(plat,k);
-  const reorder=_sohReorderQty(k);
+  const reorder=_sohReorderQty(k,plat,openPoTotal);
   const reorderTxt=(reorder==null)?'—':(reorder===0)?'✓ covered':reorder.toLocaleString('en-IN')+'u';
   const reorderCol=(reorder==null)?'#9aa1a8':(reorder===0)?'#1a7a3a':'#1a3a6e';
   const summary=`<div style="padding:12px;background:#f0f3fa;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Total SOH</div><div style="font-size:16px;font-weight:800">${Math.round(k.soh||0).toLocaleString('en-IN')} u</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Days to Stockout</div><div style="font-size:16px;font-weight:800;color:${_sohColorDTS(best.days)}">${_sohFmtDTS(best.days)}${best.flag==='capped'?'+':''}</div></div>
-    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Reorder (14d)</div><div style="font-size:16px;font-weight:800;color:${reorderCol}">${reorderTxt}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Reorder (${_sohCoverDays(plat)}d)</div><div style="font-size:16px;font-weight:800;color:${reorderCol}">${reorderTxt}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Incoming PO</div><div style="font-size:16px;font-weight:800;color:${openPoTotal?'#1a7a3a':'#9aa1a8'}">${openPoTotal==null?'\u2014':openPoTotal.toLocaleString('en-IN')+' u'}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DRR</div><div style="font-size:16px;font-weight:800">${Math.round(drr)}u/d</div></div>
   </div>`;
@@ -6719,7 +6809,8 @@ function _availRenderSohCityTable(){
   }
 
   const footnote=`<div style="font-size:10px;color:var(--muted);margin-top:10px">* Per-city days-to-stockout uses platform sell-rate apportioned by city stock share (city-level sales velocity isn&rsquo;t in the feed). Treat as directional.</div>`;
-  document.getElementById('availSohCityTable').innerHTML=summary+cityTable+facTable+footnote;
+  const _metroReorder=(function(){try{return _sohCityReorderHtml(plat,info.name,byCity);}catch(e){return '';}})();
+  document.getElementById('availSohCityTable').innerHTML=summary+cityTable+_metroReorder+facTable+footnote;
 }
 
 function availSohBackToPlatforms(){
@@ -6969,7 +7060,14 @@ function buildAlerts(){
           const top=skus[0];
           availAlerts.push({type:'bad',icon:'💸',platform:p,
             title:`${p}: "${top.info.name}" leaking ${fC(top.lost_gmv)} to stockouts`,
-            sub:`OSA ${top.wt_osa_ls!=null?top.wt_osa_ls.toFixed(0)+'%':'—'} · DRR ${Math.round(top.drr||0)}u/day · Reorder ~${Math.ceil((top.drr||0)*14)}u for 14-day cover.`,
+            sub:(function(){
+              // Same engine as every other Reorder surface: platform cover, net of SOH + inbound PO.
+              const _o=_sohOpenPO(p,top.info.name,null);
+              const _r=_sohReorderQty(top,p,_o);
+              const _cv=_sohCoverDays(p);
+              const _rt=(_r==null)?'no velocity to size a reorder':(_r===0)?`already covered for ${_cv}d (SOH + inbound PO)`:`Reorder ~${_r.toLocaleString('en-IN')}u for ${_cv}-day cover`;
+              return `OSA ${top.wt_osa_ls!=null?top.wt_osa_ls.toFixed(0)+'%':'—'} · DRR ${Math.round(top.drr||0)}u/day · ${_rt}.`;
+            })(),
             group:'Availability',day:td});
         }
         // (3) Low DOI (stockout risk) — non-IM computed, IM native
