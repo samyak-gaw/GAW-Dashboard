@@ -1858,9 +1858,22 @@ function _buildDB() {
     fr: _delta.fr || null    // {bySku,byPlat,window,...,ts,month} — persisted FR% (survives reload)
   };
 
-  // Merge SKU master: SEED base + delta additions
+  // Merge SKU master: SEED base + delta additions.
+  // FIELD-WISE, not entry-wise. A plain Object.assign REPLACES the whole SEED entry, so a
+  // delta entry shaped {name,cat} (older uploads wrote exactly that) silently destroyed mrp
+  // for the entire platform — which zeroes restock urgency, since urgency = (100-OSA)*DRR*mrp.
+  // mrp is now sticky: delta value if real, else SEED's, else 0. Never lost by omission.
   PN.forEach(p => {
-    DB.sku_master[p] = Object.assign({}, SEED.sku_master[p] || {}, (_delta.sku_master || {})[p] || {});
+    const base = SEED.sku_master[p] || {};
+    const dlt  = (_delta.sku_master || {})[p] || {};
+    const out  = {};
+    Object.keys(base).forEach(id => { out[id] = Object.assign({}, base[id]); });
+    Object.keys(dlt).forEach(id => {
+      const b = out[id] || {}, d = dlt[id] || {};
+      const mrp = (d.mrp > 0) ? d.mrp : ((b.mrp > 0) ? b.mrp : 0);
+      out[id] = Object.assign({}, b, d, { mrp: mrp });
+    });
+    DB.sku_master[p] = out;
   });
 
   // Build the viewing month's data (this is what 'DB.april' aliased data points to for legacy renderers)
@@ -7356,9 +7369,15 @@ function _applyGHPayload(payload,logFn,manual){
       const localSkuMaster = (_delta.sku_master||{})[p] || {};
       const ghSkuMaster    = merged.sku_master[p] || {};
       Object.entries(localSkuMaster).forEach(([code,entry]) => {
-        if (ghSkuMaster[code] === undefined) {
-          merged.sku_master[p] = merged.sku_master[p] || {};
-          merged.sku_master[p][code] = entry;
+        merged.sku_master[p] = merged.sku_master[p] || {};
+        const gh = ghSkuMaster[code];
+        if (gh === undefined) {
+          merged.sku_master[p][code] = entry;   // local-only, not yet pushed
+        } else if (!(gh.mrp > 0) && entry.mrp > 0) {
+          // Cloud wins on entries it already has — but a cloud entry that predates the
+          // mrp fix carries no mrp, and letting it win silently re-zeroes MRP on every
+          // pull. mrp is additive: keep the real number wherever it exists.
+          merged.sku_master[p][code] = Object.assign({}, gh, { mrp: entry.mrp });
         }
       });
     });
