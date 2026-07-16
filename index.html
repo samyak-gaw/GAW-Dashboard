@@ -2112,6 +2112,9 @@ function initDB() {
   _migrateLegacyDelta();
   _buildDB();
   console.log('✅ DB initialised — active:', getActiveMonth(), '· viewing:', getViewingMonth());
+  // Integrity sweep on load. Deferred so it never blocks first paint, and so the
+  // cloud pull has a chance to land first.
+  try{ setTimeout(function(){ try{ if(typeof gawIntegrityCheck==='function')gawIntegrityCheck(); }catch(e){} },2500); }catch(e){}
 }
 
 // Save the small delta to one key, large data slots to separate keys (avoids quota).
@@ -2217,10 +2220,221 @@ function saveDB() {
     } else { window._gawUnsavedMain=false; }
   }
   _buildDB(); // keep in-memory DB in sync after every save
+  // Integrity runs after every save so a bad upload is caught at upload time,
+  // not in a commercial review. Debounced: bursts of uploads collapse to one run.
+  try{
+    clearTimeout(window._giTimer);
+    window._giTimer=setTimeout(function(){
+      try{ if(typeof gawIntegrityCheck==='function')gawIntegrityCheck(); }catch(e){}
+    },1200);
+  }catch(e){}
 }
 // Trim SOH for localStorage: keep full by_facility ONLY for the active month; for older months
 // keep totals + by_city (drop by_facility). If forceMinimal=true, drop by_facility everywhere.
 // In-memory _delta.soh and cloud sync always retain the full data — this only affects local persistence.
+// ══════════════════════════════════════════════════════════════════════════
+// DATA INTEGRITY — validates the NUMBERS, not the code.
+// ══════════════════════════════════════════════════════════════════════════
+// Written after Jun-2026 Instamart shipped 14,386 units at Rs2,483/unit into a
+// live review and every code-level audit stayed green. Code audits (syntax,
+// tag balance, runtime load) cannot catch a correct sum over a corrupt column.
+// This is the missing layer: it asserts that the data is ECONOMICALLY POSSIBLE.
+//
+// Design rules:
+//   - Self-calibrating. Thresholds come from the data's own history (a
+//     platform's median across its other months), never hardcoded per SKU.
+//     A month that reads 16x its own neighbours is wrong regardless of scale.
+//   - Read-only. Never mutates, never repairs. Reports and stops.
+//   - Fail loud. Critical findings raise a banner; silence was the original sin.
+//   - Cheap. Runs on load and after any upload.
+//
+// Console: gawIntegrityCheck()        -> table + findings
+//          gawIntegrityCheck(true)    -> verbose, every row inspected
+// ══════════════════════════════════════════════════════════════════════════
+
+function _giMedian(xs){
+  const a=xs.filter(x=>typeof x==='number'&&isFinite(x)).slice().sort((p,q)=>p-q);
+  if(!a.length)return null;
+  const m=Math.floor(a.length/2);
+  return a.length%2?a[m]:(a[m-1]+a[m])/2;
+}
+
+// Pull sku-level rows for a month/platform from whichever store holds them.
+function _giSkuRows(mk,plat){
+  const fz=((_delta.frozen||{})[mk]||{})[plat];
+  if(fz&&Array.isArray(fz.sku)&&fz.sku.length)return fz.sku;
+  try{
+    const built=(DB.months&&DB.months[mk])?DB.months[mk][plat]:null;
+    if(built&&Array.isArray(built.sku)&&built.sku.length)return built.sku;
+    const b2=_buildMonthData(mk)[plat];
+    if(b2&&Array.isArray(b2.sku))return b2.sku;
+  }catch(e){}
+  return null;
+}
+
+function _giMonths(){
+  const out=Object.keys(_delta.frozen||{});
+  const am=getActiveMonth();
+  if(out.indexOf(am)<0)out.push(am);
+  return out;
+}
+
+function gawIntegrityCheck(verbose){
+  const F=[];
+  const add=(sev,area,msg,detail)=>F.push({sev:sev,area:area,msg:msg,detail:detail||''});
+
+  // ---- 1. Storage: a failed local save means work vanishes on refresh ----
+  try{
+    let used=0;
+    for(let i=0;i<localStorage.length;i++)used+=(localStorage.getItem(localStorage.key(i))||'').length;
+    const kb=Math.round(used/1024);
+    if(window._gawUnsavedMain)
+      add('critical','storage','Main delta NOT saved locally — push to GitHub before refreshing or this session is lost','~'+kb+'KB used of ~5120KB');
+    else if(kb>4300)
+      add('warn','storage','localStorage at '+kb+'KB of ~5120KB — saves will start failing silently','');
+  }catch(e){}
+
+  // ---- 2. Month x platform economics vs the platform's own history ----
+  // This is the check that would have caught June: Rs2,483/unit against a
+  // median of ~Rs150 across the same platform's other months.
+  const months=_giMonths();
+  const stat={};
+  months.forEach(mk=>{
+    PN.forEach(p=>{
+      const rows=_giSkuRows(mk,p);
+      if(!rows||!rows.length)return;
+      let g=0,u=0,d=0;
+      rows.forEach(r=>{g+=(r.gmv||0);u+=(r.units||0);d+=(r.disc||0);});
+      if(g<=0)return;
+      (stat[p]=stat[p]||{})[mk]={gmv:g,units:u,disc:d,ppu:u>0?g/u:null,discPct:g>0?d/g*100:null};
+    });
+  });
+
+  Object.keys(stat).forEach(p=>{
+    const mks=Object.keys(stat[p]);
+    if(mks.length<2)return; // need history to calibrate against
+    mks.forEach(mk=>{
+      const s=stat[p][mk];
+      const others=mks.filter(k=>k!==mk).map(k=>stat[p][k]);
+      const medPpu=_giMedian(others.map(o=>o.ppu));
+      const medDisc=_giMedian(others.map(o=>o.discPct));
+
+      if(s.ppu==null&&s.gmv>0){
+        add('critical','units',p+' '+mk+': GMV Rs'+Math.round(s.gmv).toLocaleString('en-IN')+' but ZERO units',
+            'units column almost certainly failed to parse');
+      } else if(s.ppu!=null&&medPpu>0){
+        const r=s.ppu/medPpu;
+        if(r>2.5||r<0.4){
+          add('critical','units',p+' '+mk+': Rs'+Math.round(s.ppu)+'/unit vs Rs'+Math.round(medPpu)+' median across its other months ('+r.toFixed(1)+'x)',
+              'GMV Rs'+Math.round(s.gmv).toLocaleString('en-IN')+' / '+Math.round(s.units).toLocaleString('en-IN')+' units — suspect wrong units column');
+        }
+      }
+      if(s.discPct!=null&&medDisc!=null&&medDisc>8){
+        if(s.discPct<medDisc*0.25){
+          add('warn','discount',p+' '+mk+': discount '+s.discPct.toFixed(1)+'% vs '+medDisc.toFixed(1)+'% median',
+              'discount column may have failed to parse or join');
+        } else if(s.discPct>70){
+          add('warn','discount',p+' '+mk+': discount '+s.discPct.toFixed(1)+'% — implausibly high','');
+        }
+      }
+    });
+  });
+
+  // ---- 3. Active month, SKU level: price vs MRP ----
+  const am=getActiveMonth();
+  let zeroUnitGmv=0, zeroUnitN=0, mrpMissing=0, priceOdd=0;
+  PN.forEach(p=>{
+    const rows=_giSkuRows(am,p);
+    if(!rows)return;
+    const agg={};
+    rows.forEach(r=>{
+      const k=r.sku_code; if(!k)return;
+      const a=(agg[k]=agg[k]||{gmv:0,units:0});
+      a.gmv+=(r.gmv||0); a.units+=(r.units||0);
+    });
+    Object.keys(agg).forEach(code=>{
+      const a=agg[code];
+      if(a.gmv<=0)return;
+      const info=(DB.sku_master[p]||{})[code]||{};
+      const nm=info.name||code;
+      if(a.units<=0){ zeroUnitN++; zeroUnitGmv+=a.gmv;
+        if(verbose)add('info','units',p+' · '+nm+': GMV Rs'+Math.round(a.gmv)+' with 0 units','');
+        return; }
+      const ppu=a.gmv/a.units;
+      const mrp=info.mrp||0;
+      if(mrp<=0){ mrpMissing++;
+        if(verbose)add('info','mrp',p+' · '+nm+': selling but no MRP','restock urgency = (100-OSA)*DRR*mrp = 0');
+      } else if(ppu>mrp*2.5||ppu<mrp*0.15){
+        priceOdd++;
+        add('critical','price',p+' · '+nm+': Rs'+Math.round(ppu)+'/unit vs MRP Rs'+Math.round(mrp),
+            Math.round(a.units).toLocaleString('en-IN')+' units, GMV Rs'+Math.round(a.gmv).toLocaleString('en-IN'));
+      }
+    });
+  });
+  if(zeroUnitN&&!verbose)
+    add('critical','units',zeroUnitN+' SKU(s) in '+am+' carry GMV but zero units',
+        'Rs'+Math.round(zeroUnitGmv).toLocaleString('en-IN')+' of GMV affected — run gawIntegrityCheck(true) to list');
+  if(mrpMissing&&!verbose)
+    add('warn','mrp',mrpMissing+' selling SKU(s) have no MRP — invisible to the restock queue',
+        'urgency = (100-OSA)*DRR*mrp evaluates to 0 · gawIntegrityCheck(true) to list');
+
+  // ---- 4. Upload gaps + city drift (reuse existing detectors) ----
+  try{
+    if(typeof _availWoWGaps==='function'){
+      const g=[];
+      (_AVAIL_PLATFORMS||[]).forEach(p=>{const x=_availWoWGaps(p); if(x&&x.missing.length)g.push(p+'('+x.missing.length+')');});
+      if(g.length)add('warn','uploads','Missing OSA upload days in the 14d WoW window: '+g.join(', '),'WoW averages are computed over a short window');
+    }
+  }catch(e){}
+  try{
+    if(typeof _cmCityDrift!=='undefined'&&_cmCityDrift&&_cmCityDrift.length)
+      add('warn','open_po',_cmCityDrift.length+' Tracker city name(s) match no SOH city','they silently show 0 open PO');
+  }catch(e){}
+
+  // ---- report ----
+  const crit=F.filter(x=>x.sev==='critical'), warn=F.filter(x=>x.sev==='warn');
+  console.log('%c── GAW DATA INTEGRITY ──','font-weight:bold');
+  if(!F.length){ console.log('%c✅ No issues. Economics consistent across all months and platforms.','color:#1a7a3a;font-weight:bold'); }
+  else{
+    if(crit.length)console.log('%c❌ '+crit.length+' CRITICAL','color:#c0392b;font-weight:bold');
+    crit.forEach(x=>console.log('%c  ['+x.area+'] '+x.msg,'color:#c0392b',x.detail?'\n      '+x.detail:''));
+    if(warn.length)console.log('%c⚠️  '+warn.length+' warning','color:#b0700a;font-weight:bold');
+    warn.forEach(x=>console.log('%c  ['+x.area+'] '+x.msg,'color:#b0700a',x.detail?'\n      '+x.detail:''));
+    const info=F.filter(x=>x.sev==='info');
+    if(info.length){console.log('  '+info.length+' info:'); info.forEach(x=>console.log('    ['+x.area+'] '+x.msg));}
+  }
+  // economics table — the at-a-glance view
+  const tbl=[];
+  Object.keys(stat).forEach(p=>Object.keys(stat[p]).forEach(mk=>{
+    const s=stat[p][mk];
+    tbl.push({platform:p,month:mk,GMV:Math.round(s.gmv),units:Math.round(s.units),
+      'Rs/unit':s.ppu!=null?Math.round(s.ppu):'ZERO UNITS',
+      'disc%':s.discPct!=null?s.discPct.toFixed(1)+'%':'—'});
+  }));
+  if(tbl.length&&console.table)console.table(tbl.sort((a,b)=>a.platform.localeCompare(b.platform)||a.month.localeCompare(b.month)));
+  _giBanner(crit.length,warn.length);
+  return F;
+}
+
+// Critical findings must be impossible to miss — silence is what let June through.
+function _giBanner(nCrit,nWarn){
+  try{
+    const id='gawIntegrityBanner';
+    const old=document.getElementById(id); if(old)old.remove();
+    if(!nCrit)return;
+    const d=document.createElement('div');
+    d.id=id;
+    d.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#c0392b;color:#fff;'+
+      'padding:10px 18px;font-size:13px;font-weight:600;display:flex;justify-content:space-between;'+
+      'align-items:center;box-shadow:0 -2px 12px rgba(0,0,0,.25)';
+    d.innerHTML='<span>\u26A0 Data integrity: '+nCrit+' critical issue'+(nCrit>1?'s':'')+
+      (nWarn?' and '+nWarn+' warning'+(nWarn>1?'s':''):'')+
+      ' — numbers may be wrong. Run <code style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:3px">gawIntegrityCheck()</code> in the console.</span>'+
+      '<span style="cursor:pointer;padding:0 8px;font-size:16px" onclick="this.parentNode.remove()">\u2715</span>';
+    document.body.appendChild(d);
+  }catch(e){}
+}
+
 // Trim frozen months for localStorage: drop `citysku`, which is ~69% of the frozen bulk
 // (measured Jul-2026: 2,440KB of 3,568KB across Apr/May/Jun). Without this the delta alone
 // is 4.2MB and localStorage silently rejects every write — which is how a repaired month
