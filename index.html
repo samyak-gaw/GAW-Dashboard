@@ -5250,8 +5250,18 @@ function procAvail(platform,rows){
   console.log('[Avail '+platform+'] parsed='+parsed,'bundles='+bundlesSkipped,'unmatched='+unmatchedSku,'('+Math.round(_dropPct)+'% dropped)','no-date='+noDate,'cols:',{date:dCol,sku:skuCol,osaLs:osaLsCol,ds:dsCol});
   // Silence here is what let 4,323 Amazon rows vanish behind a success message.
   // Drops mean SKU ids in the file are absent from the master — the data is NOT loaded.
+  // Nothing usable in this group at all (e.g. the bulk export carries a single
+  // stray Flipkart row with no date). That is not a failure worth interrupting
+  // for — the other platforms in the file still load. Log and move on.
+  if(_seen===0){
+    console.warn('[Avail '+platform+'] no usable rows in this file/group (no-date='+noDate+') — skipped.');
+    return false;
+  }
+  // Rows WERE present and every single SKU id missed the master: the data did not
+  // load. This is the case that must never pass silently (Amazon lost 4,323 rows
+  // behind a success tick).
   if(parsed===0){
-    console.error('%c[Avail '+platform+'] 0 rows loaded — every SKU id was unmatched. Column used: "'+skuCol+'". Samples: '+unmatchedSamples.join(', '),'color:#c0392b;font-weight:bold');
+    console.error('%c[Avail '+platform+'] 0 of '+_seen+' rows loaded — every SKU id was unmatched. Column used: "'+skuCol+'". Samples: '+unmatchedSamples.join(', '),'color:#c0392b;font-weight:bold');
     alert('\u274C '+platform+' availability: 0 of '+_seen+' rows loaded.\n\nEvery SKU id in the file is missing from the SKU master.\nColumn used: "'+skuCol+'"\nUnmatched samples: '+unmatchedSamples.slice(0,3).join(', ')+'\n\nNothing was saved.');
     return false;
   }
