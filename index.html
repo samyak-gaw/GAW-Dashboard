@@ -5118,17 +5118,40 @@ function _extractDay(dateStr){
 // ───────────────────────────────────────────────────────────────
 // AVAILABILITY PARSER — handles Zepto/Blinkit/IM/FK/BB uniformly
 // ───────────────────────────────────────────────────────────────
+// Choose the SKU-id column by MEASURED join rate against the master, not by a
+// hardcoded per-platform guess. GobbleCube exports are not consistent:
+//   Amazon Now -> `Item ID` is 100% BLANK; the real key is `Product ID` (ASIN)
+//   Blinkit    -> keys on `Item ID`; its `Product ID` matches nothing
+//   Zepto      -> both columns identical
+//   BigBasket  -> keys on `Product ID`
+// A hardcoded order picked `Item ID` for Amazon and silently discarded all 4,323
+// rows while still reporting the upload as successful. Probing both columns and
+// keeping the better match is self-correcting and survives future format drift.
+function _pickSkuCol(platform, rows, sk){
+  const cands=['Item ID','Product ID'].filter(c=>sk.includes(c));
+  if(!cands.length)return 'Item ID';
+  if(cands.length===1)return cands[0];
+  const master=Object.assign({}, (SEED.sku_master||{})[platform]||{}, (DB.sku_master||{})[platform]||{});
+  // Sample for speed on large files; join rate is stable well before 3k rows.
+  const step=rows.length>3000?Math.ceil(rows.length/3000):1;
+  let best=cands[0], bestHit=-1, report={};
+  cands.forEach(c=>{
+    let hit=0;
+    for(let i=0;i<rows.length;i+=step){
+      const id=_normSkuId(rows[i][c]);
+      if(id&&master[id])hit++;
+    }
+    report[c]=hit;
+    if(hit>bestHit){bestHit=hit;best=c;}
+  });
+  window._availColProbe=Object.assign(window._availColProbe||{},{[platform]:report});
+  return best;
+}
 function procAvail(platform,rows){
   if(!rows||!rows.length){alert(platform+' Availability: empty file');return false;}
   const sk=Object.keys(rows[0]||{});
   const dCol=sk.find(k=>k==='Date')||sk.find(k=>/^date$/i.test(k))||'Date';
-  // For Q-comm platforms, primary SKU id is "Item ID"; for FK/BB it's "Product ID"
-  // BUG FIX: Must iterate candidates in priority order (not use sk.find which returns first match in sk).
-  // Files often contain BOTH columns; picking wrong one = 0 matches.
-  const skuColCandidates=(platform==='Flipkart'||platform==='BigBasket')?['Product ID','Item ID']:['Item ID','Product ID'];
-  let skuCol=null;
-  for(const cand of skuColCandidates){if(sk.includes(cand)){skuCol=cand;break;}}
-  if(!skuCol)skuCol=skuColCandidates[0];
+  const skuCol=_pickSkuCol(platform, rows, sk);
   const cityCol=sk.find(k=>k==='City')||sk.find(k=>/^city$/i.test(k))||'City';
   // OSA in LS column — handle both "Wt. OSA in LS" (Q-comm) and "Wt. OSA% in LS" (BB/FK)
   const osaLsCol=sk.find(k=>/wt\.?\s*osa\s*%?\s*in\s*ls/i.test(k))||sk.find(k=>/wt\.?\s*osa\s*in\s*ls/i.test(k))||'Wt. OSA in LS';
@@ -5220,8 +5243,22 @@ function procAvail(platform,rows){
 
   saveDB();
   _buildDB();
-  window._availLastResult={platform,parsed,bundlesSkipped,unmatchedSku,noDate,dateCol:dCol,skuCol,cityCol,osaLsCol,dsCol,bundleCol,unmatchedSamples};
-  console.log('[Avail '+platform+'] parsed='+parsed,'bundles='+bundlesSkipped,'unmatched='+unmatchedSku,'no-date='+noDate,'cols:',{date:dCol,sku:skuCol,osaLs:osaLsCol,ds:dsCol});
+  const _seen=parsed+unmatchedSku;
+  const _dropPct=_seen>0?(unmatchedSku/_seen*100):0;
+  window._availLastResult={platform,parsed,bundlesSkipped,unmatchedSku,noDate,dropPct:_dropPct,dateCol:dCol,skuCol,cityCol,osaLsCol,dsCol,bundleCol,unmatchedSamples};
+  window._availDropLog=Object.assign(window._availDropLog||{},{[platform]:{parsed:parsed,unmatched:unmatchedSku,dropPct:Math.round(_dropPct),skuCol:skuCol}});
+  console.log('[Avail '+platform+'] parsed='+parsed,'bundles='+bundlesSkipped,'unmatched='+unmatchedSku,'('+Math.round(_dropPct)+'% dropped)','no-date='+noDate,'cols:',{date:dCol,sku:skuCol,osaLs:osaLsCol,ds:dsCol});
+  // Silence here is what let 4,323 Amazon rows vanish behind a success message.
+  // Drops mean SKU ids in the file are absent from the master — the data is NOT loaded.
+  if(parsed===0){
+    console.error('%c[Avail '+platform+'] 0 rows loaded — every SKU id was unmatched. Column used: "'+skuCol+'". Samples: '+unmatchedSamples.join(', '),'color:#c0392b;font-weight:bold');
+    alert('\u274C '+platform+' availability: 0 of '+_seen+' rows loaded.\n\nEvery SKU id in the file is missing from the SKU master.\nColumn used: "'+skuCol+'"\nUnmatched samples: '+unmatchedSamples.slice(0,3).join(', ')+'\n\nNothing was saved.');
+    return false;
+  }
+  if(_dropPct>=20){
+    console.error('%c[Avail '+platform+'] '+unmatchedSku+' of '+_seen+' rows ('+Math.round(_dropPct)+'%) DROPPED — SKU ids not in master: '+unmatchedSamples.join(', '),'color:#c0392b;font-weight:bold');
+    if(_dropPct>=50)alert('\u26A0 '+platform+' availability: '+Math.round(_dropPct)+'% of rows dropped\n\n'+unmatchedSku+' of '+_seen+' rows had SKU ids not in the master, so they were NOT loaded.\nColumn used: "'+skuCol+'"\nSamples: '+unmatchedSamples.slice(0,3).join(', ')+'\n\nThe rest was saved. Add these SKUs to the master and re-upload.');
+  }
   return true;
 }
 
