@@ -5250,24 +5250,24 @@ function procAvail(platform,rows){
   console.log('[Avail '+platform+'] parsed='+parsed,'bundles='+bundlesSkipped,'unmatched='+unmatchedSku,'('+Math.round(_dropPct)+'% dropped)','no-date='+noDate,'cols:',{date:dCol,sku:skuCol,osaLs:osaLsCol,ds:dsCol});
   // Silence here is what let 4,323 Amazon rows vanish behind a success message.
   // Drops mean SKU ids in the file are absent from the master — the data is NOT loaded.
-  // Nothing usable in this group at all (e.g. the bulk export carries a single
-  // stray Flipkart row with no date). That is not a failure worth interrupting
-  // for — the other platforms in the file still load. Log and move on.
+  // Reporting policy: NO popups from here. procAvail historically always returned
+  // true, so any `return false` reaches the generic "no valid rows" alert upstream —
+  // stacking dialogs on a working upload. Diagnostics belong in the console and in
+  // gawIntegrityCheck(), which surfaces drops without interrupting a workflow.
+  //   _seen === 0  -> nothing to do (e.g. the bulk export's single stray Flipkart
+  //                   row with no date). Return true: a no-op is not a failure.
+  //   parsed === 0 -> rows existed and every SKU id missed the master. Real failure,
+  //                   nothing saved; return false so the upstream alert fires ONCE.
   if(_seen===0){
-    console.warn('[Avail '+platform+'] no usable rows in this file/group (no-date='+noDate+') — skipped.');
-    return false;
+    console.warn('[Avail '+platform+'] no usable rows in this file/group (no-date='+noDate+') — nothing to load, skipped.');
+    return true;
   }
-  // Rows WERE present and every single SKU id missed the master: the data did not
-  // load. This is the case that must never pass silently (Amazon lost 4,323 rows
-  // behind a success tick).
   if(parsed===0){
-    console.error('%c[Avail '+platform+'] 0 of '+_seen+' rows loaded — every SKU id was unmatched. Column used: "'+skuCol+'". Samples: '+unmatchedSamples.join(', '),'color:#c0392b;font-weight:bold');
-    alert('\u274C '+platform+' availability: 0 of '+_seen+' rows loaded.\n\nEvery SKU id in the file is missing from the SKU master.\nColumn used: "'+skuCol+'"\nUnmatched samples: '+unmatchedSamples.slice(0,3).join(', ')+'\n\nNothing was saved.');
+    console.error('%c[Avail '+platform+'] 0 of '+_seen+' rows loaded — every SKU id missed the master. Column used: "'+skuCol+'". Samples: '+unmatchedSamples.join(', '),'color:#c0392b;font-weight:bold');
     return false;
   }
   if(_dropPct>=20){
-    console.error('%c[Avail '+platform+'] '+unmatchedSku+' of '+_seen+' rows ('+Math.round(_dropPct)+'%) DROPPED — SKU ids not in master: '+unmatchedSamples.join(', '),'color:#c0392b;font-weight:bold');
-    if(_dropPct>=50)alert('\u26A0 '+platform+' availability: '+Math.round(_dropPct)+'% of rows dropped\n\n'+unmatchedSku+' of '+_seen+' rows had SKU ids not in the master, so they were NOT loaded.\nColumn used: "'+skuCol+'"\nSamples: '+unmatchedSamples.slice(0,3).join(', ')+'\n\nThe rest was saved. Add these SKUs to the master and re-upload.');
+    console.error('%c[Avail '+platform+'] '+unmatchedSku+' of '+_seen+' rows ('+Math.round(_dropPct)+'%) dropped — SKU ids not in master: '+unmatchedSamples.join(', ')+' · run gawIntegrityCheck() for the full picture','color:#c0392b;font-weight:bold');
   }
   return true;
 }
