@@ -6854,9 +6854,17 @@ function _sohExportXlsx(){
         if(kind==='fr') return v>=95?'g':(v>=85?'a':'r');
         if(kind==='ds') return v>=90?'g':(v>=80?'a':'r');
         if(kind==='doi')return v>=14?'g':(v>=7?'a':'r'); return null; };
-      var _RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, _RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'}, _colKind={2:'osa',3:'osa',5:'fr',6:'ds',7:'doi'};
-      for(var r2=0;r2<rows.length;r2++){var R=rows[r2];
-        var vmap={2:_num(R.osaMtd),3:_num(R.osaToday),5:_num(R.fr),6:_num(R.ds),7:_num(R.doi)};
+      // This block was copy-pasted from the OSA export and never adapted: it looped
+      // over `rows` (which does not exist here — the array is `list`) and read OSA
+      // fields (osaMtd/osaToday/ds) that a SOH row has never had. It threw
+      // "ReferenceError: rows is not defined" on every run where XLSXStyle was
+      // loaded — i.e. every real browser — so the SOH export produced no file at all.
+      // Columns here are: 0 SKU · 1 Category · 2 SOH · 3 DaysToStockout · 4 OpenPO
+      //                   5 FR% · 6 Reorder · 7 DRR · 8 Cities
+      // Only Days-to-Stockout and FR% carry a RAG meaning; the rest are plain counts.
+      var _RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, _RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'}, _colKind={3:'doi',5:'fr'};
+      for(var r2=0;r2<list.length;r2++){var R=list[r2];
+        var vmap={3:_num(R.dts),5:_num(R.fr)};
         for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue;
           var band=_colKind[c2]?_rag(_colKind[c2],vmap[c2]):null;
           if(band){cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:_RAGT[band]}},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:_RAGF[band]}}};}
