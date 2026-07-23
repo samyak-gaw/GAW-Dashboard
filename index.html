@@ -759,9 +759,28 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
       <button class="exp-btn" onclick="availBackToSku()" style="font-size:11px">← Back to SKUs</button>
       <div style="font-size:14px;font-weight:700;color:#1a1a2e" id="availCityViewTitle">SKU name</div>
+      <div style="margin-left:auto;display:inline-flex;background:#eef2fb;border-radius:8px;padding:2px">
+        <button id="availDrillTabCities" class="drill-tab drill-tab-on" onclick="availDrillTab('cities')" style="font-size:11px;border:none;background:#1B2B45;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:700">Cities</button>
+        <button id="availDrillTabTrend" class="drill-tab" onclick="availDrillTab('trend')" style="font-size:11px;border:none;background:transparent;color:#1B2B45;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:700">📈 Trend</button>
+      </div>
     </div>
-    <div class="card">
+    <div class="card" id="availCityCard">
       <div id="availCityTable"></div>
+    </div>
+    <div class="card" id="availTrendCard" style="display:none">
+      <div id="availTrendControls" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <div style="display:inline-flex;gap:6px;align-items:center;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Series:
+          <label style="font-weight:600;color:#1B2B45;cursor:pointer"><input type="checkbox" id="availTrendOsa" checked onchange="_availRenderTrend()"> OSA (LS)</label>
+          <label style="font-weight:600;color:#1B2B45;cursor:pointer"><input type="checkbox" id="availTrendDs" onchange="_availRenderTrend()"> DS Listing</label>
+          <label style="font-weight:600;color:#1B2B45;cursor:pointer"><input type="checkbox" id="availTrendUnits" checked onchange="_availRenderTrend()"> Units</label>
+        </div>
+        <div style="display:inline-flex;gap:4px;margin-left:auto" id="availTrendRange">
+          <button class="trend-range trend-range-on" data-range="10" onclick="_availTrendSetRange(10)" style="font-size:11px;border:1px solid var(--border);background:#1B2B45;color:#fff;padding:5px 10px;border-radius:6px;cursor:pointer">10D</button>
+          <button class="trend-range" data-range="mtd" onclick="_availTrendSetRange('mtd')" style="font-size:11px;border:1px solid var(--border);background:#fff;color:#1B2B45;padding:5px 10px;border-radius:6px;cursor:pointer">MTD</button>
+        </div>
+      </div>
+      <div style="position:relative;height:340px"><canvas id="availTrendCanvas"></canvas></div>
+      <div id="availTrendNote" style="font-size:10px;color:var(--muted);margin-top:8px"></div>
     </div>
   </div>
 
@@ -6486,8 +6505,92 @@ function availDrillToSku(plat,sku){
   document.getElementById('availCityView').style.display='block';
   const info=skuLookup(plat,sku);
   document.getElementById('availCityViewTitle').textContent=`${info.name} × ${plat}`;
+  if(typeof availDrillTab==='function')availDrillTab('cities');
   _availRenderCityTable();
   window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ---- SKU drilldown Trend tab (GobbleCube-style dual-axis daily lines) ----
+// Three toggleable series, platform-level, cross-month capable:
+//   OSA (LS) + DS Listing  -> from _osaDaily (availability sku code)
+//   Units                  -> from DB.april[plat].sku, joined BY NAME (sales code can differ
+//                             from availability code — the exact Instamart alnum-vs-numeric case)
+let _availTrendRangeMode=10;
+function availDrillTab(which){
+  const onCities=which==='cities';
+  document.getElementById('availCityCard').style.display=onCities?'block':'none';
+  document.getElementById('availTrendCard').style.display=onCities?'none':'block';
+  const tc=document.getElementById('availDrillTabCities'), tt=document.getElementById('availDrillTabTrend');
+  [[tc,onCities],[tt,!onCities]].forEach(([b,on])=>{ if(!b)return; b.style.background=on?'#1B2B45':'transparent'; b.style.color=on?'#fff':'#1B2B45'; });
+  if(!onCities)_availRenderTrend();
+}
+function _availTrendSetRange(r){
+  _availTrendRangeMode=r;
+  document.querySelectorAll('#availTrendRange .trend-range').forEach(b=>{
+    const on=String(b.getAttribute('data-range'))===String(r);
+    b.style.background=on?'#1B2B45':'#fff'; b.style.color=on?'#fff':'#1B2B45';
+  });
+  _availRenderTrend();
+}
+function _availTrendUnitsByDay(plat,name){
+  // Sum daily units for this SKU NAME across cities/codes (name-bridge, not raw code).
+  const out={};
+  const rows=(DB.april&&DB.april[plat]&&DB.april[plat].sku)||[];
+  rows.forEach(r=>{
+    const nm=(skuLookup(plat,r.sku_code)||{}).name;
+    if(nm!==name)return;
+    out[r.day]=(out[r.day]||0)+(r.units||0);
+  });
+  return out;
+}
+function _availRenderTrend(){
+  const plat=_availCurrentPlat, sku=_availCurrentSku;
+  if(!plat||!sku)return;
+  const info=skuLookup(plat,sku);
+  const mk=getViewingMonth();
+  const od=_osaDaily(mk,plat,sku);            // {day:{wt_osa_ls,ds_listing}}
+  const ud=_availTrendUnitsByDay(plat,info.name);
+  const allDays=new Set([...Object.keys(od),...Object.keys(ud)].map(Number).filter(d=>d>=1));
+  let days=[...allDays].sort((a,b)=>a-b);
+  const selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity;
+  days=days.filter(d=>d<=selCap);
+  if(_availTrendRangeMode!=='mtd'){ const n=Number(_availTrendRangeMode)||10; days=days.slice(-n); }
+  const noteEl=document.getElementById('availTrendNote');
+  if(!days.length){ if(CR['availTrend']){try{CR['availTrend'].destroy();}catch(e){}delete CR['availTrend'];}
+    if(noteEl)noteEl.textContent='No daily data for this SKU in the selected window.'; return; }
+  const _vm=(typeof MONTH_SHORT!=='undefined'&&typeof MONTH_NUM_FROM_KEY==='function')?MONTH_SHORT[MONTH_NUM_FROM_KEY(mk)-1]:'';
+  const labels=days.map(d=>_vm+' '+d);
+  const showOsa=document.getElementById('availTrendOsa')?.checked;
+  const showDs=document.getElementById('availTrendDs')?.checked;
+  const showUnits=document.getElementById('availTrendUnits')?.checked;
+  const ds=[];
+  if(showOsa)ds.push({label:'Wt. OSA % (LS)',data:days.map(d=>od[d]&&od[d].wt_osa_ls!=null?od[d].wt_osa_ls:null),
+    borderColor:'#e94560',backgroundColor:'rgba(233,69,96,.08)',yAxisID:'yPct',tension:.3,spanGaps:true,pointRadius:2,borderWidth:2});
+  if(showDs)ds.push({label:'DS Listing %',data:days.map(d=>od[d]&&od[d].ds_listing!=null?od[d].ds_listing:null),
+    borderColor:'#8b5cf6',backgroundColor:'rgba(139,92,246,.06)',yAxisID:'yPct',tension:.3,spanGaps:true,pointRadius:2,borderWidth:2,borderDash:[4,3]});
+  if(showUnits)ds.push({label:'Units',data:days.map(d=>ud[d]!=null?ud[d]:null),
+    borderColor:'#2874f0',backgroundColor:'rgba(40,116,240,.10)',yAxisID:'yUnits',tension:.3,spanGaps:true,pointRadius:2,borderWidth:2});
+  if(!ds.length){ if(CR['availTrend']){try{CR['availTrend'].destroy();}catch(e){}delete CR['availTrend'];}
+    if(noteEl)noteEl.textContent='Select at least one series above.'; return; }
+  if(noteEl)noteEl.textContent=`${info.name} × ${plat} · ${days.length} day(s) · OSA/DS = availability report · Units = sales, joined by SKU name · hover for day-over-day change.`;
+  const anyPct=showOsa||showDs;
+  const cfg={type:'line',data:{labels,datasets:ds},options:{
+    responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{position:'top',labels:{font:{size:11},usePointStyle:true}},
+      tooltip:{callbacks:{afterBody:function(items){
+        // day-over-day delta per series
+        const out=[];
+        items.forEach(it=>{const i=it.dataIndex,arr=it.dataset.data;let prev=null;for(let j=i-1;j>=0;j--){if(arr[j]!=null){prev=arr[j];break;}}
+          if(prev!=null&&arr[i]!=null){const d=arr[i]-prev;const pct=it.dataset.yAxisID==='yPct';out.push('  '+it.dataset.label+' vs prev: '+(d>=0?'+':'')+(pct?d.toFixed(1)+'pp':Math.round(d)));}});
+        return out;
+      }}}},
+    scales:Object.assign({x:{grid:{display:false},ticks:{font:{size:10},maxRotation:0,autoSkip:true}}},
+      anyPct?{yPct:{position:'left',min:0,max:100,title:{display:true,text:'OSA / DS %',font:{size:10}},ticks:{callback:v=>v+'%',font:{size:10}}}}:{},
+      showUnits?{yUnits:{position:'right',beginAtZero:true,title:{display:true,text:'Units',font:{size:10}},grid:{drawOnChartArea:!anyPct},ticks:{font:{size:10}}}}:{})
+  }};
+  if(CR['availTrend']){try{CR['availTrend'].destroy();}catch(e){}}
+  const el=document.getElementById('availTrendCanvas'); if(!el)return;
+  try{CR['availTrend']=new Chart(el,cfg);}catch(e){console.warn('availTrend chart deferred:',e.message);}
 }
 
 function _availRenderCityTable(){
@@ -6507,10 +6610,17 @@ function _availRenderCityTable(){
     const listedStores=dsc[c]?dsc[c].dark_stores_listed:null;
     const storesStr=totalStores?`${listedStores||'—'}/${totalStores}`:'—';
     const csoh=(_metroSoh[c]!=null)?_metroSoh[c]:(cd.soh||0);
+    // Per-city FR% over the same 10-day delivered-PO window used everywhere else.
+    // True city-level (issued ÷ indent for this SKU's POs in this city); "—" when no PO landed there.
+    const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,info.name,c):null;
+    const frTxt=(cf&&cf.fr!=null)
+      ? `<span style="color:${_frColor(cf.fr)};font-weight:700">${_frFmt(cf.fr)}</span><span style="font-size:9px;color:#9aa1a8"> ${cf.n}PO</span>`
+      : '<span style="color:#c9ced6">—</span>';
     return `<tr>
       <td style="padding:8px 10px;font-size:12px"><b>${c}</b></td>
       <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(cd.wt_osa_ls)}</td>
       <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.ds_listing,'ds')};font-weight:700">${_availFmtPct(cd.ds_listing)}</td>
+      <td style="padding:8px 10px;font-size:12px" title="Fill Rate: issued ÷ indent for this SKU's delivered POs in this city, last 10 days">${frTxt}</td>
       <td style="padding:8px 10px;font-size:12px">${storesStr}</td>
       <td style="padding:8px 10px;font-size:12px">${Math.round(csoh||0).toLocaleString('en-IN')}</td>
     </tr>`;
@@ -6527,10 +6637,11 @@ function _availRenderCityTable(){
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">MRP</div><div style="font-size:16px;font-weight:800">${info.mrp?'₹'+info.mrp:'—'}</div></div>
   </div>
   <div style="font-size:10px;color:var(--muted);margin-bottom:8px">City rows below show MTD averages.</div>`;
-  document.getElementById('availCityTable').innerHTML=summary+`<div class="scroll-table"><table style="width:100%;min-width:560px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's store presence — % of stores carrying this exact SKU">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Brand-level dark-store coverage across ALL GAW SKUs — not specific to this SKU. Differs from DS Listing by design.">Brand DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  document.getElementById('availCityTable').innerHTML=summary+`<div class="scroll-table"><table style="width:100%;min-width:560px;border-collapse:collapse"><thead><tr style="background:#f0f3fa"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's store presence — % of stores carrying this exact SKU">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate — issued ÷ indent for this SKU's delivered POs in this city, last 10 days">FR% (10d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Brand-level dark-store coverage across ALL GAW SKUs — not specific to this SKU. Differs from DS Listing by design.">Brand DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function availBackToPlatforms(){
+  if(CR['availTrend']){try{CR['availTrend'].destroy();}catch(e){}delete CR['availTrend'];}
   document.getElementById('availPlatformsView').style.display='block';
   document.getElementById('availSkuView').style.display='none';
   document.getElementById('availCityView').style.display='none';
