@@ -123,14 +123,14 @@ function signOut() {
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Montserrat','Segoe UI',Arial,sans-serif;background:#F5F7FA;color:#22304A;min-height:100vh;-webkit-font-smoothing:antialiased}
-:root{--navy:#2E4162;--deep:#103E70;--yellow:#F9ED30;--teal:#288B93;--coral:#E25F43;--pblue:#166A92;--orange:#EB8B2C;--brandred:#BD2635;
---z:#BD2635;--b:#EB8B2C;--i:#E25F43;--green:#288B93;--greenl:#E7F2F2;--amber:#B96C10;--amberl:#FDF3E3;--red:#BD2635;--redl:#FAEBEC;
+:root{--navy:#2E4162;--deep:#103E70;--yellow:#F9ED30;--teal:#1E7A46;--good:#1E7A46;--goodl:#E6F2EA;--goodtx:#1A6B3E;--coral:#E25F43;--pblue:#166A92;--orange:#EB8B2C;--brandred:#BD2635;
+--z:#BD2635;--b:#EB8B2C;--i:#E25F43;--green:#1E7A46;--greenl:#E6F2EA;--amber:#B96C10;--amberl:#FDF3E3;--red:#BD2635;--redl:#FAEBEC;
 --bg:#F5F7FA;--card:#fff;--border:#D9E0EC;--text:#22304A;--muted:#6E7C95;--thead:#EEF1F6}
 .num,.kpi .value,.tbl td,.tbl th{font-variant-numeric:tabular-nums}
 .topbar{background:#fff;border-bottom:1px solid var(--border);padding:11px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 1px 2px rgba(34,48,74,.05)}
 .logo{font-family:'Anton','Montserrat',sans-serif;font-size:23px;letter-spacing:.6px;color:var(--deep);text-transform:uppercase;line-height:1}
 .logo span{color:var(--deep)}
-.live-dot{width:7px;height:7px;background:var(--teal);border-radius:50%;animation:pulse 2.6s infinite;display:inline-block;margin-right:4px}
+.live-dot{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 2.6s infinite;display:inline-block;margin-right:4px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .topbar-left{display:flex;align-items:center;gap:12px}
 .topbar-right{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
@@ -146,8 +146,8 @@ body{font-family:'Montserrat','Segoe UI',Arial,sans-serif;background:#F5F7FA;col
 .day-pill{padding:4px 9px;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#fff;color:var(--muted);transition:all .12s;white-space:nowrap}
 .day-pill:hover{border-color:var(--deep);color:var(--deep)}
 .day-pill.active{background:var(--deep);color:#fff;border-color:var(--deep)}
-.day-pill.today-marker{border-color:var(--teal);color:var(--teal)}
-.day-pill.today-marker.active{background:var(--teal);color:#fff;border-color:var(--teal)}
+.day-pill.today-marker{border-color:var(--green);color:var(--green)}
+.day-pill.today-marker.active{background:var(--green);color:#fff;border-color:var(--green)}
 .day-note{font-size:11px;color:var(--muted);margin-left:8px;white-space:nowrap}
 .content{display:none;padding:20px 22px;max-width:1460px;margin:0 auto}.content.active{display:block}
 .kpi-row{display:flex;gap:11px;flex-wrap:wrap;margin-bottom:18px}
@@ -155,11 +155,11 @@ body{font-family:'Montserrat','Segoe UI',Arial,sans-serif;background:#F5F7FA;col
 .kpi:nth-child(2){animation-delay:.05s}.kpi:nth-child(3){animation-delay:.1s}.kpi:nth-child(4){animation-delay:.15s}.kpi:nth-child(5){animation-delay:.2s}.kpi:nth-child(6){animation-delay:.25s}
 @keyframes gawRise{to{opacity:1;transform:none}}
 .kpi::before{content:'';position:absolute;top:0;left:0;width:100%;height:2px;background:var(--deep)}
-.kpi.g::before{background:var(--teal)}.kpi.r::before{background:var(--brandred)}.kpi.p::before{background:var(--navy)}
+.kpi.g::before{background:var(--green)}.kpi.r::before{background:var(--brandred)}.kpi.p::before{background:var(--navy)}
 .kpi .label{font-size:9.5px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:1.4px;margin-bottom:6px}
 .kpi .value{font-size:23px;font-weight:800;color:var(--navy);line-height:1.05;letter-spacing:-.6px}
 .kpi .sub{font-size:11px;color:var(--muted);margin-top:5px;flex-wrap:wrap;font-weight:600}
-.du{color:var(--teal);font-weight:800}.dd{color:var(--brandred);font-weight:800}
+.du{color:var(--green);font-weight:800}.dd{color:var(--brandred);font-weight:800}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px}
 @media(max-width:960px){.g2,.g3{grid-template-columns:1fr}}
@@ -170,7 +170,7 @@ body{font-family:'Montserrat','Segoe UI',Arial,sans-serif;background:#F5F7FA;col
 .tbl td{padding:8px 10px;border-bottom:1px solid #EEF1F6;color:var(--text);vertical-align:middle;font-weight:500}
 .tbl tr:hover td{background:#F7F9FC}.tbl tr:last-child td{border-bottom:none}
 .scroll-table{overflow-x:auto}
-.cb-up{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:800;background:var(--greenl);color:var(--teal)}
+.cb-up{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:800;background:var(--greenl);color:var(--goodtx)}
 .cb-w{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:800;background:var(--amberl);color:var(--amber)}
 .cb-dn{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:800;background:var(--redl);color:var(--brandred)}
 .cb-na{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:800;background:var(--thead);color:var(--muted)}
@@ -182,12 +182,12 @@ body{font-family:'Montserrat','Segoe UI',Arial,sans-serif;background:#F5F7FA;col
 .tag-bb{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9.5px;font-weight:800;background:rgba(132,194,37,.20);color:#4F7A12;letter-spacing:.3px}
 .prog-wrap{margin:10px 0}.prog-label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:5px;font-weight:700}
 .prog-bg{background:var(--thead);border-radius:3px;height:8px;overflow:hidden}.prog-fill{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.22,1,.3,1)}
-.pf-ok{background:var(--teal)}.pf-risk{background:var(--orange)}.pf-behind{background:var(--brandred)}
+.pf-ok{background:var(--green)}.pf-risk{background:var(--orange)}.pf-behind{background:var(--brandred)}
 .dp-high{color:var(--brandred);font-weight:800;background:var(--redl);padding:2px 6px;border-radius:4px;font-size:10.5px}
 .dp-med{color:var(--amber);font-weight:800;background:var(--amberl);padding:2px 6px;border-radius:4px;font-size:10.5px}
-.dp-low{color:var(--teal);font-weight:800;background:var(--greenl);padding:2px 6px;border-radius:4px;font-size:10.5px}
+.dp-low{color:var(--goodtx);font-weight:800;background:var(--greenl);padding:2px 6px;border-radius:4px;font-size:10.5px}
 .alert-card{border-radius:6px;padding:12px 15px;margin-bottom:9px;display:flex;align-items:flex-start;gap:12px;border:1px solid var(--border);border-left-width:3px;background:#fff}
-.alert-card.alert-good{border-left-color:var(--teal)}
+.alert-card.alert-good{border-left-color:var(--green)}
 .alert-card.alert-warn{border-left-color:var(--orange)}
 .alert-card.alert-bad{border-left-color:var(--brandred)}
 .alert-card.alert-info{border-left-color:var(--deep)}
@@ -201,9 +201,9 @@ body{font-family:'Montserrat','Segoe UI',Arial,sans-serif;background:#F5F7FA;col
 .upload-zone{border:1px dashed var(--border);border-radius:6px;padding:24px;text-align:center;cursor:pointer;transition:all .18s;margin-bottom:12px;background:#fff}
 .readonly-banner{background:var(--deep);color:#fff;padding:9px 24px;font-size:11.5px;font-weight:700;text-align:center;letter-spacing:.3px}
 .readonly-banner span{opacity:.55;margin:0 6px}
-.upload-zone:hover,.upload-zone.drag{border-color:var(--deep);background:#F7F9FC}.upload-zone.ok{border-color:var(--teal);background:var(--greenl)}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--deep);background:#F7F9FC}.upload-zone.ok{border-color:var(--green);background:var(--greenl)}
 .file-input{display:none}.up-icon{font-size:26px;margin-bottom:6px}.up-title{font-size:13px;font-weight:800;color:var(--navy);margin-bottom:3px}.up-sub{font-size:11.5px;color:var(--muted)}
-.info-banner{background:var(--greenl);border:1px solid rgba(40,139,147,.35);border-radius:6px;padding:10px 15px;font-size:11.5px;color:#1F6E74;margin-bottom:13px;display:flex;align-items:center;gap:8px;font-weight:600}
+.info-banner{background:var(--greenl);border:1px solid rgba(30,122,70,.30);border-radius:6px;padding:10px 15px;font-size:11.5px;color:#1A6B3E;margin-bottom:13px;display:flex;align-items:center;gap:8px;font-weight:600}
 .warn-banner{background:var(--amberl);border:1px solid rgba(235,139,44,.4);border-radius:6px;padding:10px 15px;font-size:11.5px;color:var(--amber);margin-bottom:13px;display:flex;align-items:center;gap:8px;font-weight:600}
 .sec-title{font-family:'Anton','Montserrat',sans-serif;font-size:15px;font-weight:400;color:var(--navy);text-transform:uppercase;letter-spacing:.8px;margin:22px 0 12px;padding-left:11px;border-left:3px solid var(--yellow)}
 .ch240{height:240px;position:relative}.ch280{height:280px;position:relative}.ch320{height:320px;position:relative}.ch400{height:400px;position:relative}
@@ -213,13 +213,13 @@ body{font-family:'Montserrat','Segoe UI',Arial,sans-serif;background:#F5F7FA;col
 .footer{text-align:center;padding:20px;color:var(--muted);font-size:10.5px;border-top:1px solid var(--border);margin-top:20px;background:#fff;letter-spacing:.4px}
 select{background:#fff;color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 9px;font-size:11.5px;outline:none;cursor:pointer;font-family:inherit;font-weight:600}
 .pill{background:var(--thead);color:var(--muted);font-size:9.5px;padding:2px 7px;border-radius:3px;font-weight:800;display:inline-block;letter-spacing:.4px}
-.pill-g{background:var(--greenl);color:var(--teal);font-size:9.5px;padding:2px 7px;border-radius:3px;font-weight:800;display:inline-block;letter-spacing:.4px}
+.pill-g{background:var(--greenl);color:var(--goodtx);font-size:9.5px;padding:2px 7px;border-radius:3px;font-weight:800;display:inline-block;letter-spacing:.4px}
 .sbar-bg{width:80px;background:var(--thead);border-radius:2px;height:7px;overflow:hidden;display:inline-block;vertical-align:middle}
 .sbar-fill{height:100%;border-radius:2px;display:block}
 .pdot{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;flex-shrink:0}
 .p-blinkit{background:#EB8B2C}.p-zepto{background:#BD2635}.p-instamart{background:#E25F43}
 .p-amazon{background:#C9A227}.p-flipkart{background:#166A92}.p-bigbasket{background:#84C225}
-.p-good{background:#288B93}.p-warn{background:#EB8B2C}.p-bad{background:#BD2635}
+.p-good{background:#1E7A46}.p-warn{background:#EB8B2C}.p-bad{background:#BD2635}
 .bnav-icon .pdot{width:11px;height:11px;border-radius:3px}
 .ovleak{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--border)}
 .ovleak:last-child{border-bottom:none}
@@ -284,13 +284,14 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   .topbar{padding:max(8px,env(safe-area-inset-top)) 14px 8px}
   .topbar-right .ts-badge:first-child{display:none}
   .topbar-right{gap:6px;flex-wrap:wrap;justify-content:flex-end}
-  .topbar-right .ts-badge{padding:4px 8px;font-size:10.5px}
+  .topbar-right .ts-badge{padding:4px 8px;font-size:10.5px;max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .topbar-right #dayEl{display:none}
   .topbar-right .lbl-full{display:none}
   .logo{font-size:19px}
   .month-badge{font-size:9.5px;padding:4px 8px}
   .tabs{display:none}
-  .day-sel-bar{top:48px;padding:6px 12px;gap:5px}
+  .day-sel-bar{position:static;top:auto;padding:7px 12px;gap:5px;flex-wrap:wrap}
+  .day-sel-label{width:100%;margin-bottom:2px}
   .content{padding:12px}
   .kpi{min-width:calc(50% - 6px);padding:12px}
   .kpi .value{font-size:19px}
@@ -918,7 +919,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 </div>
 </div>
       <div>
-        <div style="font-size:11px;font-weight:700;color:#1F6E74;margin-bottom:6px;text-transform:uppercase">BigBasket</div>
+        <div style="font-size:11px;font-weight:700;color:#4F7A12;margin-bottom:6px;text-transform:uppercase">BigBasket</div>
         <div class="upload-zone" onclick="document.getElementById('skuMstrBb').click()" style="padding:14px;min-height:60px">
           <div class="up-icon" style="font-size:18px"><span class="pdot p-bigbasket"></span></div>
           <div class="up-sub" id="skuMstrBbSub">sku_id · name · category</div>
@@ -1262,7 +1263,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 </div>
 
     <div class="card" style="border:2px solid #103E70;margin-bottom:16px">
-      <h3 style="color:#103E70">GitHub Auto-Deploy Sync <span id="ghAdminBadge" style="display:none;font-size:11px;font-weight:600;background:#E7F2F2;color:#288B93;padding:2px 10px;border-radius:10px;margin-left:8px">Connected</span></h3>
+      <h3 style="color:#103E70">GitHub Auto-Deploy Sync <span id="ghAdminBadge" style="display:none;font-size:11px;font-weight:600;background:#E6F2EA;color:#1E7A46;padding:2px 10px;border-radius:10px;margin-left:8px">Connected</span></h3>
       <div style="background:#EEF1F6;border-radius:10px;padding:14px;margin-bottom:14px">
         <div style="font-size:12px;font-weight:800;color:#22304A;margin-bottom:8px">One-time setup (5 mins):</div>
         <ol style="font-size:12px;color:#22304A;line-height:2;padding-left:18px;margin:0">
@@ -1310,7 +1311,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:12px" id="targetInputGrid">
 </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px">
-      <button class="cloud-save-btn" onclick="saveMonthlyTargets()" style="background:#288B93">Save Targets</button>
+      <button class="cloud-save-btn" onclick="saveMonthlyTargets()" style="background:#1E7A46">Save Targets</button>
       <span id="targetSaveStatus" style="font-size:12px;color:var(--muted)"></span>
 </div>
 </div>
@@ -1358,16 +1359,17 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 <div id="moreDrawer" style="display:none;position:fixed;bottom:calc(58px + env(safe-area-inset-bottom));left:0;right:0;background:#fff;border-radius:20px 20px 0 0;border-top:2px solid var(--border);z-index:400;padding:14px 16px 8px;box-shadow:0 -8px 32px rgba(0,0,0,.12)">
   <div style="width:36px;height:4px;background:#D9E0EC;border-radius:2px;margin:0 auto 14px"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-    <div onclick="closeMore();showTab('weekend')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"></div>Weekend Analysis</div>
+    <div onclick="closeMore();showTab('cmactions')" style="padding:12px;background:#FDF3E3;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">CM Actions</div>
+    <div onclick="closeMore();showTab('weekend')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Weekend Analysis</div>
     <div onclick="closeMore();showTab('instamart')" style="padding:12px;background:#FAEBEC;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"><span class="pdot p-instamart"></span></div>Instamart</div>
-    <div onclick="closeMore();showTab('amazon')" style="padding:12px;background:#FDF3E3;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"></div>Amazon</div>
-    <div onclick="closeMore();showTab('flipkart')" style="padding:12px;background:#E6EFF7;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"></div>Flipkart</div>
-    <div onclick="closeMore();showTab('bigbasket')" style="padding:12px;background:#E7F2F2;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"></div>BigBasket</div>
-    <div onclick="closeMore();showTab('category')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"></div>Category</div>
-    <div onclick="closeMore();showTab('projections')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"></div>Projections</div>
-    <div onclick="closeMore();showTab('availability')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"></div>Availability</div>
-    <div class="upload-nav-btn" onclick="closeMore();showTab('upload')" style="padding:12px;background:#E7F2F2;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"></div>Upload</div>
-    <div onclick="closeMore();showTab('cityintel')" style="padding:12px;background:#E6EFF7;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700"><div style="font-size:22px;margin-bottom:4px"></div>City Intel</div>
+    <div onclick="closeMore();showTab('amazon')" style="padding:12px;background:#FDF3E3;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Amazon</div>
+    <div onclick="closeMore();showTab('flipkart')" style="padding:12px;background:#E6EFF7;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Flipkart</div>
+    <div onclick="closeMore();showTab('bigbasket')" style="padding:12px;background:#E6F2EA;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">BigBasket</div>
+    <div onclick="closeMore();showTab('category')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Category &amp; SKU</div>
+    <div onclick="closeMore();showTab('projections')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Projections</div>
+    <div onclick="closeMore();showTab('availability')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Availability</div>
+    <div class="upload-nav-btn" onclick="closeMore();showTab('upload')" style="padding:12px;background:#E6F2EA;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Upload</div>
+    <div onclick="closeMore();showTab('cityintel')" style="padding:12px;background:#E6EFF7;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">City Intel</div>
 </div>
   <div style="margin-top:10px;padding:10px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700" onclick="closeMore();showTab('cloudsync')"><div style="font-size:22px;margin-bottom:3px"></div>Cloud Sync Settings</div>
 </div>
@@ -1573,8 +1575,8 @@ function renderDiscEff(){
   const th='padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:rgba(255,255,255,.85)';
   const td='padding:8px 10px;font-size:12px';
   const body=rows.map(r=>{
-    const effCol=r.eff==null?'var(--muted)':(r.eff>=8?'#288B93':(r.eff>=4?'#7A4A0A':'#BD2635'));
-    const liftTxt=r.lift==null?'<span style="color:var(--muted)">—</span>':(r.lift>=0?`<span style="color:#288B93;font-weight:700">▲ ${r.lift.toFixed(0)}%</span>`:`<span style="color:#BD2635;font-weight:700">▼ ${Math.abs(r.lift).toFixed(0)}%</span>`);
+    const effCol=r.eff==null?'var(--muted)':(r.eff>=8?'#1E7A46':(r.eff>=4?'#7A4A0A':'#BD2635'));
+    const liftTxt=r.lift==null?'<span style="color:var(--muted)">—</span>':(r.lift>=0?`<span style="color:#1E7A46;font-weight:700">▲ ${r.lift.toFixed(0)}%</span>`:`<span style="color:#BD2635;font-weight:700">▼ ${Math.abs(r.lift).toFixed(0)}%</span>`);
     return `<tr>
       <td style="${td}"><b>${r.p}</b></td>
       <td style="${td}">${fC(r.gmv)}</td>
@@ -2519,7 +2521,7 @@ function gawIntegrityCheck(verbose){
   // ---- report ----
   const crit=F.filter(x=>x.sev==='critical'), warn=F.filter(x=>x.sev==='warn');
   console.log('%c── GAW DATA INTEGRITY ──','font-weight:bold');
-  if(!F.length){ console.log('%c✅ No issues. Economics consistent across all months and platforms.','color:#288B93;font-weight:bold'); }
+  if(!F.length){ console.log('%c✅ No issues. Economics consistent across all months and platforms.','color:#1E7A46;font-weight:bold'); }
   else{
     if(crit.length)console.log('%c❌ '+crit.length+' CRITICAL','color:#BD2635;font-weight:bold');
     crit.forEach(x=>console.log('%c  ['+x.area+'] '+x.msg,'color:#BD2635',x.detail?'\n      '+x.detail:''));
@@ -2833,14 +2835,14 @@ function renderMonthSwitcher(){
   const itemsHTML = months.map(k => {
     const isView   = (k === VIEW);
     const isActive = (k === ACTIVE);
-    const tag = isActive ? '<span style="font-size:9px;background:#288B93;color:#fff;padding:1px 5px;border-radius:8px;margin-left:6px">LIVE</span>'
+    const tag = isActive ? '<span style="font-size:9px;background:#1E7A46;color:#fff;padding:1px 5px;border-radius:8px;margin-left:6px">LIVE</span>'
                          : '<span style="font-size:9px;background:#6E7C95;color:#fff;padding:1px 5px;border-radius:8px;margin-left:6px">ARCHIVED</span>';
     const bg = isView ? 'background:#EEF4FA;font-weight:700' : '';
     return `<div onclick="setViewingMonth('${k}');document.getElementById('monthSwitcherPanel').style.display='none'" style="padding:8px 10px;border-radius:6px;cursor:pointer;font-size:13px;${bg}" onmouseover="this.style.background='#EEF1F6'" onmouseout="this.style.background='${isView?'#EEF4FA':'transparent'}'">${MONTH_LABEL(k)}${tag}</div>`;
   }).join('');
 
   const hasFrozen = isAdmin && Object.keys(_delta.frozen || {}).length > 0;
-  const rollBtn = `<button onclick="manualRollover();document.getElementById('monthSwitcherPanel').style.display='none'" style="width:100%;font-size:11px;padding:6px;background:#288B93;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-bottom:5px">↪ Roll over to next month</button>`;
+  const rollBtn = `<button onclick="manualRollover();document.getElementById('monthSwitcherPanel').style.display='none'" style="width:100%;font-size:11px;padding:6px;background:#1E7A46;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-bottom:5px">↪ Roll over to next month</button>`;
   const unfreezeBtn = hasFrozen
     ? `<button onclick="unfreezeLastMonth();document.getElementById('monthSwitcherPanel').style.display='none'" style="width:100%;font-size:11px;padding:6px;background:#FDF3E3;color:#7A4A0A;border:1px solid #EB8B2C;border-radius:6px;cursor:pointer">↩ Unfreeze last month (recover)</button>`
     : '';
@@ -2977,7 +2979,7 @@ function platSkuRca(prefix,plat,skuCode,rowEl){
     const strip='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px">'
       +m('OSA Today',_availFmtPct(k.day_osa_ls),_availColor(k.day_osa_ls,'osa'))
       +m('OSA MTD',_availFmtPct(k.wt_osa_ls),_availColor(k.wt_osa_ls,'osa'))
-      +m('OSA WoW',(wow&&wow.delta!=null)?((wow.delta>=0?'▲ ':'▼ ')+Math.abs(wow.delta).toFixed(1)+'pp'):'—',(wow&&wow.delta!=null)?(wow.delta>=0?'#288B93':'#BD2635'):'#8B97AD')
+      +m('OSA WoW',(wow&&wow.delta!=null)?((wow.delta>=0?'▲ ':'▼ ')+Math.abs(wow.delta).toFixed(1)+'pp'):'—',(wow&&wow.delta!=null)?(wow.delta>=0?'#1E7A46':'#BD2635'):'#8B97AD')
       +m('SOH',Math.round(k.soh||0).toLocaleString('en-IN')+' u')
       +m('DOI',(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':'—'):Math.round(k.doi)+'d'+(k.doi_flag==='capped'?'+':''),_availColor(k.doi,'doi'))
       +m('DRR',Math.round(k.drr||0)+' u/day')
@@ -3151,7 +3153,7 @@ function _ovDrillHtml(p){
   const cityRows=topC.length?topC.map((e,i)=>'<tr style="background:'+(i%2?'#F7F9FC':'#fff')+'">'
       +'<td style="'+tdS+';font-weight:600">'+e[0]+'</td>'
       +'<td style="'+tdS+';text-align:right;font-weight:800;color:#2E4162">'+fC(e[1].gmv)+'</td>'
-      +'<td style="'+tdS+';text-align:right;color:#288B93;font-weight:700">'+e[1].drr.toLocaleString('en-IN')+' u/d</td></tr>').join(''):'<tr><td style="padding:8px;color:var(--muted);font-size:11px">No city data for '+p+'</td></tr>';
+      +'<td style="'+tdS+';text-align:right;color:#1E7A46;font-weight:700">'+e[1].drr.toLocaleString('en-IN')+' u/d</td></tr>').join(''):'<tr><td style="padding:8px;color:var(--muted);font-size:11px">No city data for '+p+'</td></tr>';
   // 7-day GMV sparkline
   const days=[]; for(let d=Math.max(1,td-6);d<=td;d++)days.push(d);
   const vals=days.map(d=>{const r=getForDay(p,d);return r?r.gmv:0;});
@@ -3277,7 +3279,7 @@ function _ovRenderHero(h){
   }
   const maxLost=h.leaks[0].lost||1;
   el.innerHTML=h.leaks.map(r=>{
-    const sev=r.osa==null?'#8B97AD':(r.osa<70?'#BD2635':(r.osa<90?'#EB8B2C':'#288B93'));
+    const sev=r.osa==null?'#8B97AD':(r.osa<70?'#BD2635':(r.osa<90?'#EB8B2C':'#1E7A46'));
     const w=Math.max(6,Math.round(r.lost/maxLost*100));
     return `<div class="ovleak">
       <span class="pdot" style="background:${PC[r.plat]||'#8B97AD'}"></span>
@@ -3337,7 +3339,7 @@ function renderOverview(){
     return`<div class="card" style="border-top:4px solid ${PC[p]}">
       <div style="font-size:12px;font-weight:800;color:${PC[p]};margin-bottom:8px">${p} <span style="font-size:10px;color:var(--muted);font-weight:400">· ${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} ${effectiveDay(p)}</span></div>
       <div style="font-size:24px;font-weight:800">${fC(t.gmv)}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:6px">Units: <b>${fN(t.units)}</b> | Disc: <b style="color:${parseFloat(dp)>30?'#BD2635':'#288B93'}">${dp}%</b>${_dAgg(t)>0?` <span style="font-size:10px" title="As reported ${fC(_dRaw(t))} · aggregator-funded ${fC(_dAgg(t))}">(rep. ${((_dRaw(t)/t.gmv)*100).toFixed(1)}%)</span>`:''}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Units: <b>${fN(t.units)}</b> | Disc: <b style="color:${parseFloat(dp)>30?'#BD2635':'#1E7A46'}">${dp}%</b>${_dAgg(t)>0?` <span style="font-size:10px" title="As reported ${fC(_dRaw(t))} · aggregator-funded ${fC(_dAgg(t))}">(rep. ${((_dRaw(t)/t.gmv)*100).toFixed(1)}%)</span>`:''}</div>
       <div style="font-size:11px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap">
         ${sdlw!==null?`<span style="background:#EEF1F6;border-radius:6px;padding:2px 6px">SDLW: <span class="${parseFloat(sdlw)>=0?'du':'dd'}">${parseFloat(sdlw)>=0?'▲':'▼'}${Math.abs(sdlw)}%</span></span>`:''}
         ${wow!==null?`<span style="background:#EEF1F6;border-radius:6px;padding:2px 6px">WoW: <span class="${parseFloat(wow)>=0?'du':'dd'}">${parseFloat(wow)>=0?'▲':'▼'}${Math.abs(wow)}%</span></span>`:''}
@@ -3399,7 +3401,7 @@ function renderOverview(){
       const m=getMTD(p);const tgt=DB.targets[p];const pA=(m.gmv/tgt*100).toFixed(1);
       const cls=parseFloat(pA)>=80?'cb-up':parseFloat(pA)>=50?'cb-w':'cb-dn';
       const dpct=m.gmv>0?(m.disc/m.gmv*100):0;
-      html+=`<tr><td>${platTag(p)}</td><td><b>${fC(m.gmv)}</b></td><td>${fN(m.units)}</td><td>${_discCell(m.disc,m.disc_raw,m.disc_nlc)}</td><td><b style="color:${dpct>30?'#BD2635':'#288B93'}">${dpct.toFixed(1)}%</b></td><td>${fC(tgt)}</td><td><span class="${cls}">${pA}%</span></td></tr>`;
+      html+=`<tr><td>${platTag(p)}</td><td><b>${fC(m.gmv)}</b></td><td>${fN(m.units)}</td><td>${_discCell(m.disc,m.disc_raw,m.disc_nlc)}</td><td><b style="color:${dpct>30?'#BD2635':'#1E7A46'}">${dpct.toFixed(1)}%</b></td><td>${fC(tgt)}</td><td><span class="${cls}">${pA}%</span></td></tr>`;
     });
     html+='</tbody></table>';
     mtdEl.innerHTML=html;
@@ -3416,12 +3418,12 @@ function renderOverview(){
     },0):null;
     const _wow=_lwMtd&&_lwMtd>0?{wkDRR:Math.round(_lwMtd/_lwDay),curDRR:_curDRR,pct:parseFloat(pct(_curDRR,Math.round(_lwMtd/_lwDay)))}:null;
     if(_wow){
-      _wowEl.innerHTML=`<div class="card" style="border-left:4px solid ${_wow.pct>=0?'#288B93':'#BD2635'};margin-bottom:16px">
+      _wowEl.innerHTML=`<div class="card" style="border-left:4px solid ${_wow.pct>=0?'#1E7A46':'#BD2635'};margin-bottom:16px">
         <h3>📊 DRR Change WoW</h3>
         <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px">
           <div><div style="font-size:11px;color:var(--muted)">Last Week's DRR</div><div style="font-size:18px;font-weight:800">${fC(_wow.wkDRR)}</div></div>
           <div><div style="font-size:11px;color:var(--muted)">This Week's DRR</div><div style="font-size:18px;font-weight:800">${fC(_wow.curDRR)}</div></div>
-          <div><div style="font-size:11px;color:var(--muted)">Change</div><div style="font-size:22px;font-weight:800;color:${_wow.pct>=0?'#288B93':'#BD2635'}">${_wow.pct>=0?'▲':'▼'}${Math.abs(_wow.pct)}%</div></div>
+          <div><div style="font-size:11px;color:var(--muted)">Change</div><div style="font-size:22px;font-weight:800;color:${_wow.pct>=0?'#1E7A46':'#BD2635'}">${_wow.pct>=0?'▲':'▼'}${Math.abs(_wow.pct)}%</div></div>
         </div>
       </div>`;
     } else { _wowEl.innerHTML=''; }
@@ -3450,7 +3452,7 @@ function renderPlatform(p,prefix,target){
         ${vm!==null?`vs${priorMonthLabel().slice(0,3)}: <span class="${parseFloat(vm)>=0?'du':'dd'}">${parseFloat(vm)>=0?'▲':'▼'}${Math.abs(vm)}%</span>`:''}</div></div>
     <div class="kpi g"><div class="label">Units · ${selLabel}</div><div class="value">${t?fN(t.units):'—'}</div><div class="sub">MTD Total: ${fN(mtd.units)}</div></div>
     <div class="kpi r"><div class="label">MTD Discount</div><div class="value">${fC(mtd.disc)}</div><div class="sub">Today: ${fC(t?t.disc||0:0)}${(mtd.disc_nlc||0)>0?` · brand-funded · reported ${fC(mtd.disc_raw)}`:''}</div></div>
-    <div class="kpi"><div class="label">Disc % · ${selLabel}</div><div class="value">${dp}%</div><div class="sub" style="color:${parseFloat(dp)>30?'#BD2635':parseFloat(dp)>20?'#B96C10':'#288B93'}">${parseFloat(dp)>30?'⚠ High':parseFloat(dp)>20?'Moderate':'Efficient'}</div></div>
+    <div class="kpi"><div class="label">Disc % · ${selLabel}</div><div class="value">${dp}%</div><div class="sub" style="color:${parseFloat(dp)>30?'#BD2635':parseFloat(dp)>20?'#B96C10':'#1E7A46'}">${parseFloat(dp)>30?'⚠ High':parseFloat(dp)>20?'Moderate':'Efficient'}</div></div>
     <div class="kpi p"><div class="label">MTD GMV</div><div class="value">${fC(mtd.gmv)}</div><div class="sub">${(mtd.gmv/target*100).toFixed(1)}% of ${fC(target)}</div></div>`;
 
   // Daily table — SDLW + vs March
@@ -3488,9 +3490,9 @@ function renderPlatform(p,prefix,target){
     <tr><td style="color:var(--muted)">Days tracked</td><td><b>${curDay}/${M_DAYS}</b></td></tr>
     <tr><td style="color:var(--muted)">Current DRR</td><td><b>${fC(curDRR)}</b></td></tr>
     <tr><td style="color:var(--muted)">${priorMonthLabel()} Avg DRR</td><td><b>${fC(avgDRR(p))}</b></td></tr>
-    <tr><td style="color:var(--muted)">Required DRR</td><td><b style="color:${reqDRR<=curDRR?'#288B93':'#BD2635'}">${fC(reqDRR)}</b></td></tr>
-    <tr><td style="color:var(--muted)">Projected month-end</td><td><b style="color:${projEnd>=target?'#288B93':'#B96C10'}">${fC(projEnd)}</b></td></tr>
-    <tr><td style="color:var(--muted)">Gap to target</td><td><b style="color:${projEnd>=target?'#288B93':'#BD2635'}">${projEnd>=target?'On Track ✅':'–'+fC(target-projEnd)}</b></td></tr>`;
+    <tr><td style="color:var(--muted)">Required DRR</td><td><b style="color:${reqDRR<=curDRR?'#1E7A46':'#BD2635'}">${fC(reqDRR)}</b></td></tr>
+    <tr><td style="color:var(--muted)">Projected month-end</td><td><b style="color:${projEnd>=target?'#1E7A46':'#B96C10'}">${fC(projEnd)}</b></td></tr>
+    <tr><td style="color:var(--muted)">Gap to target</td><td><b style="color:${projEnd>=target?'#1E7A46':'#BD2635'}">${projEnd>=target?'On Track ✅':'–'+fC(target-projEnd)}</b></td></tr>`;
 
   // GMV trend chart
   const lbs=days.map(d=>`${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} ${d.day}`);
@@ -4053,14 +4055,14 @@ function renderForecastAccuracy(){
     if(!rows.length)return;
     const tp=rows.reduce((a,r)=>a+r.proj,0), ta=rows.reduce((a,r)=>a+r.act,0);
     const terr=ta>0?((tp-ta)/ta*100):0;
-    const ec=e=>Math.abs(e)<10?'#288B93':(Math.abs(e)<20?'#7A4A0A':'#BD2635');
+    const ec=e=>Math.abs(e)<10?'#1E7A46':(Math.abs(e)<20?'#7A4A0A':'#BD2635');
     const td='padding:8px 10px;font-size:12px';
     const body=rows.map(r=>`<tr><td style="${td}"><b>${r.p}</b></td><td style="${td}">${fC(r.proj)}</td><td style="${td}">${fC(r.act)}</td><td style="${td};color:${ec(r.err)};font-weight:800">${r.err>=0?'+':''}${r.err.toFixed(1)}%</td></tr>`).join('');
     blocks.push(`<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;color:#22304A;margin-bottom:6px">${mk} <span style="font-size:10px;font-weight:400;color:var(--muted)">· projected as of day ${rec.asOfDay}</span></div>
       <div class="scroll-table"><table style="width:100%;min-width:480px;border-collapse:collapse">
         <thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Platform</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Projected</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Actual</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Error</th></tr></thead>
         <tbody>${body}</tbody>
-        <tfoot><tr style="background:#E7F2F2;font-weight:800"><td style="${td}">All</td><td style="${td}">${fC(tp)}</td><td style="${td}">${fC(ta)}</td><td style="${td};color:${ec(terr)}">${terr>=0?'+':''}${terr.toFixed(1)}%</td></tr></tfoot>
+        <tfoot><tr style="background:#E6F2EA;font-weight:800"><td style="${td}">All</td><td style="${td}">${fC(tp)}</td><td style="${td}">${fC(ta)}</td><td style="${td};color:${ec(terr)}">${terr>=0?'+':''}${terr.toFixed(1)}%</td></tr></tfoot>
       </table></div></div>`);
   });
   if(!blocks.length){
@@ -4120,9 +4122,9 @@ function renderProjections(){
       <div class="prog-wrap"><div class="prog-label"><span>${fC(m.gmv)}</span><span>${pA}%</span><span>${fC(tgt)}</span></div><div class="prog-bg"><div class="prog-fill ${cls}" style="width:${Math.min(parseFloat(pA),100)}%"></div></div></div>
       <table class="tbl" style="margin-top:10px"><tbody>
         <tr><td style="color:var(--muted)">Current DRR</td><td><b>${fC(curDRR)}</b></td></tr>
-        <tr><td style="color:var(--muted)">Required DRR</td><td><b style="color:${reqDRR<=curDRR?'#288B93':'#BD2635'}">${fC(reqDRR)}</b></td></tr>
+        <tr><td style="color:var(--muted)">Required DRR</td><td><b style="color:${reqDRR<=curDRR?'#1E7A46':'#BD2635'}">${fC(reqDRR)}</b></td></tr>
         <tr><td style="color:var(--muted)">Projected end</td><td><b>${fC(projEnd)}</b></td></tr>
-        <tr><td style="color:var(--muted)">Gap</td><td><b style="color:${projEnd>=tgt?'#288B93':'#BD2635'}">${projEnd>=tgt?'On Track ✅':'–'+fC(tgt-projEnd)}</b></td></tr>
+        <tr><td style="color:var(--muted)">Gap</td><td><b style="color:${projEnd>=tgt?'#1E7A46':'#BD2635'}">${projEnd>=tgt?'On Track ✅':'–'+fC(tgt-projEnd)}</b></td></tr>
       </tbody></table></div>`;
   }).join('');
 
@@ -4170,7 +4172,7 @@ function renderProjections(){
 
   mkChart('projChart','line',{labels:pDays.map(d=>`${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} ${d}`),datasets:[
     {label:'Actual MTD',data:combinedActual,borderColor:'#103E70',backgroundColor:'rgba(16,62,112,.12)',fill:true,tension:0.3,pointRadius:2,borderWidth:2.5,spanGaps:false},
-    {label:'Trend (Regression)',data:regCumulative,borderColor:'#288B93',borderDash:[6,3],fill:false,tension:0.3,pointRadius:0,borderWidth:2,spanGaps:true},
+    {label:'Trend (Regression)',data:regCumulative,borderColor:'#1E7A46',borderDash:[6,3],fill:false,tension:0.3,pointRadius:0,borderWidth:2,spanGaps:true},
     {label:'Target',data:tgtLine,borderColor:'#BD2635',borderDash:[2,4],fill:false,tension:0,pointRadius:0,borderWidth:1.5}
   ]},{
     plugins:{legend:{labels:{font:{size:11},boxWidth:14}}},
@@ -4293,10 +4295,10 @@ function renderWeekend(){
 
   // KPIs
   document.getElementById('wkKpis').innerHTML=`
-    <div class="kpi p"><div class="label">Weekend GMV · ${latest.label}</div><div class="value">${fC(L.gmv)}</div><div class="sub">${wow!==null?`<span style="color:${wow>=0?'#288B93':'#BD2635'}">${wow>=0?'▲':'▼'} ${Math.abs(wow).toFixed(1)}% WoW</span>`:'first weekend'}</div></div>
+    <div class="kpi p"><div class="label">Weekend GMV · ${latest.label}</div><div class="value">${fC(L.gmv)}</div><div class="sub">${wow!==null?`<span style="color:${wow>=0?'#1E7A46':'#BD2635'}">${wow>=0?'▲':'▼'} ${Math.abs(wow).toFixed(1)}% WoW</span>`:'first weekend'}</div></div>
     <div class="kpi g"><div class="label">Units</div><div class="value">${fN(L.units)}</div><div class="sub">${L.days} day${L.days>1?'s':''} of data</div></div>
     <div class="kpi r"><div class="label">Blended Discount</div><div class="value">${L.discPct.toFixed(1)}%</div><div class="sub">${fC(L.disc)} spend</div></div>
-    <div class="kpi"><div class="label">Weekend Lift vs Weekday</div><div class="value" style="color:${lift===null?'#22304A':(lift>=0?'#288B93':'#BD2635')}">${lift===null?'—':(lift>=0?'+':'')+lift.toFixed(1)+'%'}</div><div class="sub">avg daily GMV, Sat–Sun vs Mon–Fri</div></div>
+    <div class="kpi"><div class="label">Weekend Lift vs Weekday</div><div class="value" style="color:${lift===null?'#22304A':(lift>=0?'#1E7A46':'#BD2635')}">${lift===null?'—':(lift>=0?'+':'')+lift.toFixed(1)+'%'}</div><div class="sub">avg daily GMV, Sat–Sun vs Mon–Fri</div></div>
     <div class="kpi"><div class="label">Weekend OSA</div><div class="value" style="color:${osaCol}">${osaL.osa!=null?osaL.osa.toFixed(1)+'%':'—'}</div><div class="sub">${osaL.osa!=null?`<span style="color:#BD2635">${fC(osaL.lostGmv)} lost GMV</span> · 5 platforms`:'upload OSA reports'}</div></div>`;
 
   // Monday action callout — top 3 signals
@@ -4320,7 +4322,7 @@ function renderWeekend(){
   // Platform table
   document.getElementById('wkPlatBody').innerHTML=plats.sort((a,b)=>b.d.gmv-a.d.gmv).map(x=>{
     const osaCell=x.osa!=null?`<span style="color:${_availColor(x.osa,'osa')};font-weight:700">${x.osa.toFixed(1)}%</span>${x.osaObj&&x.osaObj.lostGmv>0?` <span style="color:#BD2635;font-size:10px">−${fC(x.osaObj.lostGmv)}</span>`:''}`:'<span style="color:#8B97AD">—</span>';
-    return `<tr><td><b style="color:${PC[x.p]}">${x.p}</b></td><td>${fC(x.d.gmv)}</td><td>${fN(x.d.units)}</td><td><span class="${dpCls(x.d.discPct)}">${x.d.discPct.toFixed(1)}%</span></td><td>${osaCell}</td><td style="color:${x.lift===null?'#6E7C95':(x.lift>=0?'#288B93':'#BD2635')}">${x.lift===null?'—':(x.lift>=0?'+':'')+x.lift.toFixed(1)+'%'}</td><td style="color:${x.wow===null?'#6E7C95':(x.wow>=0?'#288B93':'#BD2635')}">${x.wow===null?'—':(x.wow>=0?'▲':'▼')+' '+Math.abs(x.wow).toFixed(1)+'%'}</td></tr>`;
+    return `<tr><td><b style="color:${PC[x.p]}">${x.p}</b></td><td>${fC(x.d.gmv)}</td><td>${fN(x.d.units)}</td><td><span class="${dpCls(x.d.discPct)}">${x.d.discPct.toFixed(1)}%</span></td><td>${osaCell}</td><td style="color:${x.lift===null?'#6E7C95':(x.lift>=0?'#1E7A46':'#BD2635')}">${x.lift===null?'—':(x.lift>=0?'+':'')+x.lift.toFixed(1)+'%'}</td><td style="color:${x.wow===null?'#6E7C95':(x.wow>=0?'#1E7A46':'#BD2635')}">${x.wow===null?'—':(x.wow>=0?'▲':'▼')+' '+Math.abs(x.wow).toFixed(1)+'%'}</td></tr>`;
   }).join('');
 
   // Rolling trend chart (stacked GMV by platform + weekend OSA line, last up to 6 weekends)
@@ -4358,7 +4360,7 @@ function renderWeekend(){
     const a=_wkAll(w); const lf=_wkLiftPct(w,null);
     const pr=i>0?_wkAll(arr[i-1]):null; const ww=pr&&pr.gmv>0?((a.gmv-pr.gmv)/pr.gmv*100):null;
     const o=_wkOsaAll(w); const oCell=o.osa!=null?`<span style="color:${_availColor(o.osa,'osa')};font-weight:700">${o.osa.toFixed(0)}%</span>`:'<span style="color:#8B97AD">—</span>';
-    return `<tr><td><b>${w.label}</b></td><td>${fC(a.gmv)}</td><td>${fN(a.units)}</td><td>${a.discPct.toFixed(1)}%</td><td>${oCell}</td><td style="color:${lf===null?'#6E7C95':(lf>=0?'#288B93':'#BD2635')}">${lf===null?'—':(lf>=0?'+':'')+lf.toFixed(0)+'%'}</td><td style="color:${ww===null?'#6E7C95':(ww>=0?'#288B93':'#BD2635')}">${ww===null?'—':(ww>=0?'▲':'▼')+Math.abs(ww).toFixed(0)+'%'}</td></tr>`;
+    return `<tr><td><b>${w.label}</b></td><td>${fC(a.gmv)}</td><td>${fN(a.units)}</td><td>${a.discPct.toFixed(1)}%</td><td>${oCell}</td><td style="color:${lf===null?'#6E7C95':(lf>=0?'#1E7A46':'#BD2635')}">${lf===null?'—':(lf>=0?'+':'')+lf.toFixed(0)+'%'}</td><td style="color:${ww===null?'#6E7C95':(ww>=0?'#1E7A46':'#BD2635')}">${ww===null?'—':(ww>=0?'▲':'▼')+Math.abs(ww).toFixed(0)+'%'}</td></tr>`;
   }).join('');
 
   // Supply watch — low weekend OSA SKUs + SKUs with weekday sales but zero weekend sales
@@ -4384,7 +4386,7 @@ function renderWeekend(){
     supHtml+=`${lowOsa.length?'<div style="height:8px"></div>':''}<div style="font-weight:700;color:#2E4162;margin-bottom:4px">Sold weekday, zero weekend</div>`+
       sup.slice(0,8).map(x=>`• <b style="color:${PC[x.p]}">${x.p}</b> — ${x.name} <span style="color:var(--muted)">(${Math.round(x.u)}u weekday, 0 weekend)</span>`).join('<br>');
   }
-  if(!supHtml)supHtml='<span style="color:#288B93">✓ No low-OSA or zero-velocity flags this weekend.</span>';
+  if(!supHtml)supHtml='<span style="color:#1E7A46">✓ No low-OSA or zero-velocity flags this weekend.</span>';
   document.getElementById('wkSupplyBody').innerHTML=supHtml;
 
   // Weekend regulars — top-10 in ≥3 of last weekends
@@ -4479,7 +4481,7 @@ function renderAll(){
   if (badgeEl) {
     const stateLabel = isArchived ? 'Archived' : 'Live';
     badgeEl.textContent = `${MONTH_LABEL(VIEW)} ${stateLabel} ▾`;
-    badgeEl.style.background = isArchived ? '#6E7C95' : '#288B93';
+    badgeEl.style.background = isArchived ? '#6E7C95' : '#1E7A46';
   }
 
   const zpb=document.getElementById('zpPendingBanner');
@@ -5984,7 +5986,7 @@ function _osaWoWBadge(w){
   const d=w.delta;
   const partial=(w.curN!=null&&w.curN<7)||(w.prevN!=null&&w.prevN<7);
   const note=partial?('<span style="color:#8B97AD;font-size:9px" title="7d vs prior 7d — partial window ('+(w.curN||'?')+'d vs '+(w.prevN||'?')+'d sampled)"> '+(w.curN||0)+'/'+(w.prevN||0)+'d</span>'):'';
-  if(d>=0.5)return '<span style="color:#288B93;font-weight:700;font-size:11px">\u25b2 '+d.toFixed(1)+'pp</span>'+note;
+  if(d>=0.5)return '<span style="color:#1E7A46;font-weight:700;font-size:11px">\u25b2 '+d.toFixed(1)+'pp</span>'+note;
   if(d<=-0.5)return '<span style="color:#BD2635;font-weight:700;font-size:11px">\u25bc '+Math.abs(d).toFixed(1)+'pp</span>'+note;
   return '<span style="color:#8B97AD;font-weight:700;font-size:11px">\u25ac flat</span>'+note;
 }
@@ -6179,17 +6181,17 @@ window._availMTD=null;  // cache
 function _availColor(pct,kind){
   if(pct==null)return '#8B97AD';
   if(kind==='osa'){
-    if(pct>=90)return '#288B93';
+    if(pct>=90)return '#1E7A46';
     if(pct>=75)return '#EB8B2C';
     return '#BD2635';
   }
   if(kind==='ds'){
-    if(pct>=90)return '#288B93';
+    if(pct>=90)return '#1E7A46';
     if(pct>=80)return '#EB8B2C';
     return '#BD2635';
   }
   if(kind==='doi'){
-    if(pct>=14)return '#288B93';
+    if(pct>=14)return '#1E7A46';
     if(pct>=7)return '#EB8B2C';
     return '#BD2635';
   }
@@ -6258,7 +6260,7 @@ function _availRenderDataFreshness(){
   const stamp=d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
   // Stale warning if older than 36h
   const stale=(now-newest)>36*3600*1000;
-  const dot=stale?'#BD2635':'#288B93';
+  const dot=stale?'#BD2635':'#1E7A46';
   el.innerHTML=`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:${dot};display:inline-block"></span>Availability &amp; SOH data as of <b>${stamp}</b> · ${rel}${stale?' <span style="color:#BD2635">(may be stale)</span>':''}${(function(){try{return _availGapStripHtml();}catch(e){return '';}})()}</span>`;
 }
 
@@ -6300,7 +6302,7 @@ function _availGapStripHtml(){
     const g=_availWoWGaps(p);
     if(g&&g.missing.length)out.push({p,n:g.missing.length,days:g.missing});
   });
-  if(!out.length)return ' · <span style="color:#288B93" title="All 14 days of the WoW window have OSA uploads on every platform">\u2713 no upload gaps (14d)</span>';
+  if(!out.length)return ' · <span style="color:#1E7A46" title="All 14 days of the WoW window have OSA uploads on every platform">\u2713 no upload gaps (14d)</span>';
   const _lbl=x=>{const mn=(typeof MONTH_SHORT!=='undefined'&&typeof MONTH_NUM_FROM_KEY==='function')?MONTH_SHORT[MONTH_NUM_FROM_KEY(x.mk)-1]:'';return mn+' '+x.day;};
   const tip=out.map(o=>o.p+': missing '+o.days.map(_lbl).join(', ')).join(' | ');
   const tot=out.reduce((s,o)=>s+o.n,0);
@@ -6364,7 +6366,7 @@ function _availCityDoiBlock(plat,idPrefix){
     return `<tr style="background:${i%2?'#F7F9FC':'#fff'}">
       <td style="${td};font-weight:600">${r.city}</td>
       <td style="${td};text-align:right;color:#5B6675">${fC(r.gmv)}</td>
-      <td style="${td};text-align:right;color:#288B93;font-weight:600">${Math.round(r.drr).toLocaleString('en-IN')} u/d</td>
+      <td style="${td};text-align:right;color:#1E7A46;font-weight:600">${Math.round(r.drr).toLocaleString('en-IN')} u/d</td>
       <td style="${td};text-align:right;color:#5B6675">${Math.round(r.soh).toLocaleString('en-IN')} u</td>
       <td style="${td};text-align:right">${doiTxt}</td>
     </tr>`;
@@ -6530,8 +6532,8 @@ function _availRenderCrossPlatform(){
     const cells=_AVAIL_PLATFORMS.map(p=>{
       const v=r.plats[p];
       if(!v||v.osa==null)return `<td style="padding:8px;font-size:11px;color:var(--muted);text-align:center;background:#F7F9FC">—</td>`;
-      const bg=v.osa>=80?'#E7F2F2':v.osa>=60?'#FDF3E3':'#FAEBEC';
-      const fg=v.osa>=80?'#288B93':v.osa>=60?'#7A4A0A':'#BD2635';
+      const bg=v.osa>=80?'#E6F2EA':v.osa>=60?'#FDF3E3':'#FAEBEC';
+      const fg=v.osa>=80?'#1E7A46':v.osa>=60?'#7A4A0A':'#BD2635';
       return `<td onclick="availDrillToSku('${p}','${v.sku}')" style="padding:8px;font-size:11px;text-align:center;background:${bg};color:${fg};font-weight:700;cursor:pointer">${_availFmtPct(v.osa)}</td>`;
     }).join('');
     return `<tr><td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>${cells}<td style="padding:8px;font-size:12px;text-align:center;color:#BD2635;font-weight:700">${r.range.toFixed(0)}pp</td></tr>`;
@@ -6570,7 +6572,7 @@ function _availRenderRestockQueue(){
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.osa,'osa')};font-weight:700">${_availFmtPct(r.osa)}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
-    <td style="padding:8px 10px;font-size:12px;font-weight:700" title="${r.cover}-day cover, net of SOH + open PO">${r.reorderUnits==null?'<span style="color:#8B97AD">\u2014</span>':r.reorderUnits===0?'<span style="color:#288B93">\u2713 covered</span>':'<span style="color:#103E70">'+Math.round(r.reorderUnits).toLocaleString('en-IN')+'u</span>'}</td>
+    <td style="padding:8px 10px;font-size:12px;font-weight:700" title="${r.cover}-day cover, net of SOH + open PO">${r.reorderUnits==null?'<span style="color:#8B97AD">\u2014</span>':r.reorderUnits===0?'<span style="color:#1E7A46">\u2713 covered</span>':'<span style="color:#103E70">'+Math.round(r.reorderUnits).toLocaleString('en-IN')+'u</span>'}</td>
   </tr>`).join('');
   host.innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Rank</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Platform</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Units to add to reach each platform's cover target (Blinkit 8d, others 14d), net of SOH and inbound open PO">Reorder</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -6966,7 +6968,7 @@ function _sohColorDTS(d){
   if(d==null)return '#8B97AD';
   if(d<3)return '#BD2635';
   if(d<7)return '#EB8B2C';
-  return '#288B93';
+  return '#1E7A46';
 }
 function _sohFmtDTS(d){
   if(d==null)return '<span style="color:#8B97AD;font-size:11px">— no velocity</span>';
@@ -6992,20 +6994,20 @@ function _availRenderSohPlatformCards(){
     skus.forEach(k=>{const dts=_sohDaysToStockout(k.soh,k.drr); if(dts!=null&&dts<7)atRisk++;});
     const doiList=skus.filter(k=>k.doi!=null).map(k=>k.doi).sort((a,b)=>a-b);
     const doiMed=doiList.length?(doiList.length%2?doiList[Math.floor(doiList.length/2)]:(doiList[doiList.length/2-1]+doiList[doiList.length/2])/2):null;
-    const riskCol=atRisk>0?'#BD2635':'#288B93';
+    const riskCol=atRisk>0?'#BD2635':'#1E7A46';
     return `<div class="card chart-clickable" onclick="availSohDrillToPlatform('${plat}')" style="cursor:pointer">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px;color:#22304A">${plat}</b></div>
         <span style="font-size:10px;color:var(--muted)">${skus.length} SKUs</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
-        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Total SOH</div><div style="font-size:20px;font-weight:800;color:#22304A">${Math.round(totalSoh).toLocaleString('en-IN')}<span style="font-size:11px;color:var(--muted);font-weight:400"> u</span></div>${(()=>{const sw=_sohWoWForPlat(plat); if(!sw||sw.cur==null)return ''; const d=sw.delta; const b=(d==null)?'<span style="font-size:9px;color:var(--muted)">building WoW…</span>':(d>=1?`<span style="color:#288B93;font-size:10px;font-weight:700">▲ ${d.toFixed(0)}% WoW</span>`:(d<=-1?`<span style="color:#BD2635;font-size:10px;font-weight:700">▼ ${Math.abs(d).toFixed(0)}% WoW</span>`:'<span style="color:var(--muted);font-size:10px;font-weight:700">▬ flat WoW</span>')); return `<div style="margin-top:1px">${b}</div>`;})()}</div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Total SOH</div><div style="font-size:20px;font-weight:800;color:#22304A">${Math.round(totalSoh).toLocaleString('en-IN')}<span style="font-size:11px;color:var(--muted);font-weight:400"> u</span></div>${(()=>{const sw=_sohWoWForPlat(plat); if(!sw||sw.cur==null)return ''; const d=sw.delta; const b=(d==null)?'<span style="font-size:9px;color:var(--muted)">building WoW…</span>':(d>=1?`<span style="color:#1E7A46;font-size:10px;font-weight:700">▲ ${d.toFixed(0)}% WoW</span>`:(d<=-1?`<span style="color:#BD2635;font-size:10px;font-weight:700">▼ ${Math.abs(d).toFixed(0)}% WoW</span>`:'<span style="color:var(--muted);font-size:10px;font-weight:700">▬ flat WoW</span>')); return `<div style="margin-top:1px">${b}</div>`;})()}</div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Median</div><div style="font-size:20px;font-weight:800;color:${_availColor(doiMed,'doi')}">${_availFmtDays(doiMed,doiMed>=90?'capped':null)}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">SKUs at Risk</div><div style="font-size:20px;font-weight:800;color:${riskCol}">${atRisk}<span style="font-size:11px;color:var(--muted);font-weight:400"> / ${skus.length}</span></div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">&lt;7d Stockout</div><div style="font-size:13px;font-weight:700;color:${riskCol};padding-top:6px">${atRisk>0?'⚠ Action needed':'✓ Healthy'}</div></div>
       </div>
       ${(()=>{const w=_frWoWForPlat(plat); if(!w||w.cur==null)return '';
-        const arr=(w.delta==null)?'<span style="color:var(--muted)">· no prior wk</span>':(w.delta>=0.5?`<span style="color:#288B93">▲ ${w.delta.toFixed(1)}pp</span>`:(w.delta<=-0.5?`<span style="color:#BD2635">▼ ${Math.abs(w.delta).toFixed(1)}pp</span>`:'<span style="color:var(--muted)">▬ flat</span>'));
+        const arr=(w.delta==null)?'<span style="color:var(--muted)">· no prior wk</span>':(w.delta>=0.5?`<span style="color:#1E7A46">▲ ${w.delta.toFixed(1)}pp</span>`:(w.delta<=-0.5?`<span style="color:#BD2635">▼ ${Math.abs(w.delta).toFixed(1)}pp</span>`:'<span style="color:var(--muted)">▬ flat</span>'));
         return `<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:7px;margin-top:4px"><span style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Fill Rate · 10d</span><span style="font-size:13px;font-weight:800;color:${_frColor(w.cur)}">${Math.round(w.cur)}% <span style="font-size:10px;font-weight:600">${arr} WoW</span></span></div>`;
       })()}
       ${_availCityDoiBlock(plat,'soh')}
@@ -7079,14 +7081,14 @@ function _sohCityReorderHtml(plat,skuName,byCityGranular){
   const td='padding:8px 10px;font-size:12px';
   const body=r.rows.map(x=>{
     const rt=(x.reorder==null)?'<span style="color:#8B97AD">— no velocity</span>'
-      :(x.reorder===0)?'<span style="color:#288B93;font-weight:700">\u2713 covered</span>'
+      :(x.reorder===0)?'<span style="color:#1E7A46;font-weight:700">\u2713 covered</span>'
       :`<span style="color:#103E70;font-weight:700">${x.reorder.toLocaleString('en-IN')}u</span>`;
     return `<tr>
       <td style="${td}"><b>${x.metro}</b></td>
       <td style="${td};color:${_sohColorDTS(x.dts)};font-weight:700">${x.dts==null?'\u2014':_sohFmtDTS(x.dts)}</td>
       <td style="${td}">${Math.round(x.drr).toLocaleString('en-IN')}u/d</td>
       <td style="${td};font-weight:700">${Math.round(x.soh).toLocaleString('en-IN')}</td>
-      <td style="${td};color:${x.po>0?'#288B93':'#8B97AD'}">${x.po>0?x.po.toLocaleString('en-IN')+'u':'0'}</td>
+      <td style="${td};color:${x.po>0?'#1E7A46':'#8B97AD'}">${x.po>0?x.po.toLocaleString('en-IN')+'u':'0'}</td>
       <td style="${td}">${rt}</td>
     </tr>`;
   }).join('');
@@ -7152,7 +7154,7 @@ function _sohOpenPO(plat,canon,city){
   if(city && plat!=='Amazon'){ return (po[city]&&po[city][canon])||0; }  // Amazon is national → always return the total
   var t=0; Object.keys(po).forEach(function(c){ if(po[c]&&po[c][canon])t+=po[c][canon]; }); return t;
 }
-function _sohPoCell(v){ return (v==null)?'<span style="color:#8B97AD">\u2014</span>':(v===0)?'<span style="color:#8B97AD">0</span>':'<span style="color:#288B93;font-weight:700">'+v.toLocaleString('en-IN')+'u</span>'; }
+function _sohPoCell(v){ return (v==null)?'<span style="color:#8B97AD">\u2014</span>':(v===0)?'<span style="color:#8B97AD">0</span>':'<span style="color:#1E7A46;font-weight:700">'+v.toLocaleString('en-IN')+'u</span>'; }
 // All cities that have an open PO for this SKU -> {city:qty}. Used to reconcile the BY-CITY table with the SKU total.
 // Open PO joins Tracker CITY to SOH city by raw string. A spelling drift
 // ("Gurgaon" vs "Gurugram") silently yields 0 open PO rather than erroring —
@@ -7398,7 +7400,7 @@ function _availRenderSohSkuTable(){
   const rows=list.map(r=>{
     const tint=_sohRowTint(r.dts);
     const reorderTxt=(r.reorder==null)?'<span style="color:#8B97AD">—</span>'
-      :(r.reorder===0)?'<span style="color:#288B93;font-weight:700">✓ covered</span>'
+      :(r.reorder===0)?'<span style="color:#1E7A46;font-weight:700">✓ covered</span>'
       :`<span style="color:#103E70;font-weight:700">${r.reorder.toLocaleString('en-IN')}u</span>`;
     return `<tr style="cursor:pointer;background:${tint}" onclick="availSohDrillToSku('${plat}','${r.sku}')">
     <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
@@ -7448,12 +7450,12 @@ function _availRenderSohCityTable(){
   const best=_sohBestDTS(plat,k);
   const reorder=_sohReorderQty(k,plat,openPoTotal);
   const reorderTxt=(reorder==null)?'—':(reorder===0)?'✓ covered':reorder.toLocaleString('en-IN')+'u';
-  const reorderCol=(reorder==null)?'#8B97AD':(reorder===0)?'#288B93':'#103E70';
+  const reorderCol=(reorder==null)?'#8B97AD':(reorder===0)?'#1E7A46':'#103E70';
   const summary=`<div style="padding:12px;background:#EEF1F6;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Total SOH</div><div style="font-size:16px;font-weight:800">${Math.round(k.soh||0).toLocaleString('en-IN')} u</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Days to Stockout</div><div style="font-size:16px;font-weight:800;color:${_sohColorDTS(best.days)}">${_sohFmtDTS(best.days)}${best.flag==='capped'?'+':''}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Reorder (${_sohCoverDays(plat)}d)</div><div style="font-size:16px;font-weight:800;color:${reorderCol}">${reorderTxt}</div></div>
-    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Incoming PO</div><div style="font-size:16px;font-weight:800;color:${openPoTotal?'#288B93':'#8B97AD'}">${openPoTotal==null?'\u2014':openPoTotal.toLocaleString('en-IN')+' u'}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Incoming PO</div><div style="font-size:16px;font-weight:800;color:${openPoTotal?'#1E7A46':'#8B97AD'}">${openPoTotal==null?'\u2014':openPoTotal.toLocaleString('en-IN')+' u'}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DRR</div><div style="font-size:16px;font-weight:800">${Math.round(drr)}u/d</div></div>
   </div>`;
 
@@ -7467,7 +7469,7 @@ function _availRenderSohCityTable(){
     const cf=_frForSkuCity(plat,info.name,c); const cfCol=_frColor(cf&&cf.fr);
     const _incomingOnly=(csoh<=0&&cpo>0);
     return `<tr${_incomingOnly?' style="background:#F7F9FC"':''}>
-      <td style="padding:8px 10px;font-size:12px"><b>${c}</b>${_incomingOnly?' <span style="font-size:9px;color:#288B93;font-weight:700;background:#E7F2F2;padding:1px 5px;border-radius:8px">incoming</span>':''}</td>
+      <td style="padding:8px 10px;font-size:12px"><b>${c}</b>${_incomingOnly?' <span style="font-size:9px;color:#1E7A46;font-weight:700;background:#E6F2EA;padding:1px 5px;border-radius:8px">incoming</span>':''}</td>
       <td style="padding:8px 10px;font-size:12px;font-weight:700">${Math.round(csoh).toLocaleString('en-IN')}</td>
       <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${totalSoh>0?((csoh/totalSoh)*100).toFixed(0):0}%</td>
       <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(cdts)};font-weight:700">${csoh<=0?'\u2014':_sohFmtDTS(cdts)}</td>
@@ -8532,7 +8534,7 @@ function updateUploadDiag(){
     {label:'Instamart',color:'#BD2635',result:window._imLastResult,cols:window._imLastCols},
     {label:'Amazon',color:'#C9A227',result:window._azLastResult,cols:window._azLastCols},
     {label:'Flipkart',color:'#166A92',result:window._fkLastResult,cols:window._fkLastCols},
-    {label:'BigBasket',color:'#288B93',result:window._bbLastResult,cols:window._bbLastCols},
+    {label:'BigBasket',color:'#1E7A46',result:window._bbLastResult,cols:window._bbLastCols},
   ];
 
   let html='';
@@ -8546,11 +8548,11 @@ function updateUploadDiag(){
     const _dAbbr=MONTH_SHORT[MONTH_NUM_FROM_KEY(getActiveMonth())-1];
     html+=`Days: <b>${_dAbbr} ${(result.daysFound||[]).join(', '+_dAbbr+' ')}</b></div>`;
     if(result.dateFails>0)html+=`<div style="font-size:11px;color:#BD2635">⚠ ${result.dateFails} date parse failures</div>`;
-    if(result.discColUsed)html+=`<div style="font-size:11px;color:#288B93">Disc col: "${result.discColUsed}"</div>`;
-    if(result.cityColUsed)html+=`<div style="font-size:11px;color:#288B93">City col: "<b>${result.cityColUsed}</b>"</div>`;
+    if(result.discColUsed)html+=`<div style="font-size:11px;color:#1E7A46">Disc col: "${result.discColUsed}"</div>`;
+    if(result.cityColUsed)html+=`<div style="font-size:11px;color:#1E7A46">City col: "<b>${result.cityColUsed}</b>"</div>`;
     if(result.rawCitySample&&result.rawCitySample.length)html+=`<div style="font-size:11px;color:#B96C10;margin-top:2px">⚠ Raw city values from file: <b>${result.rawCitySample.join(' · ')}</b></div>`;
-    if(cols?.pidColUsed)html+=`<div style="font-size:11px;color:#288B93">SKU ID col: "${cols.pidColUsed}"</div>`;
-    if(cols?.gmvColUsed)html+=`<div style="font-size:11px;color:#288B93">GMV col: "${cols.gmvColUsed}"</div>`;
+    if(cols?.pidColUsed)html+=`<div style="font-size:11px;color:#1E7A46">SKU ID col: "${cols.pidColUsed}"</div>`;
+    if(cols?.gmvColUsed)html+=`<div style="font-size:11px;color:#1E7A46">GMV col: "${cols.gmvColUsed}"</div>`;
     if(cols?.sampleKeys)html+=`<div style="font-size:10px;color:var(--muted);margin-top:3px">${cols.sampleKeys.slice(0,8).join(', ')}</div>`;
     html+='</div>';
   });
@@ -8572,7 +8574,7 @@ function initTargetInputs(){
   if (card) {
     const header = card.querySelector('h3');
     if (header) {
-      header.innerHTML = `📅 Monthly Targets — <span style="color:#288B93">${MONTH_LABEL(TARGET_MONTH)}</span> <span style="font-size:11px;font-weight:400;color:var(--muted)">(Admin only — editing live month)</span>`;
+      header.innerHTML = `📅 Monthly Targets — <span style="color:#1E7A46">${MONTH_LABEL(TARGET_MONTH)}</span> <span style="font-size:11px;font-weight:400;color:var(--muted)">(Admin only — editing live month)</span>`;
     }
   }
 
@@ -8805,7 +8807,7 @@ function renderCityHeatmap(){
       const ratio=base>0?gmv/base:0;
       let bg,textCol,dotCol;
       if(!gmv){bg='transparent';textCol='#D9E0EC';dotCol='transparent';}
-      else if(ratio>=1.3){bg='#E7F2F2';textCol='#288B93';dotCol='#288B93';}
+      else if(ratio>=1.3){bg='#E6F2EA';textCol='#1E7A46';dotCol='#1E7A46';}
       else if(ratio>=0.8){bg='#FDF3E3';textCol='#B96C10';dotCol='#B96C10';}
       else{bg='#FAEBEC';textCol='#BD2635';dotCol='#BD2635';}
       cells+=`<td style="padding:4px 6px;text-align:center">
@@ -8818,7 +8820,7 @@ function renderCityHeatmap(){
     const sharePct=grandTotal>0?((rowTotal/grandTotal)*100).toFixed(1):0;
     const sdlwV=citySdlwTotals[city];
     const sdlwChg=sdlwV&&sdlwV>0?parseFloat(pct(rowTotal,sdlwV)):null;
-    const sdlwStr=sdlwChg!==null?`<span style="color:${sdlwChg>=0?'#288B93':'#BD2635'};font-weight:700;font-size:11px">${sdlwChg>=0?'▲':'▼'}${Math.abs(sdlwChg.toFixed(1))}%</span>`:'<span style="color:var(--muted)">—</span>';
+    const sdlwStr=sdlwChg!==null?`<span style="color:${sdlwChg>=0?'#1E7A46':'#BD2635'};font-weight:700;font-size:11px">${sdlwChg>=0?'▲':'▼'}${Math.abs(sdlwChg.toFixed(1))}%</span>`:'<span style="color:var(--muted)">—</span>';
     const cityColor=CI_CITY_COLORS[city]||'#7C8AA5';
     html+=`<tr style="border-radius:8px">
       <td style="padding:6px 12px;font-weight:700;font-size:12px;color:${cityColor};white-space:nowrap;vertical-align:middle">${city}</td>
@@ -8838,7 +8840,7 @@ function renderCityHeatmap(){
   html+=`</tbody></table>
   <div style="font-size:10px;color:var(--muted);margin-top:8px;display:flex;gap:14px;flex-wrap:wrap">
     <span>Colour = vs Day-1 baseline:</span>
-    <span style="color:#288B93;font-weight:700">● Strong (≥1.3×)</span>
+    <span style="color:#1E7A46;font-weight:700">● Strong (≥1.3×)</span>
     <span style="color:#B96C10;font-weight:700">● Moderate (0.8–1.3×)</span>
     <span style="color:#BD2635;font-weight:700">● Low (<0.8×)</span>
     <span style="color:var(--muted)">· Click any cell for SKU drilldown</span>
@@ -9092,7 +9094,7 @@ function renderCiSummaryTable(){
     <td>${r.platVals.Flipkart>0?fC(r.platVals.Flipkart):'<span style="color:var(--muted)">—</span>'}</td>
     <td>${r.platVals.BigBasket>0?fC(r.platVals.BigBasket):'<span style="color:var(--muted)">—</span>'}</td>
     <td><b>${fC(r.totToday)}</b></td>
-    <td style="font-weight:700;color:#288B93">${(r.drr||0).toLocaleString('en-IN')}</td>
+    <td style="font-weight:700;color:#1E7A46">${(r.drr||0).toLocaleString('en-IN')}</td>
     <td>${r.sdlw!==null?badgeDelta(r.sdlw.toFixed(1)):'<span class="cb-na">N/A</span>'}</td>
     <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.topSku}">${r.topSku}</td>
   </tr>`).join('')||'<tr><td colspan="10" style="color:var(--muted);padding:16px;text-align:center">No city data for selected day</td></tr>';
@@ -9110,7 +9112,7 @@ function ciDrillToCity(city){
     return {nm,cat:catOf[nm]||'',gmv,units,drr:Math.round(units/nD),pv,puv};
   }).filter(r=>r.gmv>0||r.units>0).sort((a,b)=>b.gmv-a.gmv);
   const totGmv=list.reduce((s,r)=>s+r.gmv,0), totUnits=list.reduce((s,r)=>s+r.units,0);
-  const _pcell=(g,u)=>g>0?('<b>'+fC(g)+'</b><br><span style="font-size:9px;color:#288B93;font-weight:700">'+Math.round(u/nD).toLocaleString('en-IN')+' u/day</span>'):'<span style="color:var(--muted)">—</span>';
+  const _pcell=(g,u)=>g>0?('<b>'+fC(g)+'</b><br><span style="font-size:9px;color:#1E7A46;font-weight:700">'+Math.round(u/nD).toLocaleString('en-IN')+' u/day</span>'):'<span style="color:var(--muted)">—</span>';
   const body=document.getElementById('ciDrillBody');
   if(!list.length){ body.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No SKU-level data for '+city+'.</div>'; }
   else{
@@ -9120,7 +9122,7 @@ function ciDrillToCity(city){
       <td style="font-size:11px;color:var(--muted)">${r.cat}</td>
       <td><b>${fC(r.gmv)}</b></td>
       <td>${(r.units||0).toLocaleString('en-IN')}</td>
-      <td style="font-weight:700;color:#288B93">${(r.drr||0).toLocaleString('en-IN')}</td>
+      <td style="font-weight:700;color:#1E7A46">${(r.drr||0).toLocaleString('en-IN')}</td>
       <td>${_pcell(r.pv.Zepto,r.puv.Zepto)}</td>
       <td>${_pcell(r.pv.Blinkit,r.puv.Blinkit)}</td>
       <td>${_pcell(r.pv.Instamart,r.puv.Instamart)}</td>
@@ -9434,7 +9436,7 @@ function _frParseDate(v){
   if(mm){let d=+mm[1],mo=+mm[2],y=+mm[3]; if(y<100)y+=2000; if(mo>=1&&mo<=12&&d>=1&&d<=31){const dt=new Date(y,mo-1,d);return isNaN(dt.getTime())?null:dt;}}
   const t=Date.parse(s); return isNaN(t)?null:new Date(t);
 }
-function _frColor(fr){if(fr==null)return '#8B97AD';if(fr>=95)return '#288B93';if(fr>=85)return '#EB8B2C';return '#BD2635';}
+function _frColor(fr){if(fr==null)return '#8B97AD';if(fr>=95)return '#1E7A46';if(fr>=85)return '#EB8B2C';return '#BD2635';}
 function _frFmt(fr){return fr==null?'\u2014':Math.round(fr)+'%';}
 function cmBuildFR(){
   try{
@@ -9619,7 +9621,7 @@ function renderCMActions(){
         <button onclick="cmCopy()" style="padding:8px 14px;border-radius:8px;cursor:pointer">Copy text</button>
         <button onclick="cmExportXlsx()" style="padding:8px 14px;border-radius:8px;cursor:pointer">Download Excel</button>
         <button onclick="cmTestMail()" style="padding:8px 14px;border-radius:8px;cursor:pointer;border:1px dashed #EB8B2C;color:#EB8B2C">Send test → proxy</button>
-        <span id="cmToast" style="display:none;align-self:center;color:#288B93;font-size:12px;font-weight:700"></span>
+        <span id="cmToast" style="display:none;align-self:center;color:#1E7A46;font-size:12px;font-weight:700"></span>
       </div>
       <div style="color:var(--muted);font-size:11px;margin-top:6px">Excel attaches manually — mailto carries subject + body only.</div>
     </div>`;
