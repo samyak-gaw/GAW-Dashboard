@@ -464,7 +464,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div id="ovPlatCards" class="g3"></div>
   <div class="g2">
     <div class="card chart-clickable" onclick="expandChart('ovGmvChart','Daily GMV — All Platforms')"><h3>Daily GMV — All Platforms <span class="pill dyn-prior-baseline-pill" style="color:#BD2635;background:#FAEBEC">vs March Baseline (dashed)</span></h3><div class="ch280"><canvas id="ovGmvChart"></canvas></div><div class="chart-click-hint">Click to expand</div></div>
-    <div class="card chart-clickable" onclick="expandChart('ovDiscChart','Daily Discount % Trend')"><h3>Daily Discount % Trend</h3><div class="ch280"><canvas id="ovDiscChart"></canvas></div><div class="chart-click-hint">Click to expand</div></div>
+    <div class="card chart-clickable" onclick="expandChart('ovDiscChart','Daily Discount % Trend')"><h3>Daily Discount % Trend<span class="pill" style="margin-left:auto">brand-funded</span></h3><div class="ch280"><canvas id="ovDiscChart"></canvas></div><div class="chart-click-hint">Click to expand</div></div>
 </div>
   <div class="card" style="margin-bottom:20px">
     <h3>Platform Comparison — Today</h3>
@@ -1480,6 +1480,51 @@ const NLC_MAP = {
 };
 const NLC_EFFECTIVE = { Flipkart:'live', Zepto:'live', Instamart:'live', Amazon:'Jul-2026' };
 
+// ── Aggregator-funded discount exclusion ──────────────────────────────
+// GAW does not fund consumer discounts on NLC SKUs: those SKUs are sold to the
+// platform at a steep NLC, and the aggregator runs its own promos on top. So the
+// discount attributable to NLC SKUs is theirs, not ours. Gated to Jul-2026 onward
+// so earlier months keep their originally reported numbers.
+// How each platform's reported discount figure is sourced. This decides whether an
+// NLC carve-out is needed at all:
+//   'brand'    — the figure is already GAW-funded only. Zepto's number comes from promo
+//                claims, and its Jul 1-20 report shows exactly zero claims on all four
+//                NLC SKUs, so there is nothing to carve out. Subtracting a pro-rata share
+//                here would UNDER-state brand-funded discount.
+//   'consumer' — the feed may include promo the aggregator funded, so NLC SKUs are carved out.
+//   'rule'     — synthesised from GAW's own funding rule (Flipkart BF); the base excludes NLC GMV.
+const DISC_SOURCE = { Zepto:'brand', Blinkit:'consumer', Instamart:'consumer',
+                      Amazon:'consumer', Flipkart:'rule', BigBasket:'consumer' };
+const NLC_DISC_EXCL_FROM = 'Jul-2026';
+function _nlcDiscExclActive(monthKey){
+  const mk = MONTH_NUM_FROM_KEY(monthKey) + YEAR_FROM_KEY(monthKey)*12;
+  const me = MONTH_NUM_FROM_KEY(NLC_DISC_EXCL_FROM) + YEAR_FROM_KEY(NLC_DISC_EXCL_FROM)*12;
+  return mk >= me;
+}
+// Normalised set of platform sku ids that sit on NLC terms.
+function _nlcIdSet(plat){
+  const names = Object.keys(NLC_MAP[plat] || {});
+  if(!names.length) return null;
+  if(plat === 'Amazon') return new Set(names.map(n => _normSkuId(n)));
+  const idx = _nlcSkuIdByName(plat);
+  const ids = names.map(n => idx[n]).filter(Boolean).map(id => _normSkuId(id));
+  return ids.length ? new Set(ids) : null;
+}
+// day -> {gmv, disc} contributed by NLC SKUs, from SKU-level rows.
+function _nlcDayTotals(plat, skuRows){
+  const out = {};
+  const ids = _nlcIdSet(plat);
+  if(!ids || !skuRows || !skuRows.length) return out;
+  skuRows.forEach(r => {
+    if(!ids.has(_normSkuId(r.sku_code))) return;
+    const d = Number(r.day);
+    if(!out[d]) out[d] = { gmv:0, disc:0 };
+    out[d].gmv  += (r.gmv  || 0);
+    out[d].disc += (r.disc || 0);
+  });
+  return out;
+}
+
 // Amazon NLC applies only from Jul-2026 (same ordinal compare as _fkDiscActive)
 function _nlcActive(plat, monthKey){
   if(plat!=='Amazon') return true;
@@ -1503,9 +1548,9 @@ function _nlcMtd(plat, skuId){
   const latest = latestDay() || getMonthDays();
   const rows = (DB.april[plat] && DB.april[plat].sku) || [];
   const target = _normSkuId(skuId);
-  let u=0, g=0;
-  rows.forEach(r=>{ if(r.day<=latest && _normSkuId(r.sku_code)===target){ u+=r.units||0; g+=r.gmv||0; } });
-  return {units:u, gmv:g};
+  let u=0, g=0, d=0;
+  rows.forEach(r=>{ if(r.day<=latest && _normSkuId(r.sku_code)===target){ u+=r.units||0; g+=r.gmv||0; d+=r.disc||0; } });
+  return {units:u, gmv:g, disc:d};   // disc = aggregator-funded promo on this NLC SKU
 }
 
 function renderDiscEff(){
@@ -1520,10 +1565,11 @@ function renderDiscEff(){
     validDays(DB.april[p].daily).forEach(d=>{ if(!(d.gmv>0))return; const dp=(d.disc||0)/d.gmv*100; if(dp>=PROMO_PCT){pG+=d.gmv;pN++;}else{nG+=d.gmv;nN++;} });
     const promoDRR=pN>0?pG/pN:null, nonPromoDRR=nN>0?nG/nN:null;
     const lift=(promoDRR!=null&&nonPromoDRR>0)?((promoDRR-nonPromoDRR)/nonPromoDRR*100):null;
-    return {p,gmv:m.gmv,disc:m.disc,discPct,eff,promoDRR,nonPromoDRR,lift,pN,nN};
+    return {p,gmv:m.gmv,disc:m.disc,disc_raw:m.disc_raw,disc_nlc:m.disc_nlc,discPct,eff,promoDRR,nonPromoDRR,lift,pN,nN};
   }).filter(Boolean);
   if(!rows.length){host.innerHTML='';return;}
   const totG=rows.reduce((a,r)=>a+r.gmv,0), totD=rows.reduce((a,r)=>a+r.disc,0);
+  const totRaw=rows.reduce((a,r)=>a+(r.disc_raw||r.disc),0), totAgg=rows.reduce((a,r)=>a+(r.disc_nlc||0),0);
   const th='padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:rgba(255,255,255,.85)';
   const td='padding:8px 10px;font-size:12px';
   const body=rows.map(r=>{
@@ -1532,7 +1578,7 @@ function renderDiscEff(){
     return `<tr>
       <td style="${td}"><b>${r.p}</b></td>
       <td style="${td}">${fC(r.gmv)}</td>
-      <td style="${td}">${fC(r.disc)}</td>
+      <td style="${td}">${_discCell(r.disc,r.disc_raw||r.disc,r.disc_nlc||0)}</td>
       <td style="${td};color:${r.discPct>30?'#BD2635':'#22304A'};font-weight:700">${r.discPct.toFixed(1)}%</td>
       <td style="${td};color:${effCol};font-weight:800">${r.eff==null?'—':'₹'+r.eff.toFixed(1)}</td>
       <td style="${td}">${r.promoDRR==null?'—':fC(r.promoDRR)+'<span style="font-size:9px;color:var(--muted)">/d ·'+r.pN+'d</span>'}</td>
@@ -1542,13 +1588,13 @@ function renderDiscEff(){
   }).join('');
   const totEff=totD>0?(totG/totD):null, totPct=totG>0?(totD/totG*100):0;
   host.innerHTML=`<div class="card" style="margin-bottom:16px">
-    <h3>💸 Discount Efficiency <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">GMV per ₹ of discount · promo vs non-promo day rate</span></h3>
+    <h3>💸 Discount Efficiency <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">GMV per ₹ of discount · promo vs non-promo day rate</span><span class="pill" style="margin-left:8px">brand-funded</span></h3>
     <div class="scroll-table"><table style="width:100%;min-width:720px;border-collapse:collapse">
       <thead><tr style="background:#103E70;color:#fff"><th style="${th}">Platform</th><th style="${th}">GMV</th><th style="${th}">Disc Spend</th><th style="${th}">Disc %</th><th style="${th}" title="GMV generated per ₹ of discount — higher is better">GMV / ₹ Disc</th><th style="${th}">Promo-day rate</th><th style="${th}">Non-promo rate</th><th style="${th}" title="Promo-day vs non-promo-day daily GMV — directional, not causal">Day-rate lift</th></tr></thead>
       <tbody>${body}</tbody>
-      <tfoot><tr style="background:#EEF1F6;font-weight:800"><td style="${td}">All</td><td style="${td}">${fC(totG)}</td><td style="${td}">${fC(totD)}</td><td style="${td}">${totPct.toFixed(1)}%</td><td style="${td}">${totEff==null?'—':'₹'+totEff.toFixed(1)}</td><td style="${td}">—</td><td style="${td}">—</td><td style="${td}">—</td></tr></tfoot>
+      <tfoot><tr style="background:#EEF1F6;font-weight:800"><td style="${td}">All</td><td style="${td}">${fC(totG)}</td><td style="${td}">${_discCell(totD,totRaw,totAgg)}</td><td style="${td}">${totPct.toFixed(1)}%</td><td style="${td}">${totEff==null?'—':'₹'+totEff.toFixed(1)}</td><td style="${td}">—</td><td style="${td}">—</td><td style="${td}">—</td></tr></tfoot>
     </table></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:6px">GMV / ₹ Disc = revenue per rupee of discount (green ≥8, amber ≥4, red &lt;4). A "promo day" = discount ≥${PROMO_PCT}% of that day's GMV. Day-rate lift compares average daily GMV on promo vs non-promo days — directional (paydays, weekends, and seasonality also move the rate), not a clean causal lift.</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">GMV / ₹ Disc = revenue per rupee of discount (green ≥8, amber ≥4, red &lt;4). Discount here is brand-funded — GAW does not fund promos on NLC SKUs (aggregator-funded, shown in brackets as reported). A "promo day" = discount ≥${PROMO_PCT}% of that day's GMV. Day-rate lift compares average daily GMV on promo vs non-promo days — directional (paydays, weekends, and seasonality also move the rate), not a clean causal lift.</div>
   </div>`;
 }
 
@@ -1557,14 +1603,14 @@ function renderNLCSection(){
   if(!host) return;
   const mk = getViewingMonth();
   const plats = ['Flipkart','Zepto','Instamart','Amazon'];
-  let totRealized=0, totGmv=0, rowsHtml='', anyPending=false;
+  let totRealized=0, totGmv=0, totAggDisc=0, rowsHtml='', anyPending=false;
 
   plats.forEach(plat=>{
     const map = NLC_MAP[plat]||{}; const keys=Object.keys(map);
     if(!keys.length) return;
     const active = _nlcActive(plat, mk);
     const nameIdx = (plat==='Amazon') ? null : _nlcSkuIdByName(plat);
-    let pRealized=0, pGmv=0, body='';
+    let pRealized=0, pGmv=0, pAggDisc=0, body='';
     keys.forEach(key=>{
       const nlc = map[key];
       const skuId = (plat==='Amazon') ? key : (nameIdx[key]||null);
@@ -1572,37 +1618,40 @@ function renderNLCSection(){
       const m = skuId ? _nlcMtd(plat, skuId) : {units:0,gmv:0};
       const realized = active ? m.units*nlc : 0;
       const realPct = (active && m.gmv>0) ? (realized/m.gmv*100) : null;
-      if(active){ pRealized+=realized; pGmv+=m.gmv; } else { anyPending=true; }
+      if(active){ pRealized+=realized; pGmv+=m.gmv; pAggDisc+=(m.disc||0); totAggDisc+=(m.disc||0); } else { anyPending=true; }
       body += '<tr>'
         + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+nm+'</td>'
         + '<td style="padding:6px 10px;font-size:12px;text-align:center">\u20B9'+nlc+'</td>'
         + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+(active?Math.round(m.units).toLocaleString('en-IN'):'\u2014')+'</td>'
         + '<td style="padding:6px 10px;font-size:12px;text-align:center;font-weight:700">'+(active?fC(realized):'\u2014')+'</td>'
         + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+(active?fC(m.gmv):'\u2014')+'</td>'
+        + '<td style="padding:6px 10px;font-size:12px;text-align:center;color:var(--muted)">'+(active?fC(m.disc||0):'\u2014')+'</td>'
         + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+(realPct==null?'\u2014':(Math.round(realPct)+'%'))+'</td>'
         + '</tr>';
     });
     totRealized+=pRealized; totGmv+=pGmv;
     const eff = active ? '' : ' <span style="font-size:10px;color:#B96C10">(NLC effective '+NLC_EFFECTIVE[plat]+')</span>';
-    rowsHtml += '<tr style="background:#EEF1F6"><td colspan="6" style="padding:6px 10px;font-size:11px;font-weight:800;text-transform:uppercase;color:#103E70;text-align:center">'+plat+eff+'</td></tr>'
+    rowsHtml += '<tr style="background:#EEF1F6"><td colspan="7" style="padding:6px 10px;font-size:11px;font-weight:800;text-transform:uppercase;color:#103E70;text-align:center">'+plat+eff+'</td></tr>'
       + body
-      + (active ? '<tr><td colspan="3" style="padding:6px 10px;font-size:11px;color:var(--muted);text-align:center">Subtotal</td><td style="padding:6px 10px;font-size:12px;text-align:center;font-weight:800">'+fC(pRealized)+'</td><td style="padding:6px 10px;font-size:12px;text-align:center">'+fC(pGmv)+'</td><td></td></tr>' : '');
+      + (active ? '<tr><td colspan="3" style="padding:6px 10px;font-size:11px;color:var(--muted);text-align:center">Subtotal</td><td style="padding:6px 10px;font-size:12px;text-align:center;font-weight:800">'+fC(pRealized)+'</td><td style="padding:6px 10px;font-size:12px;text-align:center">'+fC(pGmv)+'</td><td style="padding:6px 10px;font-size:12px;text-align:center;color:var(--muted)">'+fC(pAggDisc)+'</td><td></td></tr>' : '');
   });
 
   host.innerHTML = '<div class="card" style="margin-bottom:16px">'
     + '<h3>\uD83D\uDCB0 NLC / Realized Revenue <span class="pill" style="color:var(--muted)">units \u00D7 NLC \u00B7 '+mk+'</span></h3>'
-    + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">What GAW nets per platform (NLC) vs consumer GMV. Realization % = realized \u00F7 GMV.</div>'
+    + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">What GAW nets per platform (NLC) vs consumer GMV. Realization % = realized \u00F7 GMV. Promo on these SKUs is funded by the aggregator, so it is excluded from GAW discount from Jul-2026.</div>'
     + '<div class="scroll-table"><table style="width:100%;min-width:560px;border-collapse:collapse"><thead><tr style="background:#103E70;color:#fff">'
     + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">SKU</th>'
     + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">NLC</th>'
     + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">MTD Units</th>'
     + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">Realized \u20B9</th>'
     + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">GMV</th>'
+    + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase" title="Promo funded by the aggregator, not GAW">Agg-funded disc</th>'
     + '<th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase">Realization %</th>'
     + '</tr></thead><tbody>'+rowsHtml+'</tbody>'
     + '<tfoot><tr style="border-top:2px solid #103E70"><td colspan="3" style="padding:8px 10px;font-size:12px;font-weight:800;text-align:center">Grand total realized</td>'
     + '<td style="padding:8px 10px;font-size:13px;font-weight:800;text-align:center">'+fC(totRealized)+'</td>'
     + '<td style="padding:8px 10px;font-size:12px;text-align:center">'+fC(totGmv)+'</td>'
+    + '<td style="padding:8px 10px;font-size:12px;text-align:center;color:var(--muted)">'+fC(totAggDisc)+'</td>'
     + '<td style="padding:8px 10px;font-size:12px;text-align:center">'+(totGmv>0?Math.round(totRealized/totGmv*100)+'%':'\u2014')+'</td></tr></tfoot></table></div>'
     + (anyPending ? '<div style="font-size:11px;color:#B96C10;margin-top:8px">\u23F3 Amazon NLC (3 SKUs) effective Jul-2026 \u2014 excluded until pre-NLC SOH is exhausted.</div>' : '')
     + '</div>';
@@ -1980,19 +2029,44 @@ function _buildMonthData(monthKey) {
     // Flipkart has no daily discount feed, so we compute it from the deterministic BF rule.
     // Applies only to Flipkart, only for months at/after the effective month (Jun-2026),
     // and only where the day has GMV. A manual disc_override (if ever set) still wins.
+    // SKU rows are needed both for the NLC split below and for result[p].sku
+    const _skuRows = buildSku(seedP, deltaP);
+    const _exclNlc = _nlcDiscExclActive(monthKey) && _nlcActive(p, monthKey)
+                     && DISC_SOURCE[p] === 'consumer';
+    const _needNlcDay = _nlcDiscExclActive(monthKey) && _nlcActive(p, monthKey)
+                        && DISC_SOURCE[p] !== 'brand';
+    const _nlcDay  = _needNlcDay ? _nlcDayTotals(p, _skuRows) : {};
+
     if (p === 'Flipkart' && _fkDiscActive(monthKey)) {
       const hasOverride = (d) => (deltaP.disc_overrides || {})[d] !== undefined;
       Object.values(dayMap).forEach(d => {
         if (d && d.day && d.gmv > 0 && !hasOverride(d.day) && !hasOverride(String(d.day))) {
-          d.disc = _fkBfDisc(monthKey, d.day, d.gmv);
+          // BF is charged on consumer GMV; NLC SKUs are excluded because the
+          // aggregator, not GAW, funds the promo on those.
+          const nlcGmv = (_nlcDay[d.day] && _nlcDay[d.day].gmv) || 0;
+          d.disc_raw = _fkBfDisc(monthKey, d.day, d.gmv);
+          d.disc     = _fkBfDisc(monthKey, d.day, Math.max(0, d.gmv - nlcGmv));
+          d.disc_nlc = Math.max(0, d.disc_raw - d.disc);
         }
       });
     }
 
+    // Feed platforms: subtract the NLC SKUs' own reported discount from the day total.
+    // Floored at zero so a SKU/day reconciliation gap can never produce a negative.
+    Object.values(dayMap).forEach(d => {
+      if (!d || !d.day) return;
+      if (d.disc_raw === undefined) d.disc_raw = d.disc || 0;
+      if (d.disc_nlc === undefined) {
+        const nlcDisc = (_nlcDay[d.day] && _nlcDay[d.day].disc) || 0;
+        d.disc_nlc = Math.min(nlcDisc, d.disc_raw);
+        d.disc     = Math.max(0, d.disc_raw - d.disc_nlc);
+      }
+    });
+
     result[p] = {
       daily:   Object.values(dayMap).sort((a,b) => a.day - b.day).filter(d=>d.day>=1&&d.day<=dMaxDays),
       city:    buildCity(seedP, deltaP),
-      sku:     buildSku(seedP, deltaP),
+      sku:     _skuRows,
       citysku: buildCitySku(deltaP),
       march:   []
     };
@@ -2868,7 +2942,18 @@ function effectiveDay(p){return SELECTED_DAY!==null?SELECTED_DAY:platLatestDay(p
 function getForDay(p,day){const M=getMonthDays();return DB.april[p].daily.find(x=>x.day===day&&x.day>=1&&x.day<=M)||null}
 function getToday(p){return getForDay(p,effectiveDay(p));}
 function getYest(p){return getForDay(p,effectiveDay(p)-1);}
-function getMTD(p){return validDays(DB.april[p].daily).reduce((a,r)=>({gmv:a.gmv+r.gmv,units:a.units+r.units,disc:a.disc+(r.disc||0)}),{gmv:0,units:0,disc:0});}
+// Discount has three faces once NLC SKUs are in play:
+//   disc      = brand-funded (what GAW actually pays for)  ← headline everywhere
+//   disc_raw  = as reported by the platform / full BF rule
+//   disc_nlc  = aggregator-funded portion on NLC SKUs
+// Frozen months predate the split, so raw falls back to disc.
+function _dRaw(r){ return r ? (r.disc_raw!==undefined ? r.disc_raw : (r.disc||0)) : 0; }
+function _dAgg(r){ return r ? (r.disc_nlc||0) : 0; }
+function _discCell(brand,raw,agg){
+  if(!(agg>0)) return fC(brand);
+  return fC(brand)+' <span style="font-size:10px;color:var(--muted)" title="As reported '+fC(raw)+' · aggregator-funded on NLC SKUs '+fC(agg)+'">(rep. '+fC(raw)+')</span>';
+}
+function getMTD(p){return validDays(DB.april[p].daily).reduce((a,r)=>({gmv:a.gmv+r.gmv,units:a.units+r.units,disc:a.disc+(r.disc||0),disc_raw:a.disc_raw+_dRaw(r),disc_nlc:a.disc_nlc+_dAgg(r)}),{gmv:0,units:0,disc:0,disc_raw:0,disc_nlc:0});}
 function getCityToday(p){const d=effectiveDay(p);return(DB.april[p].city||[]).filter(r=>r.day===d);}
 
 // ── SKU RCA drilldown (platform tab): availability + SOH + FR inline expand ──
@@ -3211,7 +3296,8 @@ function renderOverview(){
   // Only sum platforms that have data for the same selected date
   const activePlats=PN.filter(p=>getForDay(p,td)!==null);
   let tG=0,tU=0,tD=0;
-  activePlats.forEach(p=>{const t=getForDay(p,td);if(t){tG+=t.gmv;tU+=t.units;tD+=(t.disc||0);}});
+  let tDraw=0,tDagg=0;
+  activePlats.forEach(p=>{const t=getForDay(p,td);if(t){tG+=t.gmv;tU+=t.units;tD+=(t.disc||0);tDraw+=_dRaw(t);tDagg+=_dAgg(t);}});
   const platLabel=activePlats.length===PN.length?'All 6 platforms':activePlats.map(p=>p.replace('BigBasket','BB').replace('Instamart','IM').replace('Flipkart','FK')).join(' · ');
   const tMtd=PN.reduce((s,p)=>s+getMTD(p).gmv,0);
   const tTgt=Object.values(DB.targets).reduce((s,v)=>s+v,0);
@@ -3222,7 +3308,7 @@ function renderOverview(){
     <div class="kpi g"><div class="label">Daily run rate</div><div class="value">${fN(_hero.drr)}<span style="font-size:13px;color:var(--muted);font-weight:700"> u/day</span></div><div class="sub">${_hero.drrDelta!=null?`<span class="${_hero.drrDelta>=0?'du':'dd'}">${_hero.drrDelta>=0?'▲':'▼'} ${Math.abs(_hero.drrDelta).toFixed(1)}%</span> vs prior 7d`:`MTD units ÷ ${_hero.elapsed} days`}</div></div>
     <div class="kpi ${_hero.osa!=null&&_hero.osa<90?'r':''}"><div class="label">On-shelf availability</div><div class="value">${_hero.osa!=null?_hero.osa.toFixed(1)+'%':'—'}</div><div class="sub">${_hero.osa!=null?`${_hero.osaWeak} platform${_hero.osaWeak===1?'':'s'} under 90%`:'upload availability data'}</div></div>
     <div class="kpi p"><div class="label">Days of inventory</div><div class="value">${_hero.doi!=null?_hero.doi.toFixed(1)+'d':'—'}</div><div class="sub">${_hero.doi!=null?`${_hero.doiLow} SKU${_hero.doiLow===1?'':'s'} under 7 days`:'upload SOH data'}</div></div>
-    <div class="kpi r"><div class="label">Discount — ${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} ${td}</div><div class="value">${fC(tD)}</div><div class="sub">${tG>0?(tD/tG*100).toFixed(1)+'% of day GMV':'—'} · day ${td} / ${MONTH_DAYS}</div></div>`;
+    <div class="kpi r"><div class="label">Discount — ${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} ${td}</div><div class="value">${fC(tD)}</div><div class="sub">${tG>0?(tD/tG*100).toFixed(1)+'% of day GMV':'—'}${tDagg>0?` · brand-funded · reported ${fC(tDraw)}`:` · day ${td} / ${MONTH_DAYS}`}</div></div>`;
   try{ _ovRenderHero(_hero); }catch(e){ console.warn('hero render skipped',e); }
   document.getElementById('ovPlatCards').innerHTML=PN.map(p=>{
     const t=getToday(p);const y=getYest(p);
@@ -3251,7 +3337,7 @@ function renderOverview(){
     return`<div class="card" style="border-top:4px solid ${PC[p]}">
       <div style="font-size:12px;font-weight:800;color:${PC[p]};margin-bottom:8px">${p} <span style="font-size:10px;color:var(--muted);font-weight:400">· ${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} ${effectiveDay(p)}</span></div>
       <div style="font-size:24px;font-weight:800">${fC(t.gmv)}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:6px">Units: <b>${fN(t.units)}</b> | Disc: <b style="color:${parseFloat(dp)>30?'#BD2635':'#288B93'}">${dp}%</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Units: <b>${fN(t.units)}</b> | Disc: <b style="color:${parseFloat(dp)>30?'#BD2635':'#288B93'}">${dp}%</b>${_dAgg(t)>0?` <span style="font-size:10px" title="As reported ${fC(_dRaw(t))} · aggregator-funded ${fC(_dAgg(t))}">(rep. ${((_dRaw(t)/t.gmv)*100).toFixed(1)}%)</span>`:''}</div>
       <div style="font-size:11px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap">
         ${sdlw!==null?`<span style="background:#EEF1F6;border-radius:6px;padding:2px 6px">SDLW: <span class="${parseFloat(sdlw)>=0?'du':'dd'}">${parseFloat(sdlw)>=0?'▲':'▼'}${Math.abs(sdlw)}%</span></span>`:''}
         ${wow!==null?`<span style="background:#EEF1F6;border-radius:6px;padding:2px 6px">WoW: <span class="${parseFloat(wow)>=0?'du':'dd'}">${parseFloat(wow)>=0?'▲':'▼'}${Math.abs(wow)}%</span></span>`:''}
@@ -3313,7 +3399,7 @@ function renderOverview(){
       const m=getMTD(p);const tgt=DB.targets[p];const pA=(m.gmv/tgt*100).toFixed(1);
       const cls=parseFloat(pA)>=80?'cb-up':parseFloat(pA)>=50?'cb-w':'cb-dn';
       const dpct=m.gmv>0?(m.disc/m.gmv*100):0;
-      html+=`<tr><td>${platTag(p)}</td><td><b>${fC(m.gmv)}</b></td><td>${fN(m.units)}</td><td>${fC(m.disc)}</td><td><b style="color:${dpct>30?'#BD2635':'#288B93'}">${dpct.toFixed(1)}%</b></td><td>${fC(tgt)}</td><td><span class="${cls}">${pA}%</span></td></tr>`;
+      html+=`<tr><td>${platTag(p)}</td><td><b>${fC(m.gmv)}</b></td><td>${fN(m.units)}</td><td>${_discCell(m.disc,m.disc_raw,m.disc_nlc)}</td><td><b style="color:${dpct>30?'#BD2635':'#288B93'}">${dpct.toFixed(1)}%</b></td><td>${fC(tgt)}</td><td><span class="${cls}">${pA}%</span></td></tr>`;
     });
     html+='</tbody></table>';
     mtdEl.innerHTML=html;
@@ -3363,7 +3449,7 @@ function renderPlatform(p,prefix,target){
         ${sdlw!==null?`SDLW: <span class="${parseFloat(sdlw)>=0?'du':'dd'}">${parseFloat(sdlw)>=0?'▲':'▼'}${Math.abs(sdlw)}%</span> `:dod!==null?`DoD: <span class="${parseFloat(dod)>=0?'du':'dd'}">${parseFloat(dod)>=0?'▲':'▼'}${Math.abs(dod)}%</span> `:''}
         ${vm!==null?`vs${priorMonthLabel().slice(0,3)}: <span class="${parseFloat(vm)>=0?'du':'dd'}">${parseFloat(vm)>=0?'▲':'▼'}${Math.abs(vm)}%</span>`:''}</div></div>
     <div class="kpi g"><div class="label">Units · ${selLabel}</div><div class="value">${t?fN(t.units):'—'}</div><div class="sub">MTD Total: ${fN(mtd.units)}</div></div>
-    <div class="kpi r"><div class="label">MTD Discount</div><div class="value">${fC(mtd.disc)}</div><div class="sub">Today: ${fC(t?t.disc||0:0)}</div></div>
+    <div class="kpi r"><div class="label">MTD Discount</div><div class="value">${fC(mtd.disc)}</div><div class="sub">Today: ${fC(t?t.disc||0:0)}${(mtd.disc_nlc||0)>0?` · brand-funded · reported ${fC(mtd.disc_raw)}`:''}</div></div>
     <div class="kpi"><div class="label">Disc % · ${selLabel}</div><div class="value">${dp}%</div><div class="sub" style="color:${parseFloat(dp)>30?'#BD2635':parseFloat(dp)>20?'#B96C10':'#288B93'}">${parseFloat(dp)>30?'⚠ High':parseFloat(dp)>20?'Moderate':'Efficient'}</div></div>
     <div class="kpi p"><div class="label">MTD GMV</div><div class="value">${fC(mtd.gmv)}</div><div class="sub">${(mtd.gmv/target*100).toFixed(1)}% of ${fC(target)}</div></div>`;
 
@@ -3659,15 +3745,29 @@ function renderSkuAnalysis(){
   plats.forEach(p=>{
     const rows=dayRange?(DB.april[p].sku||[]).filter(r=>dayRange.includes(r.day)):(DB.april[p].sku||[]);
     // Zepto disc is daily-only (separate promo file) — distribute each day's disc to SKUs by GMV share.
+    // Zepto reports discount only at day level, so SKU discount is allocated by GMV share.
+    // NLC SKUs carry no GAW-funded promo (confirmed against the Zepto promo claims report),
+    // so they are excluded from both the numerator and the GMV base — the day's discount
+    // belongs entirely to the promoted, non-NLC SKUs.
     const _zpDD={},_zpDG={};
-    if(p==='Zepto'){ [...new Set(rows.map(r=>r.day))].forEach(d=>{const g=getForDay('Zepto',d);_zpDD[d]=g?(g.disc||0):0;_zpDG[d]=g?(g.gmv||0):0;}); }
+    if(p==='Zepto'){
+      const _zpNlc=(_nlcDiscExclActive(getViewingMonth())&&_nlcActive('Zepto',getViewingMonth()))?_nlcIdSet('Zepto'):null;
+      const _isNlc=r=>!!(_zpNlc&&_zpNlc.has(_normSkuId(r.sku_code)));
+      [...new Set(rows.map(r=>r.day))].forEach(d=>{
+        const g=getForDay('Zepto',d);
+        _zpDD[d]=g?(g.disc||0):0;
+        const base=rows.filter(r=>r.day===d&&!_isNlc(r)).reduce((a,r)=>a+(r.gmv||0),0);
+        _zpDG[d]=base>0?base:(g?(g.gmv||0):0);
+      });
+      window._zpIsNlc=_isNlc;
+    }
     rows.forEach(r=>{
       const info=skuLookup(p,r.sku_code);
       const cat=normCat(info.cat)||'Unknown';
       if(catFilter!=='all'&&cat!==catFilter)return;
       const key=info.name||r.sku_code;
       if(!skuMap[key])skuMap[key]={name:key,cat,gmv:0,units:0,disc:0,platforms:new Set()};
-      const rowDisc=(p==='Zepto')?((_zpDG[r.day]>0)?(_zpDD[r.day]*r.gmv/_zpDG[r.day]):0):(r.disc||0);
+      const rowDisc=(p==='Zepto')?((window._zpIsNlc&&window._zpIsNlc(r))?0:((_zpDG[r.day]>0)?(_zpDD[r.day]*r.gmv/_zpDG[r.day]):0)):(r.disc||0);
       skuMap[key].gmv+=r.gmv;skuMap[key].units+=r.units;skuMap[key].disc+=rowDisc;
       skuMap[key].platforms.add(p);
     });
@@ -5734,11 +5834,11 @@ function procDsc(platform,rows){
 
 
 function exportCSV(){
-  let csv='Platform,Day,GMV,Units,Discount,DiscPct,vsMarch\n';
+  let csv='Platform,Day,GMV,Units,Discount (brand-funded),Discount (as reported),Discount (aggregator-funded NLC),DiscPct,vsMarch\n';
   PN.forEach(p=>validDays(DB.april[p].daily).forEach(r=>{
     const mG=mGmv(p,r.day);const vM=mG?((r.gmv-mG)/mG*100).toFixed(1):'';
     const dp=r.gmv>0?((r.disc||0)/r.gmv*100).toFixed(1):'0';
-    csv+=`${p},${r.day},${r.gmv},${r.units},${r.disc||0},${dp},${vM}\n`;
+    csv+=`${p},${r.day},${r.gmv},${r.units},${r.disc||0},${_dRaw(r)},${_dAgg(r)},${dp},${vM}\n`;
   }));
   const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='gaw_'+getViewingMonth().toLowerCase().replace('-','_')+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
@@ -7504,7 +7604,7 @@ function buildAlerts(){
     // === Discount spike ===
     if(t.gmv>0){
       const dp=(t.disc||0)/t.gmv*100;
-      if(dp>35)alerts.push({type:'bad',icon:'💸',platform:p,title:`${p} discount rate HIGH at ${dp.toFixed(1)}%`,sub:`Disc: ${fC(t.disc||0)} on GMV ${fC(t.gmv)} · High promo depth is eroding margin — review promo list`,group:'Discounts',day:td});
+      if(dp>35)alerts.push({type:'bad',icon:'💸',platform:p,title:`${p} discount rate HIGH at ${dp.toFixed(1)}%`,sub:`Disc: ${fC(t.disc||0)} on GMV ${fC(t.gmv)}${_dAgg(t)>0?` (reported ${fC(_dRaw(t))}, aggregator-funded ${fC(_dAgg(t))} on NLC SKUs)`:''} · High promo depth is eroding margin — review promo list`,group:'Discounts',day:td});
       else if(dp<5&&t.gmv>100000)alerts.push({type:'info',icon:'✅',platform:p,title:`${p} running lean at ${dp.toFixed(1)}% discount`,sub:`Healthy margin efficiency · GMV: ${fC(t.gmv)}`,group:'Discounts',day:td});
     }
 
@@ -8882,7 +8982,7 @@ function renderCiTop5(){
     const sh=tot>0?((r.gmv/tot)*100).toFixed(1):0;
     const bW=top5[0]&&top5[0].gmv>0?Math.round((r.gmv/top5[0].gmv)*80):0;
     return`<tr><td style="color:var(--muted);font-weight:700">${i+1}</td><td style="font-weight:600;font-size:11px">${r.name}</td><td><span class="pill">${r.cat}</span></td><td>${fC(Math.round(r.gmv))}</td><td>${Math.round(r.units).toLocaleString('en-IN')}</td><td><span class="sbar-bg"><span class="sbar-fill" style="width:${bW}%;background:${PC[p]}"></span></span> ${sh}%</td></tr>`;
-  }).join('')||'<tr><td colspan="6" style="color:var(--muted);padding:14px;text-align:center">No data for this selection</td></tr>';
+  }).join('')||'<tr><td colspan="7" style="color:var(--muted);padding:14px;text-align:center">No data for this selection</td></tr>';
 }
 
 function renderCiTrend(){
@@ -9030,7 +9130,7 @@ function ciDrillToCity(city){
     body.innerHTML=`<div class="scroll-table"><table class="tbl">
       <thead><tr><th>#</th><th>SKU</th><th>Cat</th><th>GMV</th><th>Units</th><th>DRR<br><span style="font-weight:400;font-size:9px;color:var(--muted)">u/day · MTD</span></th><th>Zepto<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th><th>Blinkit<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th><th>Instamart<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th><th>Flipkart<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th><th>BigBasket<br><span style="font-weight:400;font-size:9px;color:var(--muted)">GMV · u/day</span></th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr style="border-top:2px solid #2E4162"><td></td><td colspan="2"><b>Total · ${list.length} SKUs</b></td><td><b>${fC(totGmv)}</b></td><td><b>${totUnits.toLocaleString('en-IN')}</b></td><td colspan="6"></td></tr></tfoot>
+      <tfoot><tr style="border-top:2px solid #2E4162"><td></td><td colspan="2"><b>Total · ${list.length} SKUs</b></td><td><b>${fC(totGmv)}</b></td><td><b>${totUnits.toLocaleString('en-IN')}</b></td><td colspan="7"></td></tr></tfoot>
     </table></div>`;
   }
   document.getElementById('ciDrillTitle').textContent=city+' — SKU breakdown · MTD';
