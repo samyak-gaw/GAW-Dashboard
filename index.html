@@ -179,7 +179,7 @@ body{font-family:'Montserrat','Segoe UI',Arial,sans-serif;background:#F5F7FA;col
 .tag-i{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9.5px;font-weight:800;background:rgba(226,95,67,.14);color:#C2452A;letter-spacing:.3px}
 .tag-a{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9.5px;font-weight:800;background:rgba(201,162,39,.18);color:#8A6A0A;letter-spacing:.3px}
 .tag-f{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9.5px;font-weight:800;background:rgba(22,106,146,.13);color:#166A92;letter-spacing:.3px}
-.tag-bb{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9.5px;font-weight:800;background:rgba(40,139,147,.14);color:#1F6E74;letter-spacing:.3px}
+.tag-bb{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9.5px;font-weight:800;background:rgba(132,194,37,.20);color:#4F7A12;letter-spacing:.3px}
 .prog-wrap{margin:10px 0}.prog-label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:5px;font-weight:700}
 .prog-bg{background:var(--thead);border-radius:3px;height:8px;overflow:hidden}.prog-fill{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.22,1,.3,1)}
 .pf-ok{background:var(--teal)}.pf-risk{background:var(--orange)}.pf-behind{background:var(--brandred)}
@@ -218,12 +218,12 @@ select{background:#fff;color:var(--text);border:1px solid var(--border);border-r
 .sbar-fill{height:100%;border-radius:2px;display:block}
 .pdot{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;flex-shrink:0}
 .p-blinkit{background:#EB8B2C}.p-zepto{background:#BD2635}.p-instamart{background:#E25F43}
-.p-amazon{background:#C9A227}.p-flipkart{background:#166A92}.p-bigbasket{background:#288B93}
+.p-amazon{background:#C9A227}.p-flipkart{background:#166A92}.p-bigbasket{background:#84C225}
 .p-good{background:#288B93}.p-warn{background:#EB8B2C}.p-bad{background:#BD2635}
 .bnav-icon .pdot{width:11px;height:11px;border-radius:3px}
 .ovleak{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--border)}
 .ovleak:last-child{border-bottom:none}
-.ovleak-name{font-size:12px;font-weight:700;color:var(--text)}
+.ovleak-name{font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ovleak-sub{font-size:10px;color:var(--muted);margin-top:2px;font-weight:600}
 .ovleak-trk{width:66px;height:7px;border-radius:2px;background:var(--thead);overflow:hidden;flex-shrink:0}
 .ovleak-trk i{display:block;height:100%;border-radius:2px}
@@ -428,7 +428,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div class="tab" onclick="showTab('zepto')"><span class="tab-dot" style="background:#BD2635"></span>Zepto</div>
   <div class="tab" onclick="showTab('amazon')"><span class="tab-dot" style="background:#C9A227"></span>Amazon</div>
   <div class="tab" onclick="showTab('flipkart')"><span class="tab-dot" style="background:#166A92"></span>Flipkart</div>
-  <div class="tab" onclick="showTab('bigbasket')"><span class="tab-dot" style="background:#288B93"></span>BigBasket</div>
+  <div class="tab" onclick="showTab('bigbasket')"><span class="tab-dot" style="background:#84C225"></span>BigBasket</div>
   <div class="tab" onclick="showTab('category')"><span class="tab-dot" style="background:#166A92"></span>Category & SKU</div>
   <div class="tab" onclick="showTab('projections')"><span class="tab-dot" style="background:#288B93"></span>Projections</div>
   <div class="tab" onclick="showTab('availability')"><span class="tab-dot" style="background:#103E70"></span>Availability</div>
@@ -1397,7 +1397,7 @@ const SEED={"march_totals":{"Zepto":{"gmv":39881835,"units":258696,"disc":756200
 // CONSTANTS
 // ══════════════════════════════════════════════
 const PN=['Zepto','Blinkit','Instamart','Amazon','Flipkart','BigBasket'];
-const PC={Zepto:'#BD2635',Blinkit:'#EB8B2C',Instamart:'#E25F43',Amazon:'#C9A227',Flipkart:'#166A92',BigBasket:'#288B93'};
+const PC={Zepto:'#BD2635',Blinkit:'#EB8B2C',Instamart:'#E25F43',Amazon:'#C9A227',Flipkart:'#166A92',BigBasket:'#84C225'};
 const APRIL_DAYS=30;
 
 // ══════════════════════════════════════════════
@@ -3148,13 +3148,17 @@ function _ovHeroMetrics(){
           tgtPct:tTgt>0?(tMtd/tTgt*100).toFixed(1):null};
 }
 
-// SKU id -> readable name, falling back to the id when the master has no match
+// SKU id -> readable name via the canonical master lookup (handles id normalisation
+// and falls back to the seed master, same path the platform tabs use).
 function _skuLabel(id,plat){
   try{
+    const info=skuLookup(plat,id);
+    if(info&&info.name&&String(info.name).trim()&&String(info.name)!==String(id))return info.name;
+  }catch(e){}
+  try{
     const arr=(DB.april[plat]&&DB.april[plat].sku)||[];
-    const hit=arr.find(r=>String(r.sku_id)===String(id));
-    if(hit&&hit.name)return hit.name;
-    if(typeof SKU_MASTER!=='undefined'&&SKU_MASTER&&SKU_MASTER[id])return SKU_MASTER[id].name||id;
+    const hit=arr.find(r=>String(r.sku_code)===String(id)||String(r.sku_id)===String(id));
+    if(hit&&(hit.sku_name||hit.name))return hit.sku_name||hit.name;
   }catch(e){}
   return String(id);
 }
@@ -3193,7 +3197,7 @@ function _ovRenderHero(h){
     return `<div class="ovleak">
       <span class="pdot" style="background:${PC[r.plat]||'#8B97AD'}"></span>
       <div style="flex:1;min-width:0">
-        <div class="ovleak-name">${r.sku}</div>
+        <div class="ovleak-name" title="${r.sku}">${r.sku}</div>
         <div class="ovleak-sub">${r.plat} · OSA ${r.osa!=null?r.osa.toFixed(1)+'%':'—'}${r.doi!=null?' · '+r.doi.toFixed(0)+'d cover':''}</div>
       </div>
       <div class="ovleak-trk"><i style="width:${w}%;background:${sev}"></i></div>
@@ -6282,7 +6286,7 @@ function _availCityDoiBlock(plat,idPrefix){
 function _availRenderPlatformCards(){
   const host=document.getElementById('availPlatformCards');
   const mtd=window._availMTD;
-  const colorMap={Zepto:'#BD2635',Blinkit:'#EB8B2C',Instamart:'#BD2635',Flipkart:'#166A92',BigBasket:'#288B93',Amazon:'#C9A227'};
+  const colorMap={Zepto:'#BD2635',Blinkit:'#EB8B2C',Instamart:'#BD2635',Flipkart:'#166A92',BigBasket:'#84C225',Amazon:'#C9A227'};
   const cards=_AVAIL_PLATFORMS.map(plat=>{
     const s=mtd[plat].summary;
     const c=colorMap[plat];
@@ -6874,7 +6878,7 @@ function _availRenderSohPlatformCards(){
   const host=document.getElementById('availSohPlatformCards');
   if(!host)return;
   const mtd=window._availMTD||{};
-  const colorMap={Zepto:'#BD2635',Blinkit:'#EB8B2C',Instamart:'#BD2635',Flipkart:'#166A92',BigBasket:'#288B93',Amazon:'#C9A227'};
+  const colorMap={Zepto:'#BD2635',Blinkit:'#EB8B2C',Instamart:'#BD2635',Flipkart:'#166A92',BigBasket:'#84C225',Amazon:'#C9A227'};
   const cards=_SOH_PLATFORMS.map(plat=>{
     const pd=mtd[plat];
     const c=colorMap[plat];
