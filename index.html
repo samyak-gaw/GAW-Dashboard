@@ -4638,6 +4638,18 @@ function parseDay(v){
 }
 
 // Helper: find a column value by trying multiple possible header names (case-insensitive fuzzy)
+// Comma-safe numeric parse. Platform exports deliver GMV/units as text with thousands
+// separators ("7,360") and sometimes currency symbols. Bare parseFloat("7,360") returns 7,
+// silently truncating every value at its first comma — this under-read Amazon July GMV by 62%.
+// Route every numeric column read through this instead of parseFloat().
+function numVal(v){
+  if(v==null||v==='')return 0;
+  if(typeof v==='number')return isFinite(v)?v:0;
+  const n=parseFloat(String(v).replace(/[₹$€£%\s]/g,'').replace(/,/g,''));
+  return isFinite(n)?n:0;
+}
+function colNum(row,...keys){ return numVal(colVal(row,...keys)); }
+
 function colVal(row, ...keys){
   for(const k of keys){
     if(row[k]!==undefined&&row[k]!=='')return row[k];
@@ -4951,11 +4963,11 @@ function procZepto(rows){
     if(!day){dateFails++;skipped++;return;}
 
     const rawGmv=colVal(r,gmvCol,'Gross Merchandise Value','GMV','Revenue','MRP GMV','mrp_gmv');
-    const gmv=parseFloat(rawGmv)||0;
+    const gmv=numVal(rawGmv);
     if(gmv===0&&rawGmv!==undefined&&rawGmv!==0)gmvFails++;
 
     const rawUnits=colVal(r,unitCol,'Sales (Qty) - Units','Units Sold','units_sold','Qty','qty_sold','UNITS');
-    const units=parseFloat(rawUnits)||0;
+    const units=numVal(rawUnits);
 
     const city=nCity(colVal(r,cityCol,'City','city','CITY','City Name')||'');
     const sc=String(colVal(r,skuCol,'SKU Number','SKU ID','sku_number','item_id','Product ID')||'').trim();
@@ -5089,9 +5101,9 @@ function procBlinkit(){
     const rawCity=String(colVal(r,sCityCol,'city','City','CITY')||'');
     const city=nCity(rawCity);
     // Track raw city values for diagnostics
-    _blRawCities.set(rawCity,(_blRawCities.get(rawCity)||0)+(parseFloat(colVal(r,sGmvCol,'mrp_gmv','mrp','GMV','Gross Merchandise Value'))||0));
-    const qty=parseFloat(colVal(r,sQtyCol,'qty_sold','units_sold','Units','Qty'))||0;
-    const gmv=parseFloat(colVal(r,sGmvCol,'mrp_gmv','mrp','GMV','Gross Merchandise Value'))||0;
+    _blRawCities.set(rawCity,(_blRawCities.get(rawCity)||0)+(colNum(r,sGmvCol,'mrp_gmv','mrp','GMV','Gross Merchandise Value')||0));
+    const qty=colNum(r,sQtyCol,'qty_sold','units_sold','Units','Qty')||0;
+    const gmv=colNum(r,sGmvCol,'mrp_gmv','mrp','GMV','Gross Merchandise Value')||0;
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{},citysku:{}};
     byD[day].gmv+=gmv;byD[day].units+=qty;
     if(!byD[day].city[city])byD[day].city[city]={gmv:0,units:0,disc:0};
@@ -5114,7 +5126,7 @@ function procBlinkit(){
     ||'total_brand_fund';
   dr.forEach(r=>{
     const day=parseDay(colVal(r,dDateCol,'date','Date','order_date'));if(!day)return;
-    const disc=parseFloat(colVal(r,dDiscCol,'total_brand_fund','discount','Discount Spend'))||0;
+    const disc=colNum(r,dDiscCol,'total_brand_fund','discount','Discount Spend')||0;
     const city=nCity(colVal(r,dCityCol,'city','City','CITY')||'');
     const item_id=String(colVal(r,dItemCol,'item_id','item_Id','product_id')||'').trim();
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{}};
@@ -5159,8 +5171,8 @@ function procIM(){
   let srParsed=0,srFail=0;
   sr.forEach(r=>{
     const day=parseDay(colVal(r,sDateCol,'ORDERED_DATE','ORDER_DATE','Date','date'));if(!day){srFail++;return;}
-    const gmv=parseFloat(colVal(r,sGmvCol,'GMV','Revenue','MRP GMV'))||0;
-    const units=parseFloat(colVal(r,sUnitCol,'UNITS_SOLD','Units','Qty','qty_sold'))||0;
+    const gmv=colNum(r,sGmvCol,'GMV','Revenue','MRP GMV')||0;
+    const units=colNum(r,sUnitCol,'UNITS_SOLD','Units','Qty','qty_sold')||0;
     const city=nCity(colVal(r,sCityCol,'CITY','City','city')||'');
     const ic=normSku(colVal(r,sItemCol,'ITEM_CODE','item_code','SKU','sku_code'));
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{},citysku:{}};
@@ -5182,7 +5194,7 @@ function procIM(){
   let drSkuMatched=0,drSkuMissed=0;
   dr.forEach(r=>{
     const day=parseDay(colVal(r,dDateCol,'ORDER_DATE','ORDERED_DATE','Date','date'));if(!day)return;
-    const disc=parseFloat(colVal(r,dDiscCol,'DISCOUNT_SPEND','Discount','discount_amount'))||0;
+    const disc=colNum(r,dDiscCol,'DISCOUNT_SPEND','Discount','discount_amount')||0;
     const city=nCity(colVal(r,dCityCol,'CITY','City')||'');
     const ic=normSku(colVal(r,dItemCol,'ITEM_CODE','SKU','item_code'));
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{}};
@@ -5229,8 +5241,8 @@ function procAmazon(rows){
   rows.forEach(r=>{
     const day=parseDay(colVal(r,dateCol,'Date','date','order_date'));if(!day){dateFails++;return;}
     const asin=String(colVal(r,asinCol,'ASIN','asin','product_id')||'').trim();
-    const units=parseFloat(colVal(r,unitCol,'Shipped Units','units_sold','qty'))||0;
-    const gmv=parseFloat(colVal(r,gmvCol,'MRP GMV','mrp gmv','GMV','Revenue'))||0;
+    const units=colNum(r,unitCol,'Shipped Units','units_sold','qty')||0;
+    const gmv=colNum(r,gmvCol,'MRP GMV','mrp gmv','GMV','Revenue')||0;
     const disc=Math.round(gmv*DISC_RATE*100)/100;
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{}};
     byD[day].gmv+=gmv;byD[day].units+=units;byD[day].disc+=disc;
@@ -5274,8 +5286,8 @@ function procFlipkart(rows){
     const pid=String(colVal(r,pidCol,'product_id','Product ID','FSN','fsn','listing_id','sku_id','sku','SKU')||'').trim();
     if(DISCONTINUED_FK.has(pid))return;
     const city=nCity(String(colVal(r,cityCol,'city','City','CITY','delivery_city','ship_city')||''));
-    const units=parseFloat(colVal(r,unitCol,'units','units_sold','Qty','quantity','Quantity'))||0;
-    const gmv=parseFloat(colVal(r,gmvCol,'mrp_gmv','mrp gmv','MRP GMV','GMV','Gross Merchandise Value','mrp','selling_price','revenue','Revenue'))||0;
+    const units=colNum(r,unitCol,'units','units_sold','Qty','quantity','Quantity')||0;
+    const gmv=colNum(r,gmvCol,'mrp_gmv','mrp gmv','MRP GMV','GMV','Gross Merchandise Value','mrp','selling_price','revenue','Revenue')||0;
     const disc=Math.round(gmv*DISC_RATE*100)/100;
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{},citysku:{}};
     byD[day].gmv+=gmv;byD[day].units+=units;byD[day].disc+=disc;
@@ -5319,8 +5331,8 @@ function procBigBasket(rows){
     const city=nCity(String(colVal(r,cityCol,'source_city_name','city','City')||''));
     const skuRaw=colVal(r,skuCol,'source_sku_id','sku_id','item_id');
     const sku=skuRaw!==undefined&&skuRaw!==''?String(Number.isFinite(parseFloat(skuRaw))?Math.round(parseFloat(skuRaw)):skuRaw).trim():'';
-    const units=parseFloat(colVal(r,unitCol,'total_quantity','units','qty'))||0;
-    const gmv=parseFloat(colVal(r,gmvCol,'total_mrp','gmv','revenue'))||0;
+    const units=colNum(r,unitCol,'total_quantity','units','qty')||0;
+    const gmv=colNum(r,gmvCol,'total_mrp','gmv','revenue')||0;
     const disc=Math.round(gmv*DISC_RATE*100)/100;
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{},citysku:{}};
     byD[day].gmv+=gmv;byD[day].units+=units;byD[day].disc+=disc;
