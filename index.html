@@ -1028,10 +1028,10 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 
   <!-- OSA / Availability reports — bulk aggregator export + IM individual -->
   <div style="font-size:11px;font-weight:700;color:#103E70;text-transform:uppercase;margin:6px 0 8px 0">OSA & DS Listing Reports (daily)</div>
-  <div class="g2" style="margin-bottom:14px">
+  <div class="g3" style="margin-bottom:14px">
     <div>
       <div class="upload-zone" ondragover="dov(event,'bulkAvZone')" ondragleave="dlv('bulkAvZone')" ondrop="dop(event,'bulkAv')" id="bulkAvZone" onclick="document.getElementById('bulkAvFile').click()" style="min-height:80px;padding:14px">
-        <div class="up-icon" style="font-size:22px"></div><div class="up-title" style="font-size:13px">Bulk Availability — Zepto · Blinkit · Flipkart · BigBasket · Amazon</div>
+        <div class="up-icon" style="font-size:22px"></div><div class="up-title" style="font-size:13px">Bulk Availability \u2014 Zepto \u00b7 Blinkit \u00b7 Amazon \u00b7 BigBasket</div>
         <div class="up-sub" id="bulkAvSub" style="font-size:11px">download_builder_export.csv (GobbleCube aggregator · Instamart rows skipped)</div>
         <input class="file-input" id="bulkAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'bulkAv')">
 </div>
@@ -1041,6 +1041,13 @@ body{padding-bottom:env(safe-area-inset-bottom)}
         <div class="up-icon" style="font-size:22px"><span class="pdot p-instamart"></span></div><div class="up-title" style="font-size:13px">Instamart Availability</div>
         <div class="up-sub" id="imAvSub" style="font-size:11px">instamart-availability-data.csv (separate — bulk export IDs unmappable)</div>
         <input class="file-input" id="imAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'imAv')">
+</div>
+</div>
+    <div>
+      <div class="upload-zone" ondragover="dov(event,'fkAvZone')" ondragleave="dlv('fkAvZone')" ondrop="dop(event,'fkAv')" id="fkAvZone" onclick="document.getElementById('fkAvFile').click()" style="min-height:80px;padding:14px">
+        <div class="up-icon" style="font-size:22px"><span class="pdot p-flipkart"></span></div><div class="up-title" style="font-size:13px">Flipkart Availability</div>
+        <div class="up-sub" id="fkAvSub" style="font-size:11px">flipkart_minutes_availability.csv (separate \u2014 not in bulk export)</div>
+        <input class="file-input" id="fkAvFile" type="file" accept=".xlsx,.xls,.csv" onchange="hf(this,'fkAv')">
 </div>
 </div>
 </div>
@@ -4809,8 +4816,31 @@ function processFile(file,type){
           });
           const done=[]; ok=false;
           Object.keys(groups).forEach(plat=>{ if(procAvail(plat,groups[plat])){done.push(plat+' ('+groups[plat].length+')'); ok=true;} });
+
+          // ── GUARD: warn if a bulk-expected platform is missing or suspiciously thin ──
+          // The GobbleCube bulk export is expected to carry these four. Flipkart & Instamart
+          // are deliberately NOT in bulk (uploaded via their own tiles), so they're excluded here.
+          const _total=(rows||[]).length;
+          const _BULK_EXPECTED=['Zepto','Blinkit','Amazon','BigBasket'];
+          const _warn=[];
+          _BULK_EXPECTED.forEach(pl=>{
+            const n=(groups[pl]||[]).length;
+            if(n===0)               _warn.push(pl+': 0 rows (missing entirely)');
+            else if(_total>0 && n/_total<0.01) _warn.push(pl+': only '+n+' row'+(n===1?'':'s')+' ('+(n/_total*100).toFixed(1)+'% \u2014 looks empty)');
+          });
+          // Flipkart slipping into bulk with near-zero rows is the classic trap — call it out explicitly.
+          const _fkInBulk=(groups['Flipkart']||[]).length;
+          if(_fkInBulk>0 && _fkInBulk<5)
+            _warn.push('Flipkart: '+_fkInBulk+' row'+(_fkInBulk===1?'':'s')+' in bulk \u2014 this export does NOT carry Flipkart; upload flipkart_minutes_availability.csv via the Flipkart tile');
+
           const stEl=document.getElementById('bulkAvSub');
-          if(stEl&&ok)stEl.textContent='\u2705 '+file.name+' \u2014 '+done.join(', ')+(imSkipped?' \u00b7 IM rows skipped: '+imSkipped:'')+(unknown?' \u00b7 unknown platform rows: '+unknown:'');
+          if(_warn.length){
+            const msg='\u26a0\ufe0f Bulk availability loaded, but check these:\n\n\u2022 '+_warn.join('\n\u2022 ')
+              +'\n\nReminder: Flipkart and Instamart are NOT in the bulk export \u2014 upload each via its own tile.';
+            alert(msg);
+            if(stEl)stEl.innerHTML='\u26a0\ufe0f '+file.name+' \u2014 '+done.join(', ')+' \u00b7 <b style="color:#B96C10">'+_warn.length+' platform warning'+(_warn.length===1?'':'s')+' \u2014 see popup</b>';
+          }
+          else if(stEl&&ok)stEl.textContent='\u2705 '+file.name+' \u2014 '+done.join(', ')+(imSkipped?' \u00b7 IM rows skipped: '+imSkipped:'')+(unknown?' \u00b7 unknown platform rows: '+unknown:'');
           if(!ok)alert('Bulk availability: no rows routed \u2014 check the Platform column.');
         }
         // SOH files
