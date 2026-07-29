@@ -8010,6 +8010,14 @@ function _ghBase64Decode(b64){
 
 // ── Shared payload applicator (used by both admin pull and viewer pull) ──
 function _applyGHPayload(payload,logFn,manual){
+  // Ad Spend data (gaw_ads_v1) rides alongside _delta in the payload. Restore it first so
+  // viewers pulling from GitHub get the Ad Spend tab populated. Independent of _delta.
+  if(payload && payload.ads){
+    try{
+      localStorage.setItem('gaw_ads_v1', JSON.stringify(payload.ads));
+      if(typeof renderAds==='function' && document.getElementById('ads') && document.getElementById('ads').classList.contains('active')) renderAds();
+    }catch(_e){}
+  }
   if(payload._delta){
     let ghDelta = payload._delta;
 
@@ -8344,9 +8352,12 @@ async function githubPush(manual=false){
     // v10 legacy `april` field dropped (2026-07): duplicated active month, bloated payload.
     // Pre-v11 cached viewers must hard-refresh once.
     const _backCompatDelta = _delta;
+    // Ad Spend data lives in its own localStorage key (gaw_ads_v1), outside _delta.
+    // Include it in the payload so viewers (who pull from GitHub) receive it too.
+    let _adsStore=null; try{ _adsStore=JSON.parse(localStorage.getItem('gaw_ads_v1')||'null'); }catch(_e){}
     // NOTE: `db` is intentionally omitted — it is rebuilt from `_delta` on pull (see _applyGHPayload),
     // so sending it duplicated the entire dataset and bloated the file past GitHub's 1MB Contents-API limit.
-    const payload={_delta:_backCompatDelta,ts:Date.now(),pushedBy:'owner',schema_version:11};
+    const payload={_delta:_backCompatDelta,ads:_adsStore,ts:Date.now(),pushedBy:'owner',schema_version:11};
     const jsonStr=JSON.stringify(payload);
     // btoa only works on Latin1 — encode UTF-8 to base64 safely
     const bytes=new TextEncoder().encode(jsonStr);
