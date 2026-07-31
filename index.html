@@ -2987,6 +2987,16 @@ function _discCell(brand,raw,agg){
   return fC(brand)+' <span style="font-size:10px;color:var(--muted)" title="As reported '+fC(raw)+' · aggregator-funded on NLC SKUs '+fC(agg)+'">(rep. '+fC(raw)+')</span>';
 }
 function getMTD(p){return validDays(DB.april[p].daily).reduce((a,r)=>({gmv:a.gmv+r.gmv,units:a.units+r.units,disc:a.disc+(r.disc||0),disc_raw:a.disc_raw+_dRaw(r),disc_nlc:a.disc_nlc+_dAgg(r)}),{gmv:0,units:0,disc:0,disc_raw:0,disc_nlc:0});}
+// MTD GMV + reported discount contributed by a platform's NLC SKUs (valid days only).
+// has=true means the platform carries NLC SKUs and NLC is active for the viewing month.
+function _nlcMTD(p){
+  const ids=_nlcIdSet(p);
+  if(!ids || !_nlcActive(p, getViewingMonth()) || !DB.april[p] || !DB.april[p].sku) return {gmv:0,disc:0,has:false};
+  const vd=new Set(validDays(DB.april[p].daily).map(r=>r.day));
+  let gmv=0,disc=0;
+  DB.april[p].sku.forEach(r=>{ if(vd.has(Number(r.day)) && ids.has(_normSkuId(r.sku_code))){ gmv+=(r.gmv||0); disc+=(r.disc||0); } });
+  return {gmv, disc, has:true};
+}
 function getCityToday(p){const d=effectiveDay(p);return(DB.april[p].city||[]).filter(r=>r.day===d);}
 
 // ── SKU RCA drilldown (platform tab): availability + SOH + FR inline expand ──
@@ -3427,12 +3437,21 @@ function renderOverview(){
   // MTD Summary
   const mtdEl=document.getElementById('mtdSummary');
   if(mtdEl){
-    let html='<table class="tbl"><thead><tr><th>Platform</th><th>MTD GMV</th><th>MTD Units</th><th>MTD Disc</th><th>Disc %</th><th>Target</th><th>Progress</th></tr></thead><tbody>';
+    let html='<table class="tbl"><thead><tr><th>Platform</th><th>MTD GMV</th><th>MTD Units</th><th>MTD Disc</th><th>Avg Disc %</th><th>Net Disc %</th><th>Target</th><th>Progress</th></tr></thead><tbody>';
     PN.forEach(p=>{
       const m=getMTD(p);const tgt=DB.targets[p];const pA=(m.gmv/tgt*100).toFixed(1);
       const cls=parseFloat(pA)>=80?'cb-up':parseFloat(pA)>=50?'cb-w':'cb-dn';
-      const dpct=m.gmv>0?(m.disc/m.gmv*100):0;
-      html+=`<tr><td>${platTag(p)}</td><td><b>${fC(m.gmv)}</b></td><td>${fN(m.units)}</td><td>${_discCell(m.disc,m.disc_raw,m.disc_nlc)}</td><td><b style="color:${dpct>30?'#BD2635':'#1E7A46'}">${dpct.toFixed(1)}%</b></td><td>${fC(tgt)}</td><td><span class="${cls}">${pA}%</span></td></tr>`;
+      // Net discount = discount with NLC-SKU spend removed. For FK/Amazon the BF is computed
+      // only on non-NLC (disc_nlc already carries the excluded BF); for consumer/brand platforms
+      // we subtract the NLC SKUs' own reported discount. Avg % divides by total GMV; Net % divides
+      // by GMV minus NLC-SKU GMV. Net % shown only for platforms that carry NLC SKUs.
+      const nlc=_nlcMTD(p);
+      const nlcDiscTrue = (m.disc_nlc>0) ? m.disc_nlc : nlc.disc;
+      const netDisc = Math.max(0, m.disc_raw - nlcDiscTrue);
+      const baseGmv = Math.max(1, m.gmv - (nlc.has ? nlc.gmv : 0));
+      const avgPct = m.gmv>0 ? (netDisc/m.gmv*100) : 0;
+      const netPct = netDisc/baseGmv*100;
+      html+=`<tr><td>${platTag(p)}</td><td><b>${fC(m.gmv)}</b></td><td>${fN(m.units)}</td><td>${fC(netDisc)}</td><td><b style="color:${avgPct>30?'#BD2635':'#1E7A46'}">${avgPct.toFixed(1)}%</b></td><td>${nlc.has?'<b style="color:#22304A">'+netPct.toFixed(1)+'%</b>':'<span style="color:var(--muted)">—</span>'}</td><td>${fC(tgt)}</td><td><span class="${cls}">${pA}%</span></td></tr>`;
     });
     html+='</tbody></table>';
     mtdEl.innerHTML=html;
