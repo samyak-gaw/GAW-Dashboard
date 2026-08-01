@@ -1456,15 +1456,18 @@ function daysInMonth(monthKey){
 // ── Flipkart dynamic BF (Brand-Funded) discount ──────────────────────────────
 // Flipkart gives no daily discount report (only a month-end debit note), but the BF rate
 // is a deterministic day-of-week rule. So we DERIVE daily BF spend = Flipkart GMV × rate.
-// Weekday (Mon–Thu) = 30%, Weekend (Fri–Sun) = 32%. Editable here if the policy changes.
+// Weekday (Mon–Fri) = 30%, Weekend (Sat–Sun) = 35%. Editable here if the policy changes.
 // FK-funded portion is excluded (not our cost). Effective from June 2026 onward only.
 const FK_BF_DISC = { weekday: 0.30, weekend: 0.35, effectiveFrom: 'Jun-2026' };
-// Per-month rate overrides. Jul-2026 = flat 32% all days. Unmapped months fall back to the split above.
-// Per Pashmi's Flipkart construct (Jul 2026): BF is 35% Sat/Sun, 30% all other days.
+// Per-month rate overrides. Per Pashmi's Flipkart construct: BF is 35% Sat/Sun, 30% all other days.
+// Aug-2026 carries the same construct as Jul-2026. Unmapped months fall back to FK_BF_DISC (also 30/35).
 // GAW funds BF only; Flipkart's own FK% top-up is excluded from GAW discount.
-const FK_BF_RATES = { 'Jul-2026': { weekday: 0.30, weekend: 0.35 } };
+const FK_BF_RATES = {
+  'Jul-2026': { weekday: 0.30, weekend: 0.35 },
+  'Aug-2026': { weekday: 0.30, weekend: 0.35 }
+};
 function _fkBfRate(monthKey){ return FK_BF_RATES[monthKey] || { weekday: FK_BF_DISC.weekday, weekend: FK_BF_DISC.weekend }; }
-// Returns true if (monthKey, day) falls on Fri/Sat/Sun.
+// Returns true if (monthKey, day) falls on Sat/Sun (Flipkart BF construct excludes Fri).
 function _fkIsWeekend(monthKey, day){
   const m = MONTH_NUM_FROM_KEY(monthKey), y = YEAR_FROM_KEY(monthKey);
   const dow = new Date(y, m-1, day).getDay(); // 0=Sun..6=Sat
