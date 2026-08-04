@@ -5349,11 +5349,12 @@ function procAmazon(rows){
 
 // ══════════════════════════════════════════════
 // FLIPKART PARSER
-// disc = 32% of GMV (fixed rate)
+// disc = BF construct: 30% weekday / 35% weekend (Sat–Sun), gated from effectiveFrom;
+//        NLC SKUs excluded at build time. Single-sourced via _fkBfDisc / _fkDiscActive.
 // City data available
 // ══════════════════════════════════════════════
 function procFlipkart(rows){
-  const DISC_RATE=0.32;
+  const ACTIVE=getActiveMonth();
   const DISCONTINUED_FK=new Set(['ICEH2GC8ZZGUP5DK','ICEH2GC8AFADSBK4']);
   const byD={};
   const sample=rows[0]||{};const keys=Object.keys(sample);
@@ -5375,7 +5376,9 @@ function procFlipkart(rows){
     const city=nCity(String(colVal(r,cityCol,'city','City','CITY','delivery_city','ship_city')||''));
     const units=colNum(r,unitCol,'units','units_sold','Qty','quantity','Quantity')||0;
     const gmv=colNum(r,gmvCol,'mrp_gmv','mrp gmv','MRP GMV','GMV','Gross Merchandise Value','mrp','selling_price','revenue','Revenue')||0;
-    const disc=Math.round(gmv*DISC_RATE*100)/100;
+    // BF disc: 30% weekday / 35% weekend via _fkBfDisc, gated by _fkDiscActive.
+    // Build-time (_buildMonthData) re-derives this excluding NLC SKUs; this is the pre-build value.
+    const disc = _fkDiscActive(ACTIVE) ? _fkBfDisc(ACTIVE, day, gmv) : 0;
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{},citysku:{}};
     byD[day].gmv+=gmv;byD[day].units+=units;byD[day].disc+=disc;
     if(!byD[day].city[city])byD[day].city[city]={gmv:0,units:0,disc:0};
@@ -5397,11 +5400,11 @@ function procFlipkart(rows){
 
 // ══════════════════════════════════════════════
 // BIGBASKET PARSER
-// disc = 30% of GMV (fixed rate)
+// disc = 25% of GMV (fixed rate)
 // City data available; date col is date_range (datetime object from SheetJS)
 // ══════════════════════════════════════════════
 function procBigBasket(rows){
-  const DISC_RATE=0.30;
+  const DISC_RATE=0.25;
   const byD={};
   const sample=rows[0]||{};const keys=Object.keys(sample);
   const dateCol=keys.find(k=>/date.?range/i.test(k)||/^date$/i.test(k))||'date_range';
