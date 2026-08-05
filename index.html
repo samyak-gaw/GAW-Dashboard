@@ -1487,6 +1487,11 @@ function _fkDiscActive(monthKey){
   const me = MONTH_NUM_FROM_KEY(em) + YEAR_FROM_KEY(em)*12;
   return mk >= me;
 }
+// BigBasket fixed-rate discount, per month. Aug-2026 renegotiated to 25%; earlier months 30%.
+// Add a month key here when the rate changes again; historical months keep their own rate.
+const BB_DISC_RATES = { 'Aug-2026': 0.25 };
+const BB_DISC_DEFAULT = 0.30;
+function _bbRate(monthKey){ const r = BB_DISC_RATES[monthKey]; return (r === undefined ? BB_DISC_DEFAULT : r); }
 
 /* NLC / Realized Revenue ---------------------------------------------------- */
 // 13 confirmed NLCs. FK/Zepto/IM keyed by canonical SKU NAME; Amazon by ASIN.
@@ -2083,6 +2088,18 @@ function _buildMonthData(monthKey) {
           d.disc_raw = _fkBfDisc(monthKey, d.day, d.gmv);
           d.disc     = _fkBfDisc(monthKey, d.day, Math.max(0, d.gmv - nlcGmv));
           d.disc_nlc = Math.max(0, d.disc_raw - d.disc);
+        }
+      });
+    }
+
+    if (p === 'BigBasket') {
+      // Re-derive BigBasket disc from the per-month fixed rate so a rate change applies to
+      // stored days without re-upload. Manual disc_overrides (if any) always win.
+      const hasOverride = (d) => (deltaP.disc_overrides || {})[d] !== undefined;
+      const bbRate = _bbRate(monthKey);
+      Object.values(dayMap).forEach(d => {
+        if (d && d.day && d.gmv > 0 && !hasOverride(d.day) && !hasOverride(String(d.day))) {
+          d.disc = Math.round(d.gmv * bbRate * 100) / 100;
         }
       });
     }
@@ -5400,11 +5417,14 @@ function procFlipkart(rows){
 
 // ══════════════════════════════════════════════
 // BIGBASKET PARSER
-// disc = 25% of GMV (fixed rate)
+// disc = fixed rate per month via _bbRate (Aug-2026 = 25%, earlier = 30%).
+// Build-time (_buildMonthData) re-derives disc from _bbRate, so a rate change applies
+// to already-stored days on render without re-upload; historical months keep their rate.
 // City data available; date col is date_range (datetime object from SheetJS)
 // ══════════════════════════════════════════════
 function procBigBasket(rows){
-  const DISC_RATE=0.25;
+  const ACTIVE=getActiveMonth();
+  const DISC_RATE=_bbRate(ACTIVE);
   const byD={};
   const sample=rows[0]||{};const keys=Object.keys(sample);
   const dateCol=keys.find(k=>/date.?range/i.test(k)||/^date$/i.test(k))||'date_range';
