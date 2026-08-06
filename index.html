@@ -1808,18 +1808,17 @@ function nCity(c){
   if(PRIO.includes(s))return s;
   const proper=s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
   if(PRIO.includes(proper))return proper;
-  // 4. Fuzzy: check if any metro keyword appears as a substring of the city string
-  // (handles "Delhi NCR Zone", "Bangalore North", "Greater Hyderabad" etc.)
+  // 4. Whole-word / phrase match against metro keywords.
+  // Naive substring (sl.includes(kw)) mis-routed cities whose name merely CONTAINS a
+  // keyword as a fragment — e.g. "pray[agra]j"→Delhi NCR, "kol[hapur]"→Delhi NCR,
+  // "[sol]apur", "[gun]tur". Fix: single-word keywords must match a whole token;
+  // multi-word keywords ("electronic city", "lb nagar", "navi mumbai") keep phrase match.
+  const words=sl.split(/[^a-z0-9]+/).filter(Boolean);
+  const wordSet=new Set(words);
   for(const [metro,kws] of Object.entries(METRO_KEYWORDS)){
     for(const kw of kws){
-      if(sl.includes(kw)||kw.includes(sl))return metro;
-    }
-  }
-  // 5. Partial word match — split city into words, check each word against keywords
-  const words=sl.split(/[\s,\-\/]+/).filter(w=>w.length>3);
-  for(const w of words){
-    for(const [metro,kws] of Object.entries(METRO_KEYWORDS)){
-      if(kws.some(kw=>kw.startsWith(w)||w.startsWith(kw)))return metro;
+      if(kw.indexOf(' ')>=0){ if(sl.includes(kw)) return metro; }   // phrase → substring ok
+      else if(wordSet.has(kw)) return metro;                         // single word → whole-token only
     }
   }
   return'Rest';
