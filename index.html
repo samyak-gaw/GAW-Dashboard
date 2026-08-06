@@ -3278,14 +3278,33 @@ function _ovHeroMetrics(){
     trend.push({day:d,units:any?u:null});
   }
 
-  // biggest availability-driven revenue leaks
+  // biggest availability-driven revenue leaks.
+  // Loss is COMPUTED for every platform (no IM reported-snapshot): mtd_gmv × (100−OSA)/OSA with
+  // OSA floored at OSA_LOSS_FLOOR (=40 ⇒ loss capped at 1.5× GMV). Uses the same MTD window as
+  // the day toggle (SELECTED_DAY), so the panel moves as you pick a day — nothing frozen.
   let leaks=[];
   try{
     const agg=_availComputeMTD();
+    const _lim=(SELECTED_DAY!==null?SELECTED_DAY:latestDay())||getMonthDays();
     Object.keys(agg).forEach(p=>{
+      const aprSku=(DB.april[p]&&DB.april[p].sku)||[];
       Object.keys(agg[p].skus||{}).forEach(sk=>{
         const k=agg[p].skus[sk];
-        if((k.lost_gmv||0)>0)leaks.push({plat:p,sku:_skuLabel(sk,p),lost:k.lost_gmv,osa:k.wt_osa_ls,doi:k.doi});
+        const osa=k.wt_osa_ls, g=k.mtd_gmv||0;
+        let lost=0;
+        if(osa!=null&&osa>0&&osa<100&&g>0){const oe=Math.max(osa,OSA_LOSS_FLOOR);lost=g*(100-oe)/oe;}
+        if(lost<=0)return;
+        // City breakdown (worst OSA first) for the drilldown
+        const cityRows=Object.keys(k.by_city||{}).map(c=>({city:c,osa:k.by_city[c].wt_osa_ls,soh:k.by_city[c].soh}))
+          .filter(r=>r.osa!=null).sort((a,b)=>a.osa-b.osa);
+        // Daily OSA + lost-GMV trend (≤ selected day) for the drilldown
+        const dg={}; aprSku.forEach(r=>{if(String(r.sku_code).trim()===sk&&r.day<=_lim)dg[r.day]=(dg[r.day]||0)+(r.gmv||0);});
+        const dailyRows=Object.keys(k.daily||{}).map(Number).filter(d=>d<=_lim).sort((a,b)=>a-b).map(d=>{
+          const rec=k.daily[d]||{}; const o=rec.wt_osa_ls; const dgv=dg[d]||0;
+          let dl=0; if(o!=null&&o>0&&o<100&&dgv>0){const oe=Math.max(o,OSA_LOSS_FLOOR);dl=dgv*(100-oe)/oe;}
+          return {day:d,osa:o,gmv:dgv,lost:dl};
+        }).filter(r=>r.osa!=null);
+        leaks.push({plat:p,sku:_skuLabel(sk,p),sku_code:sk,lost,osa,doi:k.doi,cityRows,dailyRows});
       });
     });
     leaks.sort((a,b)=>b.lost-a.lost); leaks=leaks.slice(0,5);
@@ -3338,10 +3357,18 @@ function _ovRenderHero(h){
     return;
   }
   const maxLost=h.leaks[0].lost||1;
-  el.innerHTML=h.leaks.map(r=>{
-    const sev=r.osa==null?'#8B97AD':(r.osa<70?'#BD2635':(r.osa<90?'#EB8B2C':'#1E7A46'));
+  window._ovLeaks=h.leaks; // referenced by _ovLeakToggle
+  const _oc=o=>o==null?'#8B97AD':(o<70?'#BD2635':(o<90?'#EB8B2C':'#1E7A46'));
+  el.innerHTML=h.leaks.map((r,i)=>{
+    const sev=_oc(r.osa);
     const w=Math.max(6,Math.round(r.lost/maxLost*100));
-    return `<div class="ovleak">
+    const cityHtml=(r.cityRows&&r.cityRows.length)
+      ? r.cityRows.slice(0,6).map(c=>`<tr><td style="padding:2px 6px">${c.city}</td><td style="padding:2px 6px;text-align:right;color:${_oc(c.osa)};font-weight:600">${c.osa.toFixed(0)}%</td><td style="padding:2px 6px;text-align:right;color:#6E7C95">${fN(c.soh||0)}u</td></tr>`).join('')
+      : '<tr><td colspan="3" style="padding:4px 6px;color:#8B97AD">No city breakdown</td></tr>';
+    const dayHtml=(r.dailyRows&&r.dailyRows.length)
+      ? r.dailyRows.map(d=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 6px;font-size:11px"><span style="color:#6E7C95">D${d.day}</span><span style="color:${_oc(d.osa)};font-weight:600">${d.osa.toFixed(0)}%</span><span style="color:#22304A">${d.lost>0?fC(d.lost):'—'}</span></div>`).join('')
+      : '<div style="padding:4px 6px;color:#8B97AD;font-size:11px">No daily data</div>';
+    return `<div class="ovleak" onclick="_ovLeakToggle(${i})" style="cursor:pointer">
       <span class="pdot" style="background:${PC[r.plat]||'#8B97AD'}"></span>
       <div style="flex:1;min-width:0">
         <div class="ovleak-name" title="${r.sku}">${r.sku}</div>
@@ -3349,8 +3376,32 @@ function _ovRenderHero(h){
       </div>
       <div class="ovleak-trk"><i style="width:${w}%;background:${sev}"></i></div>
       <div class="ovleak-val">${fC(r.lost)}</div>
+      <span id="ovlk-caret-${i}" style="margin-left:6px;color:#8B97AD;font-size:10px;display:inline-block;transition:transform .15s">▸</span>
+    </div>
+    <div id="ovlk-detail-${i}" style="display:none;background:#F7F9FC;border-radius:8px;margin:0 0 8px;padding:8px 10px">
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:150px">
+          <div style="font-size:10px;font-weight:700;color:#6E7C95;letter-spacing:.04em;margin-bottom:3px">WHERE IT'S OUT OF STOCK</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="color:#8B97AD"><th style="text-align:left;padding:2px 6px;font-weight:600">City</th><th style="text-align:right;padding:2px 6px;font-weight:600">OSA</th><th style="text-align:right;padding:2px 6px;font-weight:600">SOH</th></tr></thead><tbody>${cityHtml}</tbody></table>
+        </div>
+        <div style="flex:1;min-width:150px">
+          <div style="font-size:10px;font-weight:700;color:#6E7C95;letter-spacing:.04em;margin-bottom:3px">DAILY OSA · LOST GMV</div>
+          ${dayHtml}
+        </div>
+      </div>
     </div>`;
   }).join('');
+}
+// Accordion toggle for the "Where GMV is leaking" drilldown (city + daily per SKU).
+function _ovLeakToggle(i){
+  const d=document.getElementById('ovlk-detail-'+i);
+  if(!d)return;
+  const open=d.style.display!=='none';
+  (window._ovLeaks||[]).forEach((_,j)=>{
+    const dj=document.getElementById('ovlk-detail-'+j), cj=document.getElementById('ovlk-caret-'+j);
+    if(dj)dj.style.display='none'; if(cj)cj.style.transform='';
+  });
+  if(!open){ d.style.display=''; const c=document.getElementById('ovlk-caret-'+i); if(c)c.style.transform='rotate(90deg)'; }
 }
 
 function renderOverview(){
