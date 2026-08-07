@@ -1493,6 +1493,30 @@ const BB_DISC_RATES = { 'Aug-2026': 0.25 };
 const BB_DISC_DEFAULT = 0.30;
 function _bbRate(monthKey){ const r = BB_DISC_RATES[monthKey]; return (r === undefined ? BB_DISC_DEFAULT : r); }
 
+// Amazon brand-funded discount is a fixed rate synthesised at ingest (no separate file).
+// Crazy-deal SKUs run at a DEEPER BF rate from a start date; everyone else stays at default.
+// To adjust: change the rate, the window (from month + fromDay), or the ASIN set here.
+const AMZ_DEFAULT_DISC = 0.33;
+const AMZ_CRAZY_DEAL = {
+  rate: 0.45,
+  from: 'Aug-2026',   // month the deal starts
+  fromDay: 8,         // inclusive day within `from` month; earlier days keep the default rate
+  asins: new Set([    // per 07/23 discussion — same crazy-deal construct
+    'B0F1Y3Z7XP',     // Chocolate Brownie Ice Cream Cone
+    'B0F1Y4LBLT',     // Brownie Crunch Ice Cream Bar
+    'B0F1Y6DY4J'      // Choco Hazelnut Crunch Ice Cream Bar
+  ])
+};
+function _amzDiscRate(asin, monthKey, day){
+  const c = AMZ_CRAZY_DEAL;
+  if(asin && c.asins.has(String(asin).trim().toUpperCase())){
+    const ord  = MONTH_NUM_FROM_KEY(monthKey) + YEAR_FROM_KEY(monthKey)*12;
+    const from = MONTH_NUM_FROM_KEY(c.from)   + YEAR_FROM_KEY(c.from)*12;
+    if(ord > from || (ord === from && Number(day) >= c.fromDay)) return c.rate;
+  }
+  return AMZ_DEFAULT_DISC;
+}
+
 /* NLC / Realized Revenue ---------------------------------------------------- */
 // 13 confirmed NLCs. FK/Zepto/IM keyed by canonical SKU NAME; Amazon by ASIN.
 const NLC_MAP = {
@@ -5380,11 +5404,11 @@ function procIM(){
 
 // ══════════════════════════════════════════════
 // AMAZON PARSER
-// disc = 33% of GMV (fixed rate, no separate file)
+// disc = _amzDiscRate() of GMV (default 33%; crazy-deal ASINs 45% from Aug-8-2026)
 // No city data in Amazon reports
 // ══════════════════════════════════════════════
 function procAmazon(rows){
-  const DISC_RATE=0.33;
+  const _amzMonth=getActiveMonth();
   const byD={};
   const sample=rows[0]||{};const keys=Object.keys(sample);
   const dateCol=keys.find(k=>/^date$/i.test(k)||/order.?date/i.test(k))||'Date';
@@ -5397,7 +5421,7 @@ function procAmazon(rows){
     const asin=String(colVal(r,asinCol,'ASIN','asin','product_id')||'').trim();
     const units=colNum(r,unitCol,'Shipped Units','units_sold','qty')||0;
     const gmv=colNum(r,gmvCol,'MRP GMV','mrp gmv','GMV','Revenue')||0;
-    const disc=Math.round(gmv*DISC_RATE*100)/100;
+    const disc=Math.round(gmv*_amzDiscRate(asin,_amzMonth,day)*100)/100;
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{}};
     byD[day].gmv+=gmv;byD[day].units+=units;byD[day].disc+=disc;
     // Amazon has no city — aggregate under a single group
