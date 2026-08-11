@@ -4634,7 +4634,14 @@ function renderAll(){
   }
 
   const zpb=document.getElementById('zpPendingBanner');
-  if(zpb)zpb.style.display=DB.zepto_disc_pending?'flex':'none';
+  if(zpb){
+    // Show the "disc not uploaded" banner only when the ACTIVE month genuinely has no
+    // Zepto discount yet. The global zepto_disc_pending flag drifts back to true (SEED
+    // default) on reload/merge, so we suppress the banner whenever real disc data exists.
+    const _zDaily = DB.months?.[getActiveMonth()]?.['Zepto']?.daily || [];
+    const _zHasDisc = _zDaily.some(d => (d && d.disc || 0) > 0);
+    zpb.style.display = (DB.zepto_disc_pending && !_zHasDisc) ? 'flex' : 'none';
+  }
 
   // Archived-view UX: show banner + disable file inputs in upload tab when viewing a non-active month
   const archBan = document.getElementById('archivedViewBanner');
@@ -5186,8 +5193,10 @@ function procZeptoDisc(rows){
 
   // PromoClaimAmt is the ACTUAL discount claimed for that SKU+City+window.
   // Each row's amount is already the real expenditure — we must NOT re-weight by GMV.
-  // Correct approach: sum all row amounts, then split equally across the window days.
-  // (GMV-weighting inflates weekends and mis-attributes actuals.)
+  // Correct approach: sum each window's amount, then split across the window days
+  // in proportion to ACTUAL DAILY UNITS SOLD (unit-weighting attributes discount where
+  // volume actually moved, without the GMV/AOV distortion that over-weights high-ticket days).
+  // Fallback = equal split when a window has no unit data. MTD total is unchanged either way.
 
   // Step 1: Group total disc by promo window [startDay, endDay]
   const windowDisc = {}; // key: "startDay-endDay" → total disc
@@ -5204,21 +5213,22 @@ function procZeptoDisc(rows){
     windowDisc[key].total += disc;
   });
 
-  // Helper: get Zepto GMV for a given day from delta or seed (active month only)
+  // Helper: get Zepto UNITS for a given day from delta or seed (active month only)
   const isApril = (ACTIVE === 'Apr-2026');
-  function getZeptoGmv(day) {
+  function getZeptoUnits(day) {
     const deltaDay = (slot.daily || {})[day];
-    if (deltaDay && deltaDay.gmv > 0) return deltaDay.gmv;
+    if (deltaDay && deltaDay.units > 0) return deltaDay.units;
     if (isApril) {
       const seedDay = (SEED.april['Zepto']?.daily || []).find(d => d.day === day);
-      if (seedDay && seedDay.gmv > 0) return seedDay.gmv;
+      if (seedDay && seedDay.units > 0) return seedDay.units;
     }
     const dbDay = (DB.months?.[ACTIVE]?.['Zepto']?.daily || DB.april?.['Zepto']?.daily || []).find(d => d.day === day);
-    if (dbDay && dbDay.gmv > 0) return dbDay.gmv;
+    if (dbDay && dbDay.units > 0) return dbDay.units;
     return 0;
   }
 
-  // Step 2: Distribute each window's total by GMV-weightage across its days
+  // Step 2: Distribute each window's total by ACTUAL DAILY UNITS across its days.
+  // Falls back to an equal split only when the window has no unit data at all.
   const discToAdd = {};
   Object.values(windowDisc).forEach(({ startDay, endDay, total }) => {
     const windowDays = [];
@@ -5227,12 +5237,12 @@ function procZeptoDisc(rows){
     }
     if (!windowDays.length) return;
 
-    const gmvByDay = windowDays.map(d => ({ day: d, gmv: getZeptoGmv(d) }));
-    const totalWindowGmv = gmvByDay.reduce((s, x) => s + x.gmv, 0);
+    const unitsByDay = windowDays.map(d => ({ day: d, units: getZeptoUnits(d) }));
+    const totalWindowUnits = unitsByDay.reduce((s, x) => s + x.units, 0);
 
-    if (totalWindowGmv > 0) {
-      gmvByDay.forEach(({ day, gmv }) => {
-        discToAdd[day] = (discToAdd[day] || 0) + (total * gmv / totalWindowGmv);
+    if (totalWindowUnits > 0) {
+      unitsByDay.forEach(({ day, units }) => {
+        discToAdd[day] = (discToAdd[day] || 0) + (total * units / totalWindowUnits);
       });
     } else {
       const perDay = total / windowDays.length;
