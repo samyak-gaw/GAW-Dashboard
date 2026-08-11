@@ -700,7 +700,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div class="card" style="margin-top:18px;margin-bottom:20px">
     <h3>Full SKU Table — <span id="skuTableLabel">Today · All Platforms</span></h3>
     <div class="scroll-table"><table class="tbl">
-      <thead><tr><th>#</th><th>SKU</th><th>Category</th><th>Platform(s)</th><th>GMV</th><th>Units</th><th id="skuDrrColHead">DRR /day</th><th>Discount</th><th>Disc%</th><th title="DS listing 7d avg vs prior 7d · avail-GMV-weighted across platforms">DS WoW</th><th id="skuWowColHead" style="display:none">WoW</th><th>Share</th></tr></thead>
+      <thead><tr><th>#</th><th>SKU</th><th>Category</th><th>Platform(s)</th><th>GMV</th><th>Units</th><th id="skuDrrColHead">DRR /day</th><th>Discount</th><th>Disc%</th><th title="OSA (listed-store availability) 7d avg vs prior 7d · avail-GMV-weighted across platforms">OSA WoW</th><th title="GMV MoM — current period vs same day-range in prior month (MTD vs LM-MTD; single day vs same day LM)">MoM</th><th id="skuWowColHead" style="display:none">WoW</th><th>Share</th></tr></thead>
       <tbody id="skuFullBody"></tbody>
     </table></div>
 </div>
@@ -3962,6 +3962,38 @@ function renderSkuAnalysis(){
     }
   }
 
+  // GMV MoM comparison map — same day-of-month range in the PRIOR (frozen) month.
+  // Uses the exact current-window day list, shifted to the prior month by day number
+  // (NOT by 7 like WoW). So: MTD view → days 1..td vs prior-month days 1..td;
+  // single-day view → day td vs prior-month day td; last7/last14/custom → same day set.
+  // Days with no counterpart in a shorter prior month are simply skipped.
+  const momMap={};
+  {
+    let curDaysM;
+    if(dayRange){curDaysM=dayRange.slice();}
+    else{const s=new Set();plats.forEach(p=>(DB.april[p].sku||[]).forEach(r=>{if(r.day>=1&&r.day<=td)s.add(r.day);}));curDaysM=[...s];}
+    const _pKeyM=priorMonthKey(getViewingMonth());
+    const _pDataM=(typeof priorMonthBuilt==='function')?priorMonthBuilt():_buildMonthData(_pKeyM);
+    const _pDaysM=daysInMonth(_pKeyM);
+    const _pHasM=plats.some(p=>(_pDataM[p]&&_pDataM[p].sku&&_pDataM[p].sku.length>0));
+    if(_pHasM){
+      plats.forEach(p=>{
+        const priorRows=(_pDataM[p]&&_pDataM[p].sku)?_pDataM[p].sku:[];
+        curDaysM.forEach(d=>{
+          if(d<1||d>_pDaysM)return; // no matching day-of-month in prior month
+          priorRows.filter(r=>r.day===d).forEach(r=>{
+            const info=skuLookup(p,r.sku_code);
+            const cat=normCat(info.cat)||'Unknown';
+            if(catFilter!=='all'&&cat!==catFilter)return;
+            const key=info.name||r.sku_code;
+            if(!momMap[key])momMap[key]={gmv:0};
+            momMap[key].gmv+=r.gmv;
+          });
+        });
+      });
+    }
+  }
+
   const skus=Object.values(skuMap).sort((a,b)=>b.gmv-a.gmv);
   const totalGmv=skus.reduce((s,r)=>s+r.gmv,0);
   const top15=skus.slice(0,15);
@@ -4013,6 +4045,9 @@ function renderSkuAnalysis(){
     const wowGmv=wowMap[r.name]?.gmv;
     const wowPctVal=wowGmv&&wowGmv>0?parseFloat(pct(r.gmv,wowGmv)):null;
     const wowCell=showWow?`<td style="display:${showWow?'':'none'}">${wowPctVal!==null?badgeDelta(wowPctVal):'<span class="cb-na">—</span>'}</td>`:'';
+    const momGmv=momMap[r.name]?.gmv;
+    const momPctVal=momGmv&&momGmv>0?parseFloat(pct(r.gmv,momGmv)):null;
+    const momCell=`<td title="GMV MoM — vs same day-range in prior month">${momPctVal!==null?badgeDelta(momPctVal):'<span class="cb-na">—</span>'}</td>`;
     return`<tr>
       <td style="color:var(--muted);font-weight:700">${i+1}</td>
       <td style="font-weight:600">${r.name}</td>
@@ -4023,11 +4058,12 @@ function renderSkuAnalysis(){
       <td>${isSingleDay?fN(r.units):fN(Math.round(drrVal))}</td>
       <td>${fC(r.disc)}</td>
       <td><span class="${dpCls(dp)}">${dp}%</span></td>
-      <td title="DS listing 7d vs prior 7d, avail-GMV-weighted">${_osaWoWBadge(_dsWoWForNameAgg(plats,r.name))}</td>
+      <td title="OSA 7d vs prior 7d, avail-GMV-weighted">${_osaWoWBadge(_osaWoWForNameAgg(plats,r.name))}</td>
+      ${momCell}
       ${wowCell}
       <td><span class="sbar-bg"><span class="sbar-fill" style="width:${bW}%;background:${CAT_COLORS[r.cat]||'#103E70'}"></span></span> ${share}%</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="12" style="color:var(--muted);padding:20px;text-align:center">No SKU data for this filter combination</td></tr>';
+  }).join('')||'<tr><td colspan="13" style="color:var(--muted);padding:20px;text-align:center">No SKU data for this filter combination</td></tr>';
 }
 
 // ══════════════════════════════════════════════
@@ -6188,6 +6224,22 @@ function _dsWoWForNameAgg(plats,name){
   });
   return w>0?{delta:wS/w,nP:anyN}:null;
 }
+// OSA WoW for a canonical SKU name across platforms — availability-GMV-weighted delta.
+// Identical to _dsWoWForNameAgg but reads OSA (_osaWoWForSku) instead of DS listing.
+function _osaWoWForNameAgg(plats,name){
+  let wS=0,w=0,anyN=0;
+  (plats||[]).forEach(p=>{
+    const pd=(window._availMTD||{})[p]; if(!pd||!pd.skus)return;
+    Object.keys(pd.skus).forEach(code=>{
+      const info=(typeof skuLookup==='function')?skuLookup(p,code):{name:code};
+      if((info.name||code)!==name)return;
+      const ww=_osaWoWForSku(p,code);
+      const g=pd.skus[code].mtd_gmv||0;
+      if(ww&&ww.delta!=null&&g>0){ wS+=ww.delta*g; w+=g; anyN++; }
+    });
+  });
+  return w>0?{delta:wS/w,nP:anyN}:null;
+}
 // Compact WoW badge html (pp delta)
 function _osaWoWBadge(w){
   if(!w||w.delta==null)return '<span style="color:#8B97AD;font-size:10px">\u2014</span>';
@@ -7642,8 +7694,8 @@ function _availRenderSohCityTable(){
   const info=skuLookup(plat,sku);
   const drr=k.drr||0;
   const openPoTotal=_sohOpenPO(plat,info.name,null);
-  // City-level DRR proportion: split platform DRR by each city's SOH share as a proxy
-  // (we have city SOH but not city-level sales velocity, so approximate days-to-stockout per city).
+  // City SOH is facility-granular; city-level sales velocity is not in the feed (only metro).
+  // So per-city days-to-stockout is taken from the metro real-DRR DTS (see cityRows below).
   // Use the SOH file's own by_city (raw numbers) — NOT the OSA-derived cityDetail (objects).
   const byCity=_sohGranularByCity(plat,k); // granular cities via WH mapping
   // Reconcile with the SKU-level Incoming PO: include cities that have an open PO even if they hold no current SOH.
@@ -7667,12 +7719,16 @@ function _availRenderSohCityTable(){
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DRR</div><div style="font-size:16px;font-weight:800">${Math.round(drr)}u/d</div></div>
   </div>`;
 
-  // City table — days-to-stockout per city uses city DRR proxy (platform DRR × city SOH share)
+  // City table — days-to-stockout per city = its METRO's real-DRR DTS. Facilities inherit
+  // their metro's stockout timing (no independent per-facility demand exists), so each row
+  // reconciles with the Reorder-by-Metro table below. The prior proxy (platformDRR × SOH
+  // share) collapsed algebraically to totalSOH/DRR for every city — an identical, useless number.
   const totalSoh=k.soh||0;
+  const _mreoDts=(function(){try{const r=_sohCityReorder(plat,info.name,byCity);const m={};if(r&&r.rows)r.rows.forEach(x=>{m[x.metro]=x.dts;});return m;}catch(e){return {};}})();
   const cityRows=cities.map(c=>{
     const csoh=byCity[c]||0;
-    const cityDrr=totalSoh>0?drr*(csoh/totalSoh):0; // proxy
-    const cdts=_sohDaysToStockout(csoh,cityDrr);
+    const _cm=(typeof nCity==='function')?nCity(c):c;
+    const cdts=(_cm in _mreoDts)?_mreoDts[_cm]:null; // metro real-DRR DTS; null = no metro velocity
     const cpo=_sohOpenPO(plat,info.name,c);
     const cf=_frForSkuCity(plat,info.name,c); const cfCol=_frColor(cf&&cf.fr);
     const _incomingOnly=(csoh<=0&&cpo>0);
@@ -7680,7 +7736,7 @@ function _availRenderSohCityTable(){
       <td style="padding:8px 10px;font-size:12px"><b>${c}</b>${_incomingOnly?' <span style="font-size:9px;color:#1E7A46;font-weight:700;background:#E6F2EA;padding:1px 5px;border-radius:8px">incoming</span>':''}</td>
       <td style="padding:8px 10px;font-size:12px;font-weight:700">${Math.round(csoh).toLocaleString('en-IN')}</td>
       <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${totalSoh>0?((csoh/totalSoh)*100).toFixed(0):0}%</td>
-      <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(cdts)};font-weight:700">${csoh<=0?'\u2014':_sohFmtDTS(cdts)}</td>
+      <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(cdts)};font-weight:700">${(csoh<=0||cdts==null)?'\u2014':_sohFmtDTS(cdts)}</td>
       <td style="padding:8px 10px;font-size:12px">${_sohPoCell(cpo)}</td>
       <td style="padding:8px 10px;font-size:12px;color:${cfCol};font-weight:700" title="True per-city fill rate · issued ÷ indent · 10d delivered">${cf?_frFmt(cf.fr):'\u2014'}</td>
     </tr>`;
@@ -7710,7 +7766,7 @@ function _availRenderSohCityTable(){
     facTable=`<div style="font-size:11px;color:var(--muted);margin-top:14px">Facility-level breakdown not provided by ${plat} (city-level only).</div>`;
   }
 
-  const footnote=`<div style="font-size:10px;color:var(--muted);margin-top:10px">* Per-city days-to-stockout uses platform sell-rate apportioned by city stock share (city-level sales velocity isn&rsquo;t in the feed). Treat as directional.</div>`;
+  const footnote=`<div style="font-size:10px;color:var(--muted);margin-top:10px">* Days-to-stockout is shown at metro granularity: each facility inherits its metro&rsquo;s real-DRR DTS (SOH is facility-level, but sales velocity is captured only per metro). Reconciles with the Reorder-by-Metro table below.</div>`;
   const _metroReorder=(function(){try{return _sohCityReorderHtml(plat,info.name,byCity);}catch(e){return '';}})();
   document.getElementById('availSohCityTable').innerHTML=summary+cityTable+_metroReorder+facTable+footnote;
 }
