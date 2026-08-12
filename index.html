@@ -1818,11 +1818,15 @@ const METRO_KEYWORDS={
   'Kolkata':['kolkata','calcutta','howrah','alipore','hooghly','barasat','serampore','durgapur','asansol','medinipur','bardhaman','burdwan','siliguri'],
   'Ahmedabad':['ahmedabad','adalaj','gandhinagar','ranip','shela','narol','vatva','bopal','thaltej','sarkhej'],
   'Kochi':['kochi','cochin','ernakulam','thrissur','aluva','edapally'],
+  'Goa':['goa','panaji','panjim','margao','mapusa','vasco','ponda'],
 };
 function nCity(c){
   const s=String(c||'').trim();
   if(!s)return'Rest';
-  const sl=s.toLowerCase().replace(/[^a-z0-9 ().]/g,'').trim();
+  const sl=s.toLowerCase().replace(/[-_]/g,' ').replace(/([a-z])(\d)/g,'$1 $2').replace(/[^a-z0-9 ().]/g,'').trim();
+  // Amazon SOH sentinel — not a real delivery city. Must stay distinct from 'Rest'
+  // (a legitimate Tier-2/3 bucket) so it never gets silently summed into it.
+  if(sl==='all india')return'All India';
   // 1. DNCR set — fast check
   if(DNCR.has(sl))return'Delhi NCR';
   // 2. Exact alias lookup
@@ -1865,10 +1869,14 @@ function _cleanCity(c){
 }
 // Unified granular city for SOH parsers: WH mapping (facility/raw) -> clean real city -> nCity fallback.
 function _sohCity(raw,fac){
-  const w=fac?whCity(fac):null; if(w)return w;
   const w2=raw?whCity(raw):null; if(w2)return w2;
   const s=String(raw||'').trim();
-  if(s && !/^(rest|others?|unknown|all\s*india|n\/?a)$/i.test(s)) return _cleanCity(s);
+  const isSentinel=/^(rest|others?|unknown|all\s*india|n\/?a)$/i.test(s);
+  if(s && !isSentinel) return _cleanCity(s);
+  // raw gave us nothing usable (empty, or itself a sentinel) — only now fall back to the
+  // noisier full facility/warehouse string, whose area/street portion can embed an unrelated
+  // city's name and must never out-rank a clean, already-extracted raw value.
+  const w=fac?whCity(fac):null; if(w)return w;
   return nCity(raw||fac||'');
 }
 function _whNorm(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
@@ -1878,7 +1886,17 @@ function whCity(name){
   let res=null;
   if(WH_CITY_MAP[n]) res=WH_CITY_MAP[n];
   if(!res){ let best=null,bl=0;
-    for(const k in WH_CITY_MAP){ if(k.length>=5 && (n.indexOf(k)>=0||k.indexOf(n)>=0) && k.length>bl){bl=k.length;best=WH_CITY_MAP[k];} }
+    for(const k in WH_CITY_MAP){
+      // n.indexOf(k)>=0 — our (usually long) input contains a known key: safe, k is curated.
+      // k.indexOf(n)>=0 — a known key contains OUR search term: only safe once n is long
+      // enough that it can't just be a random fragment of an unrelated word. Real collisions
+      // found in production Blinkit data: "Puri"(4) matched inside "...Matsypuri" -> Kochi;
+      // "Patna"(5) matched inside "Vishakapatnam" -> Visakhapatnam. 6+ chars covers every
+      // legitimate case that actually needs this direction (Bangalore, Bengaluru, Gurugram).
+      const fwd=k.length>=5 && n.indexOf(k)>=0;
+      const rev=k.length>=5 && n.length>=6 && k.indexOf(n)>=0;
+      if((fwd||rev) && k.length>bl){bl=k.length;best=WH_CITY_MAP[k];}
+    }
     res=best;
   }
   if(!res){ const toks=String(name||'').toLowerCase().split(/[^a-z0-9]+/);
@@ -1894,9 +1912,15 @@ function _sohGranularByCity(plat,k){
     fk.forEach(f=>{
       const fv=byFac[f]; const qty=(typeof fv==='object')?(fv.qty||fv.total||0):fv;
       if(!qty)return;
-      let city=whCity(f);
-      if(!city && typeof fv==='object' && fv.city) city=whCity(fv.city)||_cleanCity(fv.city);
-      if(!city) city=nCity(f);
+      let city=null;
+      if(typeof fv==='object' && fv.city) city=whCity(fv.city)||_cleanCity(fv.city);
+      if(!city) city=whCity(f);
+      // No blind nCity(f) fallback here on purpose: f is a facility/FC identifier, not
+      // free-text city name. Amazon FC codes ("BLR7" etc.) never belong in WH_CITY_MAP and
+      // would previously auto-"resolve" via keyword match to 'Rest', silently dumping their
+      // stock into a real bucket. Leaving city unresolved lets the coverage check below fall
+      // back to k.soh_by_city (already correctly 'All India'-tagged) instead.
+      if(!city)return;
       out[city]=(out[city]||0)+qty; attributed+=qty;
     });
     const tot=k.soh||0;
@@ -1911,6 +1935,15 @@ function _metroRollupSoh(plat,k){
   const out={};
   Object.keys(g).forEach(c=>{ const m=nCity(c); out[m]=(out[m]||0)+(g[c]||0); });
   return out;
+}
+// Look up a metro-rolled SOH value for one city. Distinguishes "genuinely zero stock"
+// from "not attributed to any real city" (Amazon's 'All India' bucket) — the latter
+// must render as unknown ('—'), never as a false 0 that could trigger a bad escalation.
+function _metroSohFor(metroSoh,city){
+  if(!metroSoh||!city)return null;
+  if(Object.prototype.hasOwnProperty.call(metroSoh,city))return metroSoh[city]||0;
+  if(Object.prototype.hasOwnProperty.call(metroSoh,'All India'))return null;
+  return 0;
 }
 
 let CR={};
@@ -6028,7 +6061,13 @@ function _sohFK(rows){
     if(!data[sku])data[sku]={total:0,by_city:{},by_facility:{}};
     sohCols.forEach(col=>{
       const v=parseFloat(r[col])||0;if(!v)return;
-      const _fkRaw=col.replace(/_store$/i,'').replace(/_SH$/i,'').replace(/_/g,' ').trim(); const city=whCity(_fkRaw)||_cleanCity(_fkRaw)||FK_CITY_MAP[col]||'Rest';
+      const _fkRaw=col.replace(/_store$/i,'').replace(/_SH$/i,'').replace(/_/g,' ').trim();
+      // FK_CITY_MAP must win first: it's Flipkart's curated store→metro grouping (regional
+      // sourcing-hub logic, e.g. Coimbatore/Trichy→Chennai, Vizag/Bhubaneswar→Hyderabad).
+      // whCity()/_cleanCity() are generic granular resolvers and were previously listed first,
+      // which meant they always returned a truthy value before FK_CITY_MAP[col] was ever
+      // checked — the entire curated table was unreachable dead code.
+      const city=FK_CITY_MAP[col]||whCity(_fkRaw)||_cleanCity(_fkRaw)||'Rest';
       data[sku].total+=v;
       data[sku].by_city[city]=(data[sku].by_city[city]||0)+v;
       data[sku].by_facility[col]=v;
@@ -6291,13 +6330,20 @@ function _availComputeMTD(){
         }
       });
       // by_city is already MTD-averaged at upload time (or computed by normalizer)
+      // SOH is granular-keyed (facility/ward/district level — e.g. Instamart's "Bangalore
+      // Urban"/"Bangalore Rural") while OSA's by_city is metro-keyed via nCity(). Roll SOH
+      // into the same metro buckets BEFORE joining, else every metro with a granular split
+      // (Bangalore, Delhi NCR, Mumbai…) silently reads SOH=0 here. _metroSohFor() also keeps
+      // Amazon's unattributed ('All India') stock as null (unknown), never a false 0.
+      const _rawSohRec=platSoh[sku]||null;
+      const _metroSohMTD=_rawSohRec?_metroRollupSoh(plat,{soh:_rawSohRec.total,by_facility:_rawSohRec.by_facility,soh_by_city:_rawSohRec.by_city}):{};
       const cityDetail={};
       Object.keys(skuData.by_city||{}).forEach(c=>{
         const cv=skuData.by_city[c];
         cityDetail[c]={
           wt_osa_ls:cv.wt_osa_ls,
           ds_listing:cv.ds_listing,
-          soh:(platSoh[sku]&&platSoh[sku].by_city)?(platSoh[sku].by_city[c]||0):0
+          soh:_metroSohFor(_metroSohMTD,c)
         };
       });
       // MTD GMV for this SKU
@@ -6354,7 +6400,7 @@ function _availComputeMTD(){
         lost_gmv:lostGmv,
         days_data:dayKeys.length,
         by_city:cityDetail,
-        soh_by_city:(sohRec&&sohRec.by_city)?sohRec.by_city:{},
+        soh_by_city:_metroSohMTD,
         by_facility:sohRec?(sohRec.by_facility||{}):{},
         daily:days,
         daily_city:skuData.daily_city||{}
@@ -6420,14 +6466,14 @@ function _availComputeMTD(){
       if(drr>0.05&&totalSoh>0)doi=totalSoh/drr;
       else if(totalSoh>0&&drr<=0.05){doi=null;doiFlag='no_velocity';}
       if(doi!=null&&doi>90){doi=90;doiFlag='capped';}
-      const sohByCity=(sohRec&&sohRec.by_city)?sohRec.by_city:{};
+      const _metroSohSolo=sohRec?_metroRollupSoh(plat,{soh:sohRec.total,by_facility:sohRec.by_facility,soh_by_city:sohRec.by_city}):{};
       const cityDetail={};
-      Object.keys(sohByCity).forEach(c=>{ cityDetail[c]={wt_osa_ls:null,ds_listing:null,soh:sohByCity[c]||0}; });
+      Object.keys(_metroSohSolo).forEach(c=>{ cityDetail[c]={wt_osa_ls:null,ds_listing:null,soh:_metroSohSolo[c]||0}; });
       result[plat].skus[sku]={
         wt_osa_ls:null, ds_listing:null, day_osa_ls:null, day_ds_listing:null,
         mtd_gmv:mtdGmv, mtd_units:mtdUnits, drr, soh:totalSoh, doi, doi_flag:doiFlag,
         lost_gmv:0, days_data:0, by_city:cityDetail,
-        soh_by_city:sohByCity, by_facility:sohRec?(sohRec.by_facility||{}):{}
+        soh_by_city:_metroSohSolo, by_facility:sohRec?(sohRec.by_facility||{}):{}
       };
     });
     const skuList=Object.values(result[plat].skus);
@@ -6865,7 +6911,7 @@ function _availPlatFacets(plat){
     const info=skuLookup(plat,sku),k=pd.skus[sku];
     if(info.cat)cats.add(info.cat);
     Object.keys(k.by_city||{}).forEach(c=>cities.add(c));
-    Object.keys(k.soh_by_city||{}).forEach(c=>{if((k.soh_by_city[c]||0)>0)cities.add(c);});
+    Object.keys(k.soh_by_city||{}).forEach(c=>{if(c!=='All India'&&(k.soh_by_city[c]||0)>0)cities.add(c);});
     skus.push({id:sku,name:info.name});
   });
   skus.sort((a,b)=>a.name.localeCompare(b.name));
@@ -6957,7 +7003,7 @@ function _osaScopedList(plat){
       o.day_osa_ls=null;
       const dcd=Object.keys(r.daily_city||{}).map(Number).filter(d=>d<=selCap).sort((a,b)=>b-a);
       for(const d of dcd){ const cv=(r.daily_city[d]||{})[_cityScope]; if(cv&&cv[0]!=null){o.day_osa_ls=cv[0]; if(cv[1]!=null){o.ds_listing=cv[1];o.day_ds_listing=cv[1];} break;} }
-      o.soh=(r.soh_by_city||{})[_cityScope]||0;
+      o.soh=_metroSohFor(r.soh_by_city,_cityScope);
       // city DRR + MTD GMV from sales citysku
       let cu=0,cg=0; Object.keys(csRows).forEach(d=>{ if(+d>selCap)return; const cs=(csRows[d]||{})[_cityScope]; const v=cs&&cs[r.sku]; if(v){cu+=(v.units||0);cg+=(v.gmv||0);} });
       o.drr=cu/daysElapsed; o.mtd_gmv=cg;
@@ -7008,7 +7054,7 @@ function availRenderSkuTable(){
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(_availDs(r),'ds')};font-weight:700">${_availFmtPct(_availDs(r))}</td>
     <td style="padding:8px 10px;font-size:12px" title="DS listing: 7-day avg vs prior 7-day avg">${_osaWoWBadge(r._dsWow)}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
-    <td style="padding:8px 10px;font-size:12px">${Math.round(r.soh||0).toLocaleString('en-IN')}</td>
+    <td style="padding:8px 10px;font-size:12px">${r.soh!=null?Math.round(r.soh).toLocaleString('en-IN'):'<span style="color:var(--muted)">—</span>'}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr||0)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:#BD2635;font-weight:700">${_availFmtRupees(_availLost(r))}</td>
   </tr>`).join('');
@@ -7127,7 +7173,7 @@ function _availRenderCityTable(){
     const totalStores=dsc[c]?dsc[c].dark_stores:null;
     const listedStores=dsc[c]?dsc[c].dark_stores_listed:null;
     const storesStr=totalStores?`${listedStores||'—'}/${totalStores}`:'—';
-    const csoh=(_metroSoh[c]!=null)?_metroSoh[c]:(cd.soh||0);
+    const csoh=(_metroSoh[c]!=null)?_metroSoh[c]:cd.soh;
     // Per-city FR% over the same 10-day delivered-PO window used everywhere else.
     // True city-level (issued ÷ indent for this SKU's POs in this city); "—" when no PO landed there.
     const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,info.name,c):null;
@@ -7140,7 +7186,7 @@ function _availRenderCityTable(){
       <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.ds_listing,'ds')};font-weight:700">${_availFmtPct(cd.ds_listing)}</td>
       <td style="padding:8px 10px;font-size:12px" title="Fill Rate: issued ÷ indent for this SKU's delivered POs in this city, last 10 days">${frTxt}</td>
       <td style="padding:8px 10px;font-size:12px">${storesStr}</td>
-      <td style="padding:8px 10px;font-size:12px">${Math.round(csoh||0).toLocaleString('en-IN')}</td>
+      <td style="padding:8px 10px;font-size:12px">${csoh!=null?Math.round(csoh).toLocaleString('en-IN'):'<span style="color:var(--muted)">—</span>'}</td>
     </tr>`;
   }).join('');
   // Summary card on top — OSA/DS reflect the active window toggle; city rows are MTD-averaged (data shape).
@@ -7535,7 +7581,7 @@ function _osaExportXlsx(){
         var doiv=(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':''):Math.round(k.doi)+(k.doi_flag==='capped'?'+':'');
         var wow=(k._wow&&k._wow.delta!=null)?(Math.round(k._wow.delta*10)/10):'';
         var dswow=(k._dsWow&&k._dsWow.delta!=null)?(Math.round(k._dsWow.delta*10)/10):'';
-        return {name:k.name,cat:k.cat||'',osaToday:k.day_osa_ls,osaMtd:k.wt_osa_ls,wow:wow,dsWow:dswow,fr:_frv,ds:(typeof _availDs==='function')?_availDs(k):k.ds_listing,doi:doiv,soh:Math.round(k.soh||0),drr:Math.round(k.drr||0),lost:Math.round(k.lost_gmv||0)};
+        return {name:k.name,cat:k.cat||'',osaToday:k.day_osa_ls,osaMtd:k.wt_osa_ls,wow:wow,dsWow:dswow,fr:_frv,ds:(typeof _availDs==='function')?_availDs(k):k.ds_listing,doi:doiv,soh:(k.soh==null?'':Math.round(k.soh)),drr:Math.round(k.drr||0),lost:Math.round(k.lost_gmv||0)};
       });
     }else{
       var pd=window._availMTD[plat]||{skus:{}};
