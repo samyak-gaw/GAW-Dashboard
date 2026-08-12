@@ -7173,6 +7173,11 @@ function _availRenderCityTable(){
     const totalStores=dsc[c]?dsc[c].dark_stores:null;
     const listedStores=dsc[c]?dsc[c].dark_stores_listed:null;
     const storesStr=totalStores?`${listedStores||'—'}/${totalStores}`:'—';
+    // SKU-level listed-store count: not a directly-reported field, derived from this SKU's
+    // DS Listing % against the city's total dark-store count (same denominator as brand coverage,
+    // so the two columns line up and can be sanity-checked against each other).
+    const skuListed=(totalStores&&cd.ds_listing!=null)?Math.round(cd.ds_listing/100*totalStores):null;
+    const skuStoresStr=(skuListed!=null&&totalStores)?`${skuListed}/${totalStores}`:'—';
     const csoh=(_metroSoh[c]!=null)?_metroSoh[c]:cd.soh;
     // Per-city FR% over the same 10-day delivered-PO window used everywhere else.
     // True city-level (issued ÷ indent for this SKU's POs in this city); "—" when no PO landed there.
@@ -7185,6 +7190,7 @@ function _availRenderCityTable(){
       <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(cd.wt_osa_ls)}</td>
       <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.ds_listing,'ds')};font-weight:700">${_availFmtPct(cd.ds_listing)}</td>
       <td style="padding:8px 10px;font-size:12px" title="Fill Rate: issued ÷ indent for this SKU's delivered POs in this city, last 10 days">${frTxt}</td>
+      <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${skuStoresStr}</td>
       <td style="padding:8px 10px;font-size:12px">${storesStr}</td>
       <td style="padding:8px 10px;font-size:12px">${csoh!=null?Math.round(csoh).toLocaleString('en-IN'):'<span style="color:var(--muted)">—</span>'}</td>
     </tr>`;
@@ -7201,7 +7207,7 @@ function _availRenderCityTable(){
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">MRP</div><div style="font-size:16px;font-weight:800">${info.mrp?'₹'+info.mrp:'—'}</div></div>
   </div>
   <div style="font-size:10px;color:var(--muted);margin-bottom:8px">City rows below show MTD averages.</div>`;
-  document.getElementById('availCityTable').innerHTML=summary+`<div class="scroll-table"><table style="width:100%;min-width:560px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's store presence — % of stores carrying this exact SKU">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate — issued ÷ indent for this SKU's delivered POs in this city, last 10 days">FR% (10d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Brand-level dark-store coverage across ALL GAW SKUs — not specific to this SKU. Differs from DS Listing by design.">Brand DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  document.getElementById('availCityTable').innerHTML=summary+`<div class="scroll-table"><table style="width:100%;min-width:680px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's store presence — % of stores carrying this exact SKU">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate — issued ÷ indent for this SKU's delivered POs in this city, last 10 days">FR% (10d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's listed stores in this city (derived: DS Listing % × city's total dark stores) — same denominator as Brand DS Coverage, so the two are directly comparable.">SKU DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Brand-level dark-store coverage across ALL GAW SKUs — not specific to this SKU. Differs from DS Listing by design.">Brand DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function availBackToPlatforms(){
