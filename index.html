@@ -823,6 +823,9 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div id="availSohView" style="display:none">
     <!-- SOH Level 1: platform cards -->
     <div id="availSohPlatformsView">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button class="exp-btn" onclick="_sohOpenPOBreakdownXlsx()" style="font-size:11px;background:#D4860A;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:700">⬇ Open PO (City × Aggregator)</button>
+</div>
       <div class="g3" id="availSohPlatformCards" style="margin-bottom:20px"></div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Click any platform to drill into SKU-level stock, then any SKU for city &amp; dark-store detail.</div>
 </div>
@@ -843,6 +846,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
             <option value="name">Sort: Name (A–Z)</option>
           </select>
           <button class="exp-btn" onclick="_sohExportXlsx()" style="font-size:11px;background:#2E4162;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:700">⬇ Download Excel</button>
+          <button class="exp-btn" onclick="_sohOpenPOBreakdownXlsx()" style="font-size:11px;background:#D4860A;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:700">⬇ Open PO (City × Aggregator)</button>
 </div>
         <div id="availSohFilters"></div>
         <div id="availSohSkuTable"></div>
@@ -7557,6 +7561,74 @@ function _sohExportXlsx(){
     X.utils.book_append_sheet(wb,ws,safe);
   });
   X.writeFile(wb,'GAW_SOH_Explorer_'+(mk||'export')+'.xlsx');
+}
+
+// ══════════════════════════════════════════════
+// OPEN PO BREAKDOWN EXPORT — item-wise, single sheet, all platforms
+// stacked, raw (unrolled) city/facility columns. One row per Platform×SKU
+// that carries open PO qty > 0 in at least one city. Amazon is national in
+// the tracker join (see _sohOpenPO) but its raw city keys, whatever they
+// are, still pass through here — no synthetic rollup.
+// ══════════════════════════════════════════════
+function _sohOpenPOBreakdownXlsx(){
+  var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
+  var styled=!!window.XLSXStyle;
+  try{ if(typeof cmBuildOpenPO==='function' && (typeof _cmOpenPO==='undefined'||!_cmOpenPO) && typeof _cmTracker!=='undefined' && _cmTracker && typeof _cmSN!=='undefined' && _cmSN){ cmBuildOpenPO(); } }catch(e){}
+  var liveAll=(typeof _cmOpenPO!=='undefined'&&_cmOpenPO&&_cmOpenPO.po)?_cmOpenPO.po:null;
+  var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
+  var vm=(typeof getViewingMonth==='function')?getViewingMonth():null;
+  var syncedAll=(typeof DB!=='undefined'&&DB.open_po&&DB.open_po.po&&(!vm||DB.open_po.month===vm))?DB.open_po.po:null;
+  var all=liveAll||syncedAll;
+  if(!all||!Object.keys(all).length){alert('No Open PO data loaded — sync Q Comm Tracker + SN report first.');return;}
+
+  // Collect rows keyed by Platform|SKU, and the full set of raw city columns.
+  var rowMap={}, citySet=new Set();
+  Object.keys(all).forEach(function(plat){
+    var byCity=all[plat]||{};
+    Object.keys(byCity).forEach(function(city){
+      var bySku=byCity[city]||{};
+      Object.keys(bySku).forEach(function(canon){
+        var q=bySku[canon]||0; if(q<=0)return;
+        if(CM_DISCONTINUED.has(cmKey(canon)))return; // residual-only SKUs excluded from open-PO views
+        citySet.add(city);
+        var key=plat+'\u0001'+canon;
+        if(!rowMap[key])rowMap[key]={plat:plat,sku:canon,cities:{},total:0};
+        rowMap[key].cities[city]=(rowMap[key].cities[city]||0)+q;
+        rowMap[key].total+=q;
+      });
+    });
+  });
+  var rows=Object.values(rowMap).filter(function(r){return r.total>0;});
+  if(!rows.length){alert('No open PO quantity > 0 found across any platform/city.');return;}
+  rows.sort(function(a,b){ return a.plat<b.plat?-1:(a.plat>b.plat?1:b.total-a.total); });
+  var cities=[...citySet].sort();
+
+  var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
+  var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
+  var head=['Platform','SKU'].concat(cities,['Total']);
+  var aoa=[['GAW \u00B7 Open PO by Item \u00B7 Aggregator & City Breakdown \u00B7 '+mk].concat(new Array(head.length-1).fill('')),head];
+  rows.forEach(function(r){
+    var line=[r.plat,r.sku];
+    cities.forEach(function(c){ var v=r.cities[c]; line.push(v?v:''); });
+    line.push(r.total);
+    aoa.push(line);
+  });
+  var ws=X.utils.aoa_to_sheet(aoa);
+  var cols=[{wch:12},{wch:34}]; cities.forEach(function(){cols.push({wch:12});}); cols.push({wch:10});
+  ws['!cols']=cols;
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:head.length-1}}];
+  if(styled){
+    var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
+    for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
+    for(var r2=0;r2<rows.length;r2++){
+      for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue;
+        cell.s={font:{name:'Calibri',sz:10,bold:(c2===head.length-1),color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};
+      }
+    }
+  }
+  var wb=X.utils.book_new();
+  X.utils.book_append_sheet(wb,ws,'Open PO');
+  X.writeFile(wb,'GAW_OpenPO_Breakdown_'+(mk||'export')+'.xlsx');
 }
 
 // OSA (Platforms view) SKU table export — mirrors _sohExportXlsx. Current platform; window-aware DS.
