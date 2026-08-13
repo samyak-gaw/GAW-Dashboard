@@ -1926,7 +1926,7 @@ function _sohGranularByCity(plat,k){
     const tot=k.soh||0;
     if(attributed>0 && (tot===0 || attributed>=tot*0.5)) return out;
   }
-  return k.soh_by_city||{};
+  return (k.soh_by_city_raw&&Object.keys(k.soh_by_city_raw).length)?k.soh_by_city_raw:(k.soh_by_city||{});
 }
 // Roll granular SOH (Gurugram, Delhi, Noida…) into nCity metro buckets (Delhi NCR)
 // so SOH joins OSA's metro-keyed by_city in drilldowns. Prevents blank/0 metro rows.
@@ -6401,6 +6401,7 @@ function _availComputeMTD(){
         days_data:dayKeys.length,
         by_city:cityDetail,
         soh_by_city:_metroSohMTD,
+        soh_by_city_raw:_rawSohRec?(_rawSohRec.by_city||{}):{},
         by_facility:sohRec?(sohRec.by_facility||{}):{},
         daily:days,
         daily_city:skuData.daily_city||{}
@@ -6473,7 +6474,7 @@ function _availComputeMTD(){
         wt_osa_ls:null, ds_listing:null, day_osa_ls:null, day_ds_listing:null,
         mtd_gmv:mtdGmv, mtd_units:mtdUnits, drr, soh:totalSoh, doi, doi_flag:doiFlag,
         lost_gmv:0, days_data:0, by_city:cityDetail,
-        soh_by_city:_metroSohSolo, by_facility:sohRec?(sohRec.by_facility||{}):{}
+        soh_by_city:_metroSohSolo, soh_by_city_raw:sohRec?(sohRec.by_city||{}):{}, by_facility:sohRec?(sohRec.by_facility||{}):{}
       };
     });
     const skuList=Object.values(result[plat].skus);
