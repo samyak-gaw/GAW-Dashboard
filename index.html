@@ -8621,28 +8621,61 @@ function clearGitHubConfig(){
 
 async function _ghPutWithRetry(url,headers,body,refetchSha,logGH){
   let lastErr=null;
-  for(let attempt=1;attempt<=4;attempt++){
+  const MAX=6;
+  for(let attempt=1;attempt<=MAX;attempt++){
     try{
       const res=await fetch(url,{method:'PUT',headers,body:JSON.stringify(body)});
       if(res.ok)return res;
-      if(res.status===409){
-        logGH('PUT 409 (try '+attempt+'/4) \u2014 refetching SHA\u2026');
+      const txt=await res.text().catch(()=>'');
+      // 409 = stale sha. 422 mentioning "sha" = same race (file exists, sha missing/wrong) —
+      // GitHub returns 422 instead of 409 when the file exists but no/bad sha was sent.
+      const shaRace = res.status===409 || (res.status===422 && /sha/i.test(txt));
+      if(shaRace){
+        logGH('PUT '+res.status+' (try '+attempt+'/'+MAX+') \u2014 refetching SHA\u2026');
         await new Promise(r=>setTimeout(r,500*attempt));
-        const sha=await refetchSha(); if(sha)body.sha=sha; else delete body.sha;
+        const sha=await refetchSha();
+        // NEVER drop sha on a failed refetch (network blip, rate limit) — deleting it turns a
+        // recoverable conflict into a guaranteed 422 on the very next attempt. Keep the last
+        // known-good sha and retry; if the refetch succeeded, use the fresher value.
+        if(sha)body.sha=sha;
+        lastErr=new Error('PUT failed: HTTP '+res.status+' \u2014 '+txt.slice(0,120));
         continue;
       }
-      const txt=await res.text().catch(()=>'');
-      if(res.status>=500){ logGH('PUT '+res.status+' (try '+attempt+'/4) \u2014 retrying\u2026'); lastErr=new Error('HTTP '+res.status+' \u2014 '+txt.slice(0,100)); await new Promise(r=>setTimeout(r,600*attempt)); continue; }
+      if(res.status>=500){ logGH('PUT '+res.status+' (try '+attempt+'/'+MAX+') \u2014 retrying\u2026'); lastErr=new Error('HTTP '+res.status+' \u2014 '+txt.slice(0,100)); await new Promise(r=>setTimeout(r,600*attempt)); continue; }
       throw new Error('PUT failed: HTTP '+res.status+' \u2014 '+txt.slice(0,120));
     }catch(e){
       if(e instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(e.message||'')){
-        logGH('Network error (try '+attempt+'/4): '+e.message+' \u2014 retrying\u2026');
+        logGH('Network error (try '+attempt+'/'+MAX+'): '+e.message+' \u2014 retrying\u2026');
         lastErr=e; await new Promise(r=>setTimeout(r,900*attempt)); continue;
       }
       throw e;
     }
   }
-  throw lastErr||new Error('PUT failed after 4 attempts');
+  throw lastErr||new Error('PUT failed after '+MAX+' attempts');
+}
+// Cross-tab push lock: the in-flight/pending mutex below only guards *within one tab*.
+// If the dashboard is open in 2+ tabs (common while testing), each tab pushes independently
+// and races the same file SHA → 409s, which is what was ultimately causing the 422s above.
+// This is a simple localStorage lease: whichever tab holds it pushes; others defer and retry shortly.
+const _ghTabId='t_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+const GH_LOCK_KEY='gaw_gh_push_lock';
+const GH_LOCK_TTL=25000; // ms — long enough to cover a full push incl. retries; stale locks are overridable
+function _ghAcquireLock(){
+  try{
+    const raw=localStorage.getItem(GH_LOCK_KEY);
+    if(raw){
+      const lock=JSON.parse(raw);
+      if(lock&&lock.ts&&lock.tab!==_ghTabId&&(Date.now()-lock.ts)<GH_LOCK_TTL)return false; // held by another live tab
+    }
+  }catch(_e){}
+  try{localStorage.setItem(GH_LOCK_KEY,JSON.stringify({tab:_ghTabId,ts:Date.now()}));}catch(_e){}
+  return true;
+}
+function _ghReleaseLock(){
+  try{
+    const raw=localStorage.getItem(GH_LOCK_KEY);
+    if(raw){const lock=JSON.parse(raw);if(lock&&lock.tab===_ghTabId)localStorage.removeItem(GH_LOCK_KEY);}
+  }catch(_e){}
 }
 const GH_DATA_BRANCH='data'; // data commits isolated from Pages builds (main = HTML only)
 async function _ghEnsureDataBranch(token,user,repo){
@@ -8665,6 +8698,13 @@ async function githubPush(manual=false){
   // If a push is already running, mark that another is needed and return; the running push
   // triggers one more when it finishes, collapsing a burst of uploads into ≤2 commits.
   if(window._ghPushInFlight){ window._ghPushPending=true; return; }
+  if(!_ghAcquireLock()){
+    // Another tab is mid-push. Don't fight it for the SHA — wait for it to finish, then try once more.
+    logGH('Another tab is pushing \u2014 deferring 1.5s\u2026');
+    clearTimeout(window._ghPushTimer);
+    window._ghPushTimer=setTimeout(()=>githubPush(manual),1500);
+    return;
+  }
   window._ghPushInFlight=true;
   setSyncStatus('syncing','Pushing to GitHub…');
   try{
@@ -8719,6 +8759,7 @@ async function githubPush(manual=false){
     if(manual)alert('❌ GitHub push failed:\n\n'+e.message);
   }finally{
     window._ghPushInFlight=false;
+    _ghReleaseLock();
     // If uploads arrived while this push was running, fire exactly one more (debounced)
     // so the latest data lands without a per-upload commit storm.
     if(window._ghPushPending){
