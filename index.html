@@ -5131,6 +5131,25 @@ function processFile(file,type){
   reader.readAsArrayBuffer(file);
 }
 
+// ── Local-dirty-day tracking ──────────────────────────────────────────────
+// Bug this fixes: the 90s auto-pull (githubPull) merge only preserves a local day's
+// data when that day is MISSING from the cloud payload entirely (see _applyGHPayload).
+// If the cloud already has *an* entry for that day (e.g. disc=0 from a prior push) and
+// the person then uploads a file that corrects it, the corrected value renders locally
+// immediately — but if the 90s pull timer fires before the debounced push lands, the
+// pull sees the day already exists on GH, "preserves" nothing, and silently overwrites
+// the just-uploaded value back to the stale cloud one. Symptom: "I see the discount,
+// then it gets erased." Fix: track which (month, platform, day) triples changed locally
+// since the last successful push, and always protect those during a pull merge —
+// regardless of whether the cloud side already has that day — until the push confirms.
+window._localDirtyDays = window._localDirtyDays || new Set();
+function _markDirty(monthKey, plat, day){
+  try{ window._localDirtyDays.add(monthKey+'::'+plat+'::'+day); }catch(_e){}
+}
+function _isDirty(monthKey, plat, day){
+  return window._localDirtyDays.has(monthKey+'::'+plat+'::'+day);
+}
+function _clearAllDirty(){ window._localDirtyDays.clear(); }
 function mergeInto(plat,byD){
   // Write new days into delta — _buildDB() (called inside saveDB()) merges city/sku automatically
   // Multi-month: writes go to the ACTIVE month (the month being edited), not the viewing month.
@@ -5195,6 +5214,9 @@ function mergeInto(plat,byD){
         });
       });
     }
+    // This day now differs from (or may differ from) whatever's on GitHub — protect it
+    // from being clobbered by an auto-pull that fires before the debounced push lands.
+    _markDirty(ACTIVE, plat, d.day);
   });
   // saveDB() calls _buildDB() which picks up all delta city/sku changes — no patching needed
 }
@@ -5337,6 +5359,8 @@ function procZeptoDisc(rows){
     if (!seedDays.has(day) && !slot.daily[day]) {
       slot.daily[day] = { day, gmv: 0, units: 0, disc: 0 };
     }
+    // Protect this day's fresh override from an auto-pull race (see _localDirtyDays above).
+    _markDirty(ACTIVE, 'Zepto', day);
   });
 
   _delta.zepto_disc_pending = false;
@@ -8392,7 +8416,7 @@ function _applyGHPayload(payload,logFn,manual){
         const ghDays = new Set(Object.keys((merged.months[monthKey][p] || {}).daily || {}));
 
         Object.entries(localP.daily || {}).forEach(([day,d]) => {
-          if (!ghDays.has(day)) {
+          if (!ghDays.has(day) || _isDirty(monthKey,p,day)) {
             merged.months[monthKey][p].daily = merged.months[monthKey][p].daily || {};
             merged.months[monthKey][p].daily[day] = d;
             if ((localP._city||{})[day]) {
@@ -8410,11 +8434,11 @@ function _applyGHPayload(payload,logFn,manual){
           }
         });
 
-        // Preserve local-only Zepto disc_overrides not yet pushed
+        // Preserve local-only Zepto disc_overrides not yet pushed — same dirty-day guard.
         const localOverrides = localP.disc_overrides || {};
         const ghOverrides    = (merged.months[monthKey][p] || {}).disc_overrides || {};
         Object.entries(localOverrides).forEach(([day,v]) => {
-          if (ghOverrides[day] === undefined) {
+          if (ghOverrides[day] === undefined || _isDirty(monthKey,p,day)) {
             merged.months[monthKey][p].disc_overrides = merged.months[monthKey][p].disc_overrides || {};
             merged.months[monthKey][p].disc_overrides[day] = v;
           }
@@ -8751,6 +8775,8 @@ async function githubPush(manual=false){
     setSyncStatus('ok','✅ GitHub · '+t+' ('+kb+'KB)');
     logGH('Push OK · '+kb+'KB → data branch (no Pages build)');
     setGHStatus('✅ Pushed '+kb+'KB at '+t+'. Netlify will redeploy in ~30s.',true);
+    // Local state is now confirmed on GitHub — safe to let future pulls win again.
+    _clearAllDirty();
     if(manual)alert('✅ Pushed to GitHub!\n\nNetlify will rebuild in ~30 seconds.\nSize: '+kb+'KB');
   }catch(e){
     setSyncStatus('err','GitHub push failed');
