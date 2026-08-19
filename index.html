@@ -8323,6 +8323,9 @@ const VW_GH_REPO_KEY='gaw_vw_gh_repo';
 const VW_GH_PATH_KEY='gaw_vw_gh_path';
 let _ghSyncTimer=null;
 let _vwSyncTimer=null;
+// Cooldown after a successful push before auto-pull resumes — covers raw-content CDN cache lag
+// on our own large (>1MB) data file. 3 min comfortably clears typical GitHub raw CDN staleness.
+const PUSH_PULL_COOLDOWN_MS=180000;
 
 function getGHToken(){try{return localStorage.getItem(GH_TOKEN_KEY)||'';}catch(e){return '';}}
 function getGHUser(){try{return localStorage.getItem(GH_USER_KEY)||'';}catch(e){return '';}}
@@ -8777,6 +8780,7 @@ async function githubPush(manual=false){
     setGHStatus('✅ Pushed '+kb+'KB at '+t+'. Netlify will redeploy in ~30s.',true);
     // Local state is now confirmed on GitHub — safe to let future pulls win again.
     _clearAllDirty();
+    window._lastPushTs=Date.now();
     if(manual)alert('✅ Pushed to GitHub!\n\nNetlify will rebuild in ~30 seconds.\nSize: '+kb+'KB');
   }catch(e){
     setSyncStatus('err','GitHub push failed');
@@ -8799,6 +8803,13 @@ async function githubPush(manual=false){
 async function githubPull(manual=false){
   const token=getGHToken(),user=getGHUser(),repo=getGHRepo(),path=getGHPath();
   if(!token||!user||!repo){if(manual)alert('GitHub sync not configured.');return;}
+  // Skip auto-pulls for a short cooldown after our own push. Files over GitHub's 1MB inline
+  // limit (ours is ~5.5MB) are fetched via download_url, a CDN-backed raw-content link that can
+  // still serve the pre-push blob for a bit even with a cache-busting query param. Pulling into
+  // that window merges in stale data and the just-uploaded number blips away until the CDN
+  // catches up. We already know our local state is correct and confirmed on GitHub — no need
+  // to pull right after proving that. Manual pulls (explicit user action) always go through.
+  if(!manual && window._lastPushTs && (Date.now()-window._lastPushTs)<PUSH_PULL_COOLDOWN_MS)return;
   try{
     const H={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
     let res=await fetch('https://api.github.com/repos/'+user+'/'+repo+'/contents/'+path+'?ref='+GH_DATA_BRANCH,{headers:H});
