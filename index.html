@@ -1329,6 +1329,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
         <button class="exp-btn" onclick="githubPush(true)">⬆ Push to GitHub Now</button>
         <button class="exp-btn" onclick="githubPull(true)">⬇ Pull from GitHub Now</button>
         <button class="exp-btn" onclick="compactMonths()" title="Backup, then remove raw data for frozen months — shrinks the cloud file">Compact Data</button>
+        <button class="exp-btn" onclick="downloadFullBackup()" title="Downloads all local data (delta, SOH, availability, dark-store counts, ad spend) as one JSON file — no console needed">⬇ Download Full Backup</button>
         <button class="exp-btn" onclick="clearGitHubConfig()" style="color:#BD2635;border-color:#BD2635">Clear Config</button>
 </div>
       <div id="ghStatusMsg" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;background:#EEF1F6;margin-top:10px;line-height:1.5;font-family:monospace"></div>
@@ -2487,6 +2488,36 @@ function saveDB() {
       try{ if(typeof gawIntegrityCheck==='function')gawIntegrityCheck(); }catch(e){}
     },1200);
   }catch(e){}
+}
+// One-click full local backup — same 5 keys saveDB() writes (DELTA_KEY holds everything EXCEPT
+// avail/soh/dark_store_counts, which live in their own keys to keep the main key small; ads is
+// separate too), reassembled into one file so nothing needs a manual console dump.
+function downloadFullBackup(){
+  try{
+    const backup = {
+      delta: JSON.parse(localStorage.getItem(DELTA_KEY) || 'null'),
+      soh:   JSON.parse(localStorage.getItem(SOH_KEY)   || 'null'),
+      dsc:   JSON.parse(localStorage.getItem(DSC_KEY)   || 'null'),
+      avail: JSON.parse(localStorage.getItem(AVAIL_KEY) || 'null'),
+      ads:   JSON.parse(localStorage.getItem('gaw_ads_v1') || 'null')
+    };
+    if(!backup.delta){ alert('⚠ No local data found — nothing to back up.'); return; }
+    const jsonStr = JSON.stringify(backup);
+    const blob = new Blob([jsonStr], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'gaw-backup-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    const kb=(jsonStr.length/1024).toFixed(1);
+    const el=document.getElementById('ghStatusMsg');
+    if(el){ el.style.display='block'; el.textContent='✅ Backup downloaded — '+kb+'KB'; }
+  }catch(e){
+    alert('❌ Backup download failed:\n\n'+e.message);
+  }
 }
 // Trim SOH for localStorage: keep full by_facility ONLY for the active month; for older months
 // keep totals + by_city (drop by_facility). If forceMinimal=true, drop by_facility everywhere.
