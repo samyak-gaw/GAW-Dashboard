@@ -1504,16 +1504,37 @@ const AMZ_DEFAULT_DISC = 0.33;
 const AMZ_CRAZY_DEAL = {
   rate: 0.45,
   from: 'Aug-2026',   // month the deal starts
-  fromDay: 8,         // inclusive day within `from` month; earlier days keep the default rate
-  asins: new Set([    // per 07/23 discussion — same crazy-deal construct
+  fromDay: 1,         // inclusive day within `from` month; earlier days keep the default rate — confirmed live 08/01 per Amazon (Shanmugam, Divya) email 06-Aug-2026
+  asins: new Set([    // per 07/23 discussion — same crazy-deal construct; 45% BF / 22.5% AMZ funded
     'B0F1Y3Z7XP',     // Chocolate Brownie Ice Cream Cone
     'B0F1Y4LBLT',     // Brownie Crunch Ice Cream Bar
-    'B0F1Y6DY4J'      // Choco Hazelnut Crunch Ice Cream Bar
+    'B0F1Y6DY4J',     // Choco Hazelnut Crunch Ice Cream Bar
+    'B0H516VLMH'      // Vanilla Chocobar — added per Lavanya email 31-Jul-2026 ("Choco_Vanilla_Bar"), new listing confirmed in SKU master
+  ])
+};
+// One-off Rakhi flash deal: 24 ASINs, Aug 27-28 2026 only, 45% BF / 20% AMZ funded (same BF rate as
+// the standing crazy deal above, just a much wider ASIN list for 2 days). Source: "Amazon Rakhi Promos.xlsx",
+// Lavanya email 20-Aug-2026. Checked BEFORE the standing crazy-deal set since it's the more specific window.
+const AMZ_RAKHI_DEAL = {
+  rate: 0.45,
+  month: 'Aug-2026',
+  dayStart: 27,
+  dayEnd: 28,
+  asins: new Set([
+    'B0F1XZPW71','B0F1Y4P7HG','B0F1Y2C9V8','B0F1Y4DTGX','B0F1Y6DY4J','B0F1Y3Z7XP',
+    'B0F1Y71YXZ','B0F1Y4C8B6','B0F1YMGCRY','B0F1Y4LBLT','B0H552HY4B','B0H51B5KXN',
+    'B0H516VLMH','B0F1Y5G9TV','B0F1Y43KK2','B0F1Y4Q5LQ','B0GYPTDTJM','B0F1Y5KLX7',
+    'B0GYQ415CK','B0F1Y4S56T','B0F1XZPZKK','B0F1Y4XCZQ','B0GZ381253','B0F1Y3TXHC'
   ])
 };
 function _amzDiscRate(asin, monthKey, day){
+  const a = String(asin||'').trim().toUpperCase();
+  const r = AMZ_RAKHI_DEAL;
+  if(a && r.asins.has(a) && monthKey===r.month && Number(day)>=r.dayStart && Number(day)<=r.dayEnd){
+    return r.rate;
+  }
   const c = AMZ_CRAZY_DEAL;
-  if(asin && c.asins.has(String(asin).trim().toUpperCase())){
+  if(a && c.asins.has(a)){
     const ord  = MONTH_NUM_FROM_KEY(monthKey) + YEAR_FROM_KEY(monthKey)*12;
     const from = MONTH_NUM_FROM_KEY(c.from)   + YEAR_FROM_KEY(c.from)*12;
     if(ord > from || (ord === from && Number(day) >= c.fromDay)) return c.rate;
@@ -5511,7 +5532,7 @@ function procIM(){
 
 // ══════════════════════════════════════════════
 // AMAZON PARSER
-// disc = _amzDiscRate() of GMV (default 33%; crazy-deal ASINs 45% from Aug-8-2026)
+// disc = _amzDiscRate() of GMV (default 33%; crazy-deal ASINs 45% from Aug-1-2026; Rakhi ASINs 45% Aug 27-28 only)
 // No city data in Amazon reports
 // ══════════════════════════════════════════════
 function procAmazon(rows){
