@@ -8394,6 +8394,27 @@ function _ghBase64Decode(b64){
 
 // ── Shared payload applicator (used by both admin pull and viewer pull) ──
 function _applyGHPayload(payload,logFn,manual){
+  // ── Hard-refresh guard ──
+  // Runs on every pull, from every path (first load, the 90s viewer loop, manual pull).
+  // New data ts vs this browser's last-seen ts means Sam shipped an upload — force one
+  // fresh, cache-busted reload so open tabs pick up the latest data AND latest code, not
+  // just a live-merged data patch. Skipped for admin (would interrupt an active upload/
+  // edit session). window._gawReloadTriggered is an in-memory (not sessionStorage) latch:
+  // it blocks a duplicate reload attempt within this same page instance, but resets on
+  // every fresh page load — so the next upload after that still triggers a reload.
+  try{
+    const freshTs=payload&&payload.ts?String(payload.ts):null;
+    if(freshTs){
+      const seenTs=localStorage.getItem(GAW_LAST_SEEN_TS_KEY);
+      if(seenTs && seenTs!==freshTs && !window._GAW_IS_ADMIN && !window._gawReloadTriggered){
+        window._gawReloadTriggered=true;
+        localStorage.setItem(GAW_LAST_SEEN_TS_KEY,freshTs);
+        _gawForceFreshReload();
+        return;
+      }
+      localStorage.setItem(GAW_LAST_SEEN_TS_KEY,freshTs);
+    }
+  }catch(_e){}
   if(payload._delta){
     let ghDelta = payload._delta;
 
@@ -8955,26 +8976,6 @@ async function autoFetchSiteData(){
       const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
       setSyncStatus('ok','Auto-synced · '+t);
       console.log('✅ autoFetchSiteData: data loaded from '+url);
-      // ── Hard-refresh guard ──
-      // New data since this browser's last visit implies a deploy likely happened too
-      // (data re-uploads follow code fixes — see deployment sequence). Force one fresh,
-      // cache-busted reload so the viewer's tab also picks up the latest code, not just
-      // the latest data. Skipped for admin (avoid interrupting an active upload/edit
-      // session) and capped at one reload per tab session as a loop safeguard.
-      try{
-        const freshTs=payload.ts?String(payload.ts):null;
-        if(freshTs){
-          const seenTs=localStorage.getItem(GAW_LAST_SEEN_TS_KEY);
-          const alreadyReloaded=sessionStorage.getItem('gaw_hard_refreshed');
-          if(seenTs && seenTs!==freshTs && !window._GAW_IS_ADMIN && !alreadyReloaded){
-            sessionStorage.setItem('gaw_hard_refreshed','1');
-            localStorage.setItem(GAW_LAST_SEEN_TS_KEY,freshTs);
-            _gawForceFreshReload();
-            return;
-          }
-          localStorage.setItem(GAW_LAST_SEEN_TS_KEY,freshTs);
-        }
-      }catch(_e){}
     }
   }catch(e){
     // Not available locally or parse error — use seed data. Silent fail.
