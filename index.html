@@ -432,7 +432,6 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div class="tab" onclick="showTab('bigbasket')"><span class="tab-dot" style="background:#84C225"></span>BigBasket</div>
   <div class="tab" onclick="showTab('category')"><span class="tab-dot" style="background:#166A92"></span>Category & SKU</div>
   <div class="tab" onclick="showTab('projections')"><span class="tab-dot" style="background:#288B93"></span>Projections</div>
-  <div class="tab" onclick="showTab('ads')"><span class="tab-dot" style="background:#7A4FC0"></span>Ad Spend</div>
   <div class="tab" onclick="showTab('availability')"><span class="tab-dot" style="background:#103E70"></span>Availability</div>
   <div class="tab" onclick="showTab('cityintel')">City Intel</div>
   <div class="tab" onclick="showTab('cloudsync')">Cloud Sync</div>
@@ -719,7 +718,6 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 </div>
 
 <!-- AVAILABILITY TAB (Stage 2) -->
-<div id="ads" class="content"></div>
 <div id="availability" class="content">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
     <div>
@@ -943,32 +941,6 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 
   <div class="sec-title">Sales Data Upload</div>
   <div class="g2">
-    <div style="grid-column:1/-1;border:2px solid #EFEAF8;border-radius:12px;padding:12px;margin-bottom:6px">
-      <div class="sec-title" style="color:#7A4FC0">Ad Spend / Visibility</div>
-      <div style="font-size:11px;color:#94A3B8;margin-bottom:10px">Blinkit = 1 file · Instamart = 3 files. Feeds the Ad Spend tab.</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
-        <div class="upload-zone" onclick="document.getElementById('bkAdFile').click()" style="padding:12px">
-          <div class="up-title">Blinkit — GobbleCube Daily</div>
-          <div class="up-sub" id="bkAdSub">Drop or click — daily campaign CSV</div>
-          <input class="file-input" id="bkAdFile" type="file" accept=".csv,.xlsx,.xls" onchange="uploadAdFile(this,'bk')">
-        </div>
-        <div class="upload-zone" onclick="document.getElementById('imdAdFile').click()" style="padding:12px">
-          <div class="up-title">Instamart — GobbleCube Daily</div>
-          <div class="up-sub" id="imdAdSub">Drop or click — daily campaign CSV</div>
-          <input class="file-input" id="imdAdFile" type="file" accept=".csv,.xlsx,.xls" onchange="uploadAdFile(this,'imd')">
-        </div>
-        <div class="upload-zone" onclick="document.getElementById('imcAdFile').click()" style="padding:12px">
-          <div class="up-title">Instamart — GobbleCube Comparison</div>
-          <div class="up-sub" id="imcAdSub">Drop or click — comparison xlsx (CAC/NTB)</div>
-          <input class="file-input" id="imcAdFile" type="file" accept=".xlsx,.xls,.csv" onchange="uploadAdFile(this,'imc')">
-        </div>
-        <div class="upload-zone" onclick="document.getElementById('impAdFile').click()" style="padding:12px">
-          <div class="up-title">Instamart — Product Export</div>
-          <div class="up-sub" id="impAdSub">Drop or click — IM dashboard product CSV</div>
-          <input class="file-input" id="impAdFile" type="file" accept=".csv,.xlsx,.xls" onchange="uploadAdFile(this,'imp')">
-        </div>
-      </div>
-    </div>
     <div>
       <div class="sec-title">Zepto</div>
       <div class="upload-zone" ondragover="dov(event,'zpZone')" ondragleave="dlv('zpZone')" ondrop="dop(event,'zp')" id="zpZone" onclick="document.getElementById('zpFile').click()">
@@ -1329,7 +1301,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
         <button class="exp-btn" onclick="githubPush(true)">⬆ Push to GitHub Now</button>
         <button class="exp-btn" onclick="githubPull(true)">⬇ Pull from GitHub Now</button>
         <button class="exp-btn" onclick="compactMonths()" title="Backup, then remove raw data for frozen months — shrinks the cloud file">Compact Data</button>
-        <button class="exp-btn" onclick="downloadFullBackup()" title="Downloads all local data (delta, SOH, availability, dark-store counts, ad spend) as one JSON file — no console needed">⬇ Download Full Backup</button>
+        <button class="exp-btn" onclick="downloadFullBackup()" title="Downloads all local data (delta, SOH, availability, dark-store counts) as one JSON file — no console needed">⬇ Download Full Backup</button>
         <button class="exp-btn" onclick="clearGitHubConfig()" style="color:#BD2635;border-color:#BD2635">Clear Config</button>
 </div>
       <div id="ghStatusMsg" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;background:#EEF1F6;margin-top:10px;line-height:1.5;font-family:monospace"></div>
@@ -1400,7 +1372,6 @@ body{padding-bottom:env(safe-area-inset-bottom)}
     <div onclick="closeMore();showTab('bigbasket')" style="padding:12px;background:#E6F2EA;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">BigBasket</div>
     <div onclick="closeMore();showTab('category')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Category &amp; SKU</div>
     <div onclick="closeMore();showTab('projections')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Projections</div>
-    <div onclick="closeMore();showTab('ads')" style="padding:12px;background:#EFEAF8;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Ad Spend</div>
     <div onclick="closeMore();showTab('availability')" style="padding:12px;background:#EEF1F6;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Availability</div>
     <div class="upload-nav-btn" onclick="closeMore();showTab('upload')" style="padding:12px;background:#E6F2EA;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">Upload</div>
     <div onclick="closeMore();showTab('cityintel')" style="padding:12px;background:#E6EFF7;border-radius:12px;cursor:pointer;text-align:center;font-size:12px;font-weight:700">City Intel</div>
@@ -2489,17 +2460,16 @@ function saveDB() {
     },1200);
   }catch(e){}
 }
-// One-click full local backup — same 5 keys saveDB() writes (DELTA_KEY holds everything EXCEPT
-// avail/soh/dark_store_counts, which live in their own keys to keep the main key small; ads is
-// separate too), reassembled into one file so nothing needs a manual console dump.
+// One-click full local backup — same 4 keys saveDB() writes (DELTA_KEY holds everything EXCEPT
+// avail/soh/dark_store_counts, which live in their own keys to keep the main key small),
+// reassembled into one file so nothing needs a manual console dump.
 function downloadFullBackup(){
   try{
     const backup = {
       delta: JSON.parse(localStorage.getItem(DELTA_KEY) || 'null'),
       soh:   JSON.parse(localStorage.getItem(SOH_KEY)   || 'null'),
       dsc:   JSON.parse(localStorage.getItem(DSC_KEY)   || 'null'),
-      avail: JSON.parse(localStorage.getItem(AVAIL_KEY) || 'null'),
-      ads:   JSON.parse(localStorage.getItem('gaw_ads_v1') || 'null')
+      avail: JSON.parse(localStorage.getItem(AVAIL_KEY) || 'null')
     };
     if(!backup.delta){ alert('⚠ No local data found — nothing to back up.'); return; }
     const jsonStr = JSON.stringify(backup);
@@ -4686,10 +4656,6 @@ function exportWeekendCSV(){
   a.href=url; a.download=`GAW_Weekend_${getViewingMonth()}.csv`; a.click(); URL.revokeObjectURL(url);
 }
 
-// Forward stub — real implementation is assigned by the Ad Spend module (a later script block).
-// Without this, renderAll()'s dispatcher literal references renderAds at load, before that
-// module runs, throwing ReferenceError and halting all init (blanks Availability, nav, etc.).
-var renderAds = window.renderAds || function(){};
 function renderAll(){
   buildDaySelector();
   // Determine which tab is currently active so we only render its charts immediately.
@@ -4708,7 +4674,7 @@ function renderAll(){
     amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),
     flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),
     bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),
-    category:renderCategory,projections:renderProjections,ads:renderAds,availability:renderAvailability,
+    category:renderCategory,projections:renderProjections,availability:renderAvailability,
     cityintel:renderCityIntel,cmactions:renderCMActions,upload:updateUploadDiag,
   };
   if(tabRenderMap[activeId])tabRenderMap[activeId]();
@@ -4805,7 +4771,7 @@ function showTab(t){
   const el=document.getElementById(t);if(el)el.classList.add('active');
   document.querySelectorAll('.tab').forEach(c=>{if(c.getAttribute('onclick')?.includes("'"+t+"'"))c.classList.add('active');});
   updateBottomNav(t);
-  const fns={overview:renderOverview,weekend:renderWeekend,blinkit:()=>renderPlatform('Blinkit','bl',DB.targets.Blinkit),instamart:()=>renderPlatform('Instamart','im',DB.targets.Instamart),zepto:()=>renderPlatform('Zepto','zp',DB.targets.Zepto),amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),category:renderCategory,projections:renderProjections,ads:renderAds,availability:renderAvailability,cityintel:renderCityIntel,cmactions:renderCMActions,upload:updateUploadDiag};
+  const fns={overview:renderOverview,weekend:renderWeekend,blinkit:()=>renderPlatform('Blinkit','bl',DB.targets.Blinkit),instamart:()=>renderPlatform('Instamart','im',DB.targets.Instamart),zepto:()=>renderPlatform('Zepto','zp',DB.targets.Zepto),amazon:()=>renderPlatform('Amazon','az',DB.targets.Amazon),flipkart:()=>renderPlatform('Flipkart','fk',DB.targets.Flipkart),bigbasket:()=>renderPlatform('BigBasket','bb',DB.targets.BigBasket),category:renderCategory,projections:renderProjections,availability:renderAvailability,cityintel:renderCityIntel,cmactions:renderCMActions,upload:updateUploadDiag};
   if(fns[t])fns[t]();
   // Flush any charts that were deferred because their canvas was hidden at render time
   const tabEl=document.getElementById(t);
@@ -8378,6 +8344,11 @@ let _vwSyncTimer=null;
 // Cooldown after a successful push before auto-pull resumes — covers raw-content CDN cache lag
 // on our own large (>1MB) data file. 3 min comfortably clears typical GitHub raw CDN staleness.
 const PUSH_PULL_COOLDOWN_MS=180000;
+// Tracks the last data-push timestamp this browser has seen. Used by the hard-refresh
+// guard in autoFetchSiteData() to detect "new data shipped since my last visit" and force
+// one fresh, cache-busted page load — so viewers who never manually hard-refresh still pick
+// up the latest deployed code alongside the latest data.
+const GAW_LAST_SEEN_TS_KEY='gaw_last_seen_push_ts';
 
 function getGHToken(){try{return localStorage.getItem(GH_TOKEN_KEY)||'';}catch(e){return '';}}
 function getGHUser(){try{return localStorage.getItem(GH_USER_KEY)||'';}catch(e){return '';}}
@@ -8423,14 +8394,6 @@ function _ghBase64Decode(b64){
 
 // ── Shared payload applicator (used by both admin pull and viewer pull) ──
 function _applyGHPayload(payload,logFn,manual){
-  // Ad Spend data (gaw_ads_v1) rides alongside _delta in the payload. Restore it first so
-  // viewers pulling from GitHub get the Ad Spend tab populated. Independent of _delta.
-  if(payload && payload.ads){
-    try{
-      localStorage.setItem('gaw_ads_v1', JSON.stringify(payload.ads));
-      if(typeof renderAds==='function' && document.getElementById('ads') && document.getElementById('ads').classList.contains('active')) renderAds();
-    }catch(_e){}
-  }
   if(payload._delta){
     let ghDelta = payload._delta;
 
@@ -8805,12 +8768,9 @@ async function githubPush(manual=false){
     // v10 legacy `april` field dropped (2026-07): duplicated active month, bloated payload.
     // Pre-v11 cached viewers must hard-refresh once.
     const _backCompatDelta = _delta;
-    // Ad Spend data lives in its own localStorage key (gaw_ads_v1), outside _delta.
-    // Include it in the payload so viewers (who pull from GitHub) receive it too.
-    let _adsStore=null; try{ _adsStore=JSON.parse(localStorage.getItem('gaw_ads_v1')||'null'); }catch(_e){}
     // NOTE: `db` is intentionally omitted — it is rebuilt from `_delta` on pull (see _applyGHPayload),
     // so sending it duplicated the entire dataset and bloated the file past GitHub's 1MB Contents-API limit.
-    const payload={_delta:_backCompatDelta,ads:_adsStore,ts:Date.now(),pushedBy:'owner',schema_version:11};
+    const payload={_delta:_backCompatDelta,ts:Date.now(),pushedBy:'owner',schema_version:11};
     const jsonStr=JSON.stringify(payload);
     // btoa only works on Latin1 — encode UTF-8 to base64 safely
     const bytes=new TextEncoder().encode(jsonStr);
@@ -8957,6 +8917,21 @@ function startVWSyncLoop(){
   _vwSyncTimer=setInterval(()=>viewerPullNow(false),90000);
 }
 
+// ── Force a fresh, cache-busted reload ───────────────────────────────────
+// A normal location.reload() can still be served from browser/CDN cache. Navigating to
+// the same URL with a unique query param forces a real re-fetch of the HTML document
+// (and its script bundle), which is what a manual hard-refresh (Ctrl/Cmd+Shift+R) does.
+// Uses replace() so it doesn't add a back-button entry.
+function _gawForceFreshReload(){
+  try{
+    const url=new URL(window.location.href);
+    url.searchParams.set('_hr', Date.now());
+    window.location.replace(url.toString());
+  }catch(e){
+    window.location.reload();
+  }
+}
+
 // ── AUTO-FETCH from same Netlify origin ─────────────────────────────────
 // Silently pulls data/gaw-data.json served by the same Netlify deployment.
 // This works because Netlify deploys the whole repo, including data/gaw-data.json.
@@ -8980,6 +8955,26 @@ async function autoFetchSiteData(){
       const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
       setSyncStatus('ok','Auto-synced · '+t);
       console.log('✅ autoFetchSiteData: data loaded from '+url);
+      // ── Hard-refresh guard ──
+      // New data since this browser's last visit implies a deploy likely happened too
+      // (data re-uploads follow code fixes — see deployment sequence). Force one fresh,
+      // cache-busted reload so the viewer's tab also picks up the latest code, not just
+      // the latest data. Skipped for admin (avoid interrupting an active upload/edit
+      // session) and capped at one reload per tab session as a loop safeguard.
+      try{
+        const freshTs=payload.ts?String(payload.ts):null;
+        if(freshTs){
+          const seenTs=localStorage.getItem(GAW_LAST_SEEN_TS_KEY);
+          const alreadyReloaded=sessionStorage.getItem('gaw_hard_refreshed');
+          if(seenTs && seenTs!==freshTs && !window._GAW_IS_ADMIN && !alreadyReloaded){
+            sessionStorage.setItem('gaw_hard_refreshed','1');
+            localStorage.setItem(GAW_LAST_SEEN_TS_KEY,freshTs);
+            _gawForceFreshReload();
+            return;
+          }
+          localStorage.setItem(GAW_LAST_SEEN_TS_KEY,freshTs);
+        }
+      }catch(_e){}
     }
   }catch(e){
     // Not available locally or parse error — use seed data. Silent fail.
@@ -10317,141 +10312,6 @@ async function cmReload(){await cmFetchTracker();renderCMActions();}
     schedule();
     try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   });
-})();
-</script>
-<script>
-/* ══════════════════════════════════════════════════════════════
-   GAW ADS / VISIBILITY MODULE  (self-contained; only reads globals)
-   ══════════════════════════════════════════════════════════════ */
-(function(){
-  const ADS_KEY='gaw_ads_v1';
-  const IM_AD_BRIDGE={"86C54EWI6Z": {"sku": "979694", "nm": "Almond Crunch Ice Cream Bar", "cat": "Sticks"}, "7VP0LL0JOW": {"sku": "17132", "nm": "Belgian Chocolate Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "D35QM8SCN0": {"sku": "49758", "nm": "Belgian Chocolate Ice Cream Tub 500ml", "cat": "Ice Cream Tubs"}, "0B983YOR5K": {"sku": "35763", "nm": "Black Forest Ice Cream Pastry", "cat": "Ice Cream Pastries"}, "9X4P343MH8": {"sku": "639100", "nm": "Blueberry Cheesecake Ice Cream Cone", "cat": "Ice Cream Cones"}, "XC84WJ2HMJ": {"sku": "17134", "nm": "Blueberry Cheesecake Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "WL89EL5DZB": {"sku": "17134", "nm": "Blueberry Cheesecake Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "ZNPTDQDRBL": {"sku": "225668", "nm": "Blueberry Cheesecake Jar", "cat": "Dessert Jars"}, "9Z9TA0GT8K": {"sku": "52909", "nm": "Brownie Crunch Ice Cream Bar", "cat": "Sticks"}, "ZW5YS3IEMN": {"sku": "17130", "nm": "Chocolate Brownie Fudge Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "ULEQBSH1W2": {"sku": "867711", "nm": "Chocolate Brownie Fudge Ice Cream Tub 500ml", "cat": "Ice Cream Tubs"}, "112KC02F9D": {"sku": "456298", "nm": "Dark Chocolate Ice Cream Cone", "cat": "Ice Cream Cones"}, "AUJ9UK3R7M": {"sku": "772715", "nm": "Dark Truffle Ice Cream Bar", "cat": "Sticks"}, "GD8NM8MZNU": {"sku": "969627", "nm": "Death By Chocolate Jar", "cat": "Dessert Jars"}, "MYP7VKHSFR": {"sku": "35448", "nm": "Guava Chilli Ice Pop", "cat": "Popsicle"}, "IXGXXVQ98P": {"sku": "35764", "nm": "Malai Kulfi Stick", "cat": "Sticks"}, "1KVC45L735": {"sku": "554006", "nm": "Mango Cassata", "cat": "Cassata"}, "CKZDH2JB4B": {"sku": "725797", "nm": "Mango Duet Stick", "cat": "Sticks"}, "AUM8B7WCRA": {"sku": "17133", "nm": "Mango Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "EADXWXK0EH": {"sku": "830963", "nm": "Mudpie Ice Cream Cake", "cat": "Ice Cream Cake"}, "I61AX0HXIF": {"sku": "932255", "nm": "Raspberry Duet Stick", "cat": "Sticks"}, "BHUX8DYSQ1": {"sku": "860758", "nm": "Strawberry Cheesecake Jar", "cat": "Dessert Jars"}, "0SSYIPZ57E": {"sku": "124064", "nm": "Tiramisu Jar", "cat": "Dessert Jars"}, "F4H3BRYX27": {"sku": "415296", "nm": "Triple Chocolate Ice Cream Cake", "cat": "Ice Cream Cake"}};
-  const BK_AD_BRIDGE={"526192": {"sku": "10141579", "nm": "New York Style Cheesecake Slice", "cat": "Cake Slice"}, "529004": {"sku": "10141579", "nm": "New York Style Cheesecake Slice", "cat": "Cake Slice"}, "552576": {"sku": "10159630", "nm": "Chocolate Cassata", "cat": "Cassata"}, "599422": {"sku": "10159630", "nm": "Chocolate Cassata", "cat": "Cassata"}, "581722": {"sku": "10176995", "nm": "Blueberry Cheesecake Jar", "cat": "Dessert Jars"}, "594659": {"sku": "10176995", "nm": "Blueberry Cheesecake Jar", "cat": "Dessert Jars"}, "581744": {"sku": "10177006", "nm": "Death By Chocolate Jar", "cat": "Dessert Jars"}, "589656": {"sku": "10177006", "nm": "Death By Chocolate Jar", "cat": "Dessert Jars"}, "581732": {"sku": "10177001", "nm": "Hazelnut Choco Cheesecake Jar", "cat": "Dessert Jars"}, "589655": {"sku": "10177001", "nm": "Hazelnut Choco Cheesecake Jar", "cat": "Dessert Jars"}, "748039": {"sku": "10284484", "nm": "Strawberry Cheesecake Jar", "cat": "Dessert Jars"}, "781776": {"sku": "10284484", "nm": "Strawberry Cheesecake Jar", "cat": "Dessert Jars"}, "581745": {"sku": "10177007", "nm": "Tiramisu Jar", "cat": "Dessert Jars"}, "589657": {"sku": "10177007", "nm": "Tiramisu Jar", "cat": "Dessert Jars"}, "581746": {"sku": "10177008", "nm": "Triple Chocolate Ice Cream Cake", "cat": "Ice Cream Cake"}, "589658": {"sku": "10177008", "nm": "Triple Chocolate Ice Cream Cake", "cat": "Ice Cream Cake"}, "760588": {"sku": "10293049", "nm": "Chocolate Brownie Ice Cream Cone", "cat": "Ice Cream Cones"}, "772827": {"sku": "10293049", "nm": "Chocolate Brownie Ice Cream Cone", "cat": "Ice Cream Cones"}, "760557": {"sku": "10293018", "nm": "Dark Chocolate Ice Cream Cone", "cat": "Ice Cream Cones"}, "772825": {"sku": "10293018", "nm": "Dark Chocolate Ice Cream Cone", "cat": "Ice Cream Cones"}, "481377": {"sku": "10110765", "nm": "Belgian Chocolate Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "487281": {"sku": "10110765", "nm": "Belgian Chocolate Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "481382": {"sku": "10110770", "nm": "Blueberry Cheesecake Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "487227": {"sku": "10110770", "nm": "Blueberry Cheesecake Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "481378": {"sku": "10110766", "nm": "Chocolate Brownie Fudge Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "487279": {"sku": "10110766", "nm": "Chocolate Brownie Fudge Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "481380": {"sku": "10110768", "nm": "Mango Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "487282": {"sku": "10110768", "nm": "Mango Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "481379": {"sku": "10110767", "nm": "Keto Very Berry Ice Cream Cup 100ml", "cat": "Ice Cream Cups"}, "—": {"sku": "10159629", "nm": "Biscrunch Ice Cream Pastry", "cat": "Ice Cream Pastries"}, "525883": {"sku": "10141298", "nm": "Black Forest Ice Cream Pastry", "cat": "Ice Cream Pastries"}, "529002": {"sku": "10141298", "nm": "Black Forest Ice Cream Pastry", "cat": "Ice Cream Pastries"}, "734743": {"sku": "10275624", "nm": "Hot Chocolate Fudge Ice Cream Pastry", "cat": "Ice Cream Pastries"}, "750439": {"sku": "10275624", "nm": "Hot Chocolate Fudge Ice Cream Pastry", "cat": "Ice Cream Pastries"}, "548929": {"sku": "10156246", "nm": "Red Velvet Ice Cream Pastry", "cat": "Ice Cream Pastries"}, "552577": {"sku": "10159629", "nm": "Biscrunch Ice Cream Pastry", "cat": "Ice Cream Pastries"}, "734842": {"sku": "10275659", "nm": "Choco Brownie Cookie Ice Cream Sandwich", "cat": "Ice Cream Sandwich"}, "781770": {"sku": "10275659", "nm": "Choco Brownie Cookie Ice Cream Sandwich", "cat": "Ice Cream Sandwich"}, "789231": {"sku": "10311592", "nm": "Almond Crunch Ice Cream Bar", "cat": "Sticks"}, "793087": {"sku": "10311592", "nm": "Almond Crunch Ice Cream Bar", "cat": "Sticks"}, "543930": {"sku": "10152615", "nm": "Brownie Crunch Ice Cream Bar", "cat": "Sticks"}, "552525": {"sku": "10152615", "nm": "Brownie Crunch Ice Cream Bar", "cat": "Sticks"}, "760045": {"sku": "10292641", "nm": "Mango Duet Stick", "cat": "Sticks"}, "772829": {"sku": "10292641", "nm": "Mango Duet Stick", "cat": "Sticks"}, "759469": {"sku": "10292287", "nm": "Raspberry Duet Stick", "cat": "Sticks"}, "772828": {"sku": "10292287", "nm": "Raspberry Duet Stick", "cat": "Sticks"}};
-  let _adsPlat='Blinkit', _adsRoas='total', _adsSort='spend', _adsExpanded=null;
-
-  // ---------- helpers ----------
-  function adMoney(x){x=+x||0;if(Math.abs(x)>=1e7)return'\u20B9'+(x/1e7).toFixed(2)+'Cr';if(Math.abs(x)>=1e5)return'\u20B9'+(x/1e5).toFixed(2)+'L';if(Math.abs(x)>=1e3)return'\u20B9'+(x/1e3).toFixed(1)+'K';return'\u20B9'+Math.round(x);}
-  function roasColor(r){if(!isFinite(r)||r<=0)return'#94A3B8';if(r>=3.5)return'#3a7d44';if(r>=2.5)return'#d4860a';return'#e94560';}
-  function roasLabel(r){if(!isFinite(r)||r<=0)return'\u2014';return r.toFixed(2)+'\u00D7';}
-  function num(v){if(v==null)return 0;const n=parseFloat(String(v).replace(/[,\u20B9%]/g,'').trim());return isFinite(n)?n:0;}
-  function norm(s){return String(s==null?'':s).trim();}
-  function low(s){return norm(s).toLowerCase();}
-  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-  function getStore(){try{return JSON.parse(localStorage.getItem(ADS_KEY))||_blank();}catch(e){return _blank();}}
-  function _blank(){return{bk:{},im:{},imCamp:[],imProd:{},meta:{bkDates:[],imDates:[],updated:null}};}
-  function saveStore(s){s.meta.updated=new Date().toISOString();localStorage.setItem(ADS_KEY,JSON.stringify(s));}
-
-  // find a column by any of several candidate names (case/space-insensitive, contains)
-  function pick(row,cands){const keys=Object.keys(row);for(const c of cands){const cl=c.toLowerCase().replace(/[^a-z0-9]/g,'');for(const k of keys){if(k.toLowerCase().replace(/[^a-z0-9]/g,'')===cl)return k;}}for(const c of cands){const cl=c.toLowerCase().replace(/[^a-z0-9]/g,'');for(const k of keys){if(k.toLowerCase().replace(/[^a-z0-9]/g,'').includes(cl))return k;}}return null;}
-  function dstr(v){if(v==null||v==='')return'';if(v instanceof Date&&!isNaN(v.getTime())){return v.getUTCFullYear()+'-'+String(v.getUTCMonth()+1).padStart(2,'0')+'-'+String(v.getUTCDate()).padStart(2,'0');}const s=String(v).trim();let m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);if(m)return m[1]+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[3]).padStart(2,'0');m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);if(m)return m[3]+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[1]).padStart(2,'0');m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2})$/);if(m){return '20'+m[3]+'-'+String(+m[1]).padStart(2,'0')+'-'+String(+m[2]).padStart(2,'0');}return s.slice(0,10);}
-
-  // ---------- SheetJS read (csv or xlsx) ----------
-  function readRows(file,cb,opts){opts=opts||{};const rd=new FileReader();rd.onload=function(e){try{const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});const ws=wb.Sheets[wb.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(ws,{defval:'',range:opts.skip||0,raw:true});cb(rows);}catch(err){alert('Ad file parse error: '+err.message);}};rd.readAsArrayBuffer(file);}
-  // detect header offset for IM native product report (header not on row 0)
-  function readRowsAuto(file,headerHint,cb){const rd=new FileReader();rd.onload=function(e){try{const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});const ws=wb.Sheets[wb.SheetNames[0]];const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});let hr=0;for(let i=0;i<Math.min(12,aoa.length);i++){if(aoa[i].map(x=>String(x).toUpperCase()).includes(headerHint)){hr=i;break;}}const rows=XLSX.utils.sheet_to_json(ws,{defval:'',range:hr,raw:true});cb(rows);}catch(err){alert('Ad file parse error: '+err.message);}};rd.readAsArrayBuffer(file);}
-
-  // ---------- PARSERS ----------
-  function agg(map,sku,meta,d,fields){if(!map[sku])map[sku]={nm:meta.nm,cat:meta.cat,spend:0,gmv:0,ds:0,is:0,imp:0,clk:0,ord:0,nu:0,byDay:{}};const o=map[sku];for(const k in fields)o[k]=(o[k]||0)+fields[k];if(d){o.byDay[d]=o.byDay[d]||{spend:0,gmv:0,ds:0,is:0,ord:0};for(const k in fields)if(k in o.byDay[d])o.byDay[d][k]+=fields[k];}}
-
-  function parseBK(rows){const s=getStore();s.bk={};const r0=rows[0]||{};const cPid=pick(r0,['Product ID','ProductID']),cDate=pick(r0,['Date']),cSpend=pick(r0,['Spends','Spend']),cOff=pick(r0,['Offtake','GMV']),cDS=pick(r0,['Direct Sales','DirectSales']),cIS=pick(r0,['Indirect Sales','IndirectSales']),cImp=pick(r0,['Impressions']),cOrd=pick(r0,['Orders']),cNU=pick(r0,['New Users','NewUsers']);const dates=new Set();rows.forEach(row=>{const pid=norm(row[cPid]).replace(/\.0$/,'');const b=BK_AD_BRIDGE[pid];if(!b)return;const d=cDate?dstr(row[cDate]):'';if(d)dates.add(d);agg(s.bk,b.sku,b,d,{spend:num(row[cSpend]),gmv:num(row[cOff]),ds:num(row[cDS]),is:num(row[cIS]),imp:num(row[cImp]),ord:num(row[cOrd]),nu:num(row[cNU])});});s.meta.bkDates=[...dates].sort();saveStore(s);return{skus:Object.keys(s.bk).length,dates:s.meta.bkDates.length};}
-
-  function parseIMdaily(rows){const s=getStore();s.im={};const r0=rows[0]||{};const cPid=pick(r0,['Product ID','ProductID']),cDate=pick(r0,['Date']),cSpend=pick(r0,['Spends','Spend']),cOff=pick(r0,['Offtake','GMV']),cDS=pick(r0,['Direct Sales']),cIS=pick(r0,['Indirect Sales']),cImp=pick(r0,['Impressions']),cClk=pick(r0,['Unique Clicks','Clicks']),cOrd=pick(r0,['Orders']);const dates=new Set();rows.forEach(row=>{const pid=norm(row[cPid]);const b=IM_AD_BRIDGE[pid];if(!b)return;const d=cDate?dstr(row[cDate]):'';if(d)dates.add(d);agg(s.im,b.sku,b,d,{spend:num(row[cSpend]),gmv:num(row[cOff]),ds:num(row[cDS]),is:num(row[cIS]),imp:num(row[cImp]),clk:num(row[cClk]),ord:num(row[cOrd])});});s.meta.imDates=[...dates].sort();saveStore(s);return{skus:Object.keys(s.im).length,dates:s.meta.imDates.length};}
-
-  function parseIMcamp(rows){const s=getStore();const r0=rows[0]||{};const cName=pick(r0,['Campaign Name']),cSpend=pick(r0,['Spends','Spend']),cRev=pick(r0,['Ad. Revenue','Revenue','Ad Revenue']),cRoas=pick(r0,['ROAS']),cDRoas=pick(r0,['Direct ROAS']),cCac=pick(r0,['CAC']),cNtb=pick(r0,['New Users Acquired (NTB)','NTB','New Users Acquired']),cUtil=pick(r0,['Avg. Budget Util. %','Budget Util']),cPeriod=pick(r0,['Period']);const out=[];rows.forEach(row=>{if(cPeriod&&low(row[cPeriod]).includes('prev'))return;const nm=norm(row[cName]);if(!nm)return;out.push({nm:nm,spend:num(row[cSpend]),gmv:num(row[cRev]),roas:num(row[cRoas]),droas:num(row[cDRoas]),cac:num(row[cCac]),ntb:num(row[cNtb]),util:num(row[cUtil])});});s.imCamp=out;saveStore(s);return{campaigns:out.length};}
-
-  function parseIMprod(rows){const s=getStore();const r0=rows[0]||{};const cPid=pick(r0,['PRODUCT_ID']),cEcpc=pick(r0,['eCPC']),cEcpm=pick(r0,['eCPM']),cRank=pick(r0,['AD_RANK']),cA2c=pick(r0,['A2C_RATE']),cD7=pick(r0,['TOTAL_DIRECT_ROI_7_DAYS']),cD14=pick(r0,['TOTAL_DIRECT_ROI_14_DAYS']);const prod={};rows.forEach(row=>{const pid=norm(row[cPid]);const b=IM_AD_BRIDGE[pid];if(!b)return;const o=prod[b.sku]=prod[b.sku]||{ecpc:0,ecpm:0,rank:0,a2c:0,d7:0,d14:0,n:0};o.ecpc+=num(row[cEcpc]);o.ecpm+=num(row[cEcpm]);o.rank+=num(row[cRank]);o.a2c+=num(row[cA2c]);o.d7=Math.max(o.d7,num(row[cD7]));o.d14=Math.max(o.d14,num(row[cD14]));o.n++;});for(const k in prod){const o=prod[k];if(o.n){o.ecpc/=o.n;o.ecpm/=o.n;o.rank/=o.n;o.a2c/=o.n;}}s.imProd=prod;saveStore(s);return{skus:Object.keys(prod).length};}
-
-  // ---------- UPLOAD ENTRY ----------
-  window.uploadAdFile=function(input,kind){const f=input.files&&input.files[0];if(!f)return;const setSub=(t)=>{const el=document.getElementById(kind+'AdSub');if(el)el.textContent=t;};setSub('Parsing\u2026');const done=(r)=>{setSub('\u2705 '+JSON.stringify(r).replace(/[{}"]/g,'').replace(/,/g,'  \u00B7  '));if(document.getElementById('ads').classList.contains('active'))renderAds();try{if(typeof githubPush==='function')githubPush();}catch(_e){}};if(kind==='bk')readRows(f,rows=>done(parseBK(rows)));else if(kind==='imd')readRows(f,rows=>done(parseIMdaily(rows)));else if(kind==='imc')readRows(f,rows=>done(parseIMcamp(rows)));else if(kind==='imp')readRowsAuto(f,'PRODUCT_ID',rows=>done(parseIMprod(rows)));input.value='';};
-
-  // ---------- METRIC ROLLUP ----------
-  function roasOf(o){const den=o.spend||0;if(den<=0)return 0;const numr=_adsRoas==='direct'?o.ds:_adsRoas==='indirect'?o.is:o.gmv;return numr/den;}
-  function platMap(){return _adsPlat==='Blinkit'?getStore().bk:getStore().im;}
-  function totals(map){let t={spend:0,gmv:0,ds:0,is:0,imp:0,clk:0,ord:0,nu:0};for(const k in map){const o=map[k];for(const f in t)t[f]+=(o[f]||0);}return t;}
-
-  // ---------- RENDER ----------
-  window.renderAds=function(){const s=getStore();const host=document.getElementById('ads');if(!host)return;const bkT=totals(s.bk),imT=totals(s.im);const hasData=(bkT.spend+imT.spend)>0;
-    if(!hasData){host.innerHTML='<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:15px;font-weight:800;color:#2E4162;margin-bottom:6px">Ad Spend / Visibility</div><div style="font-size:13px;color:#6E7C95;margin-bottom:14px">No ad data yet. Upload from the <b>Upload</b> tab \u2192 Ad Spend section.</div><div style="font-size:12px;color:#94A3B8;line-height:1.7">Blinkit: 1 file (GobbleCube daily CSV)<br>Instamart: 3 files (GobbleCube daily + comparison xlsx + IM product export)</div></div>';return;}
-    const blendR=(bkT.gmv+imT.gmv)/((bkT.spend+imT.spend)||1);
-    let h='';
-    // KPI STRIP (both platforms)
-    h+='<div class="card" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><div style="font-size:15px;font-weight:800;color:#2E4162">Ad Spend & Visibility</div><div style="font-size:11px;color:#94A3B8">MTD \u00B7 updated '+(s.meta.updated?new Date(s.meta.updated).toLocaleDateString('en-IN'):'\u2014')+'</div></div>';
-    h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">';
-    h+=_kpi('Total Spend',adMoney(bkT.spend+imT.spend));
-    h+=_kpi('Ad GMV (Offtake)',adMoney(bkT.gmv+imT.gmv));
-    h+=_kpi('Blended ROAS',roasLabel(blendR),roasColor(blendR));
-    h+=_kpi('Spend % of Ad GMV',(((bkT.spend+imT.spend)/((bkT.gmv+imT.gmv)||1))*100).toFixed(1)+'%');
-    h+=_kpi('Orders',Math.round(bkT.ord+imT.ord).toLocaleString('en-IN'));
-    h+='</div>';
-    // per-platform mini
-    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">';
-    h+=_platMini('Blinkit',bkT,'#EB8B2C');
-    h+=_platMini('Instamart',imT,'#E25F43');
-    h+='</div></div>';
-    // TOGGLES
-    h+='<div class="card" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:center">';
-    h+='<div style="display:flex;gap:6px">'+_tog('Blinkit',_adsPlat==='Blinkit','plat')+_tog('Instamart',_adsPlat==='Instamart','plat')+'</div>';
-    h+='<div style="display:flex;gap:6px;align-items:center"><span style="font-size:11px;color:#94A3B8;font-weight:700">ROAS:</span>'+_tog('Total',_adsRoas==='total','roas')+_tog('Direct',_adsRoas==='direct','roas')+_tog('Indirect',_adsRoas==='indirect','roas')+'</div>';
-    h+='</div></div>';
-    // SKU TABLE + trend
-    const map=platMap();const T=totals(map);
-    const rowsArr=Object.keys(map).map(sku=>({sku,...map[sku],roas:roasOf(map[sku])}));
-    rowsArr.sort((a,b)=>_adsSort==='roas'?b.roas-a.roas:b.spend-a.spend);
-    h+='<div class="card" style="margin-bottom:12px"><div style="font-weight:800;color:#2E4162;font-size:14px;margin-bottom:8px">'+_adsPlat+' \u2014 SKU Ad Performance</div>';
-    h+='<div style="overflow-x:auto"><table class="data" style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#2E4162;color:#fff">'+
-       '<th style="text-align:left;padding:7px 8px">SKU</th><th style="padding:7px 8px">Spend</th><th style="padding:7px 8px">Ad GMV</th><th style="padding:7px 8px">ROAS ('+_adsRoas+')</th><th style="padding:7px 8px">Orders</th>'+(_adsPlat==='Blinkit'?'<th style="padding:7px 8px">CAC</th>':'')+'<th style="padding:7px 8px">Spend %</th></tr></thead><tbody>';
-    rowsArr.forEach((r,i)=>{const sh=(T.spend?r.spend/T.spend*100:0).toFixed(1);const cac=r.nu>0?adMoney(r.spend/r.nu):'\u2014';h+='<tr onclick="_adsSkuExpand('+r.sku+')" style="cursor:pointer;border-bottom:1px solid #EEF1F6;background:'+(_adsExpanded===r.sku?'#EFEAF8':(i%2?'#FbFcFe':'#fff'))+'">'+
-       '<td style="padding:6px 8px;text-align:left">'+(_adsExpanded===r.sku?'[−] ':'[+] ')+esc(r.nm)+'</td>'+
-       '<td style="padding:6px 8px;text-align:center">'+adMoney(r.spend)+'</td>'+
-       '<td style="padding:6px 8px;text-align:center">'+adMoney(r.gmv)+'</td>'+
-       '<td style="padding:6px 8px;text-align:center;font-weight:800;color:'+roasColor(r.roas)+'">'+roasLabel(r.roas)+'</td>'+
-       '<td style="padding:6px 8px;text-align:center">'+Math.round(r.ord||0).toLocaleString('en-IN')+'</td>'+
-       (_adsPlat==='Blinkit'?'<td style="padding:6px 8px;text-align:center">'+cac+'</td>':'')+
-       '<td style="padding:6px 8px;text-align:center">'+sh+'%</td></tr>'+(_adsExpanded===r.sku?_skuDetailRow(r):'');});
-    h+='</tbody><tfoot><tr style="font-weight:800;background:#F7F9FC"><td style="padding:7px 8px;text-align:left">Total</td><td style="padding:7px 8px;text-align:center">'+adMoney(T.spend)+'</td><td style="padding:7px 8px;text-align:center">'+adMoney(T.gmv)+'</td><td style="padding:7px 8px;text-align:center;color:'+roasColor(T.gmv/(T.spend||1))+'">'+roasLabel((_adsRoas==='direct'?T.ds:_adsRoas==='indirect'?T.is:T.gmv)/(T.spend||1))+'</td><td style="padding:7px 8px;text-align:center">'+Math.round(T.ord||0).toLocaleString('en-IN')+'</td>'+(_adsPlat==='Blinkit'?'<td></td>':'')+'<td style="padding:7px 8px;text-align:center">100%</td></tr></tfoot></table></div></div>';
-    // TREND + DONUT
-    h+='<div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px"><div class="card"><div style="font-weight:800;color:#2E4162;font-size:14px;margin-bottom:8px">'+_adsPlat+' \u2014 Daily Spend vs ROAS</div><div style="height:260px"><canvas id="adsTrendCv"></canvas></div></div></div>';
-    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px"><div class="card"><div style="font-weight:800;color:#2E4162;font-size:13px;margin-bottom:8px">Spend by SKU</div><div style="height:230px"><canvas id="adsDonutCv"></canvas></div></div><div class="card"><div style="font-weight:800;color:#2E4162;font-size:13px;margin-bottom:8px">Funnel</div>'+_funnel(T)+'</div></div>';
-    // IM CAMPAIGN TABLE
-    if(_adsPlat==='Instamart'&&s.imCamp&&s.imCamp.length){h+='<div class="card" style="margin-bottom:12px"><div style="font-weight:800;color:#2E4162;font-size:14px;margin-bottom:4px">Instamart \u2014 Campaign View (CAC / NTB)</div><div style="font-size:11px;color:#94A3B8;margin-bottom:8px">Campaign-level \u2014 CAC & NTB not available per-SKU on Instamart.</div><div style="overflow-x:auto"><table class="data" style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#E25F43;color:#fff"><th style="text-align:left;padding:7px 8px">Campaign</th><th style="padding:7px 8px">Spend</th><th style="padding:7px 8px">ROAS</th><th style="padding:7px 8px">CAC</th><th style="padding:7px 8px">NTB</th><th style="padding:7px 8px">Budget Util</th></tr></thead><tbody>';const cs=s.imCamp.slice().sort((a,b)=>b.spend-a.spend);cs.forEach((c,i)=>{h+='<tr style="border-bottom:1px solid #EEF1F6;background:'+(i%2?'#FbFcFe':'#fff')+'"><td style="padding:6px 8px;text-align:left">'+esc(c.nm)+'</td><td style="padding:6px 8px;text-align:center">'+adMoney(c.spend)+'</td><td style="padding:6px 8px;text-align:center;font-weight:800;color:'+roasColor(c.roas)+'">'+roasLabel(c.roas)+'</td><td style="padding:6px 8px;text-align:center">'+(c.cac>0?adMoney(c.cac):'\u2014')+'</td><td style="padding:6px 8px;text-align:center">'+(c.ntb||0)+'</td><td style="padding:6px 8px;text-align:center">'+(c.util?c.util.toFixed(0)+'%':'\u2014')+'</td></tr>';});h+='</tbody></table></div></div>';}
-    // DRILLDOWNS — category / quadrant / gap / day-of-week
-    h+=_catCard(rowsArr,T)+_quadCard()+_gapCard()+_dowCard();
-    // FLAGS
-    h+=_flags(rowsArr);
-    host.innerHTML=h;
-    _drawTrend(map);_drawDonut(rowsArr);_drawQuad(rowsArr);_drawGap(rowsArr,T);_drawDow(map);if(_adsExpanded&&map[_adsExpanded])_drawSkuTrend(_adsExpanded,map);
-  };
-
-  function _kpi(l,v,c){return'<div style="background:#F7F9FC;border-radius:10px;padding:10px 12px"><div style="font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.3px">'+l+'</div><div style="font-size:18px;font-weight:800;color:'+(c||'#2E4162')+';margin-top:3px">'+v+'</div></div>';}
-  function _platMini(nm,t,col){const r=t.gmv/(t.spend||1);return'<div style="border:1px solid #EEF1F6;border-left:3px solid '+col+';border-radius:10px;padding:10px 12px"><div style="font-size:12px;font-weight:800;color:'+col+'">'+nm+'</div><div style="display:flex;justify-content:space-between;font-size:11px;color:#6E7C95;margin-top:4px"><span>Spend '+adMoney(t.spend)+'</span><span>GMV '+adMoney(t.gmv)+'</span><span style="font-weight:800;color:'+roasColor(r)+'">'+roasLabel(r)+'</span></div></div>';}
-  function _tog(lbl,on,grp){return'<button onclick="_adsToggle(\''+grp+'\',\''+lbl.toLowerCase()+'\')" style="border:none;cursor:pointer;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:800;font-family:inherit;'+(on?'background:#2E4162;color:#fff':'background:#EEF1F6;color:#6E7C95')+'">'+lbl+'</button>';}
-  window._adsToggle=function(grp,val){if(grp==='plat')_adsPlat=(val==='blinkit')?'Blinkit':'Instamart';else _adsRoas=val;renderAds();};
-  window._adsSkuExpand=function(sku){sku=String(sku);_adsExpanded=(_adsExpanded===sku)?null:sku;renderAds();};
-  function _funnel(t){const rows=[['Impressions',t.imp],['Clicks',t.clk],['Orders',t.ord]];const mx=Math.max(...rows.map(r=>r[1]),1);let o='<div style="display:flex;flex-direction:column;gap:8px;padding-top:6px">';rows.forEach(r=>{if(r[0]==='Clicks'&&_adsPlat==='Blinkit'&&!t.clk)return;const w=Math.max(4,r[1]/mx*100);o+='<div><div style="display:flex;justify-content:space-between;font-size:11px;color:#6E7C95;font-weight:700;margin-bottom:2px"><span>'+r[0]+'</span><span>'+Math.round(r[1]||0).toLocaleString('en-IN')+'</span></div><div style="height:12px;border-radius:6px;background:#EEF1F6"><div style="height:12px;border-radius:6px;width:'+w+'%;background:linear-gradient(90deg,#2E4162,#5B7BB0)"></div></div></div>';});const cr=t.imp?(t.ord/t.imp*100).toFixed(2):0;o+='<div style="font-size:11px;color:#94A3B8;margin-top:2px">Conv (orders/impr): <b style="color:#2E4162">'+cr+'%</b></div></div>';return o;}
-  function _flags(rows){const lowR=rows.filter(r=>r.spend>0&&r.roas>0&&r.roas<2.5).sort((a,b)=>b.spend-a.spend);const waste=rows.filter(r=>r.spend>0&&r.gmv<=0);let o='<div class="card" style="margin-bottom:12px"><div style="font-weight:800;color:#2E4162;font-size:14px;margin-bottom:8px">\u26A0\uFE0F Flags</div>';if(!lowR.length&&!waste.length){o+='<div style="font-size:12px;color:#3a7d44">No low-ROAS or zero-return SKUs. All spend paying back \u2265 2.5\u00D7.</div>';}else{if(waste.length)o+='<div style="font-size:12px;color:#e94560;margin-bottom:6px"><b>Zero-return spend:</b> '+waste.map(r=>esc(r.nm)+' ('+adMoney(r.spend)+')').join(', ')+'</div>';if(lowR.length)o+='<div style="font-size:12px;color:#d4860a"><b>Low ROAS (&lt;2.5\u00D7):</b> '+lowR.slice(0,6).map(r=>esc(r.nm)+' '+roasLabel(r.roas)+' \u00B7 '+adMoney(r.spend)).join(' &nbsp;|&nbsp; ')+'</div>';}o+='</div>';return o;}
-
-  function _drawTrend(map){const dates=(_adsPlat==='Blinkit'?getStore().meta.bkDates:getStore().meta.imDates)||[];if(!dates.length)return;const spend=dates.map(d=>0),gmv=dates.map(d=>0);const di={};dates.forEach((d,i)=>di[d]=i);for(const k in map){const bd=map[k].byDay||{};for(const d in bd){if(di[d]!=null){spend[di[d]]+=bd[d].spend||0;gmv[di[d]]+=((_adsRoas==='direct'?bd[d].ds:_adsRoas==='indirect'?bd[d].is:bd[d].gmv))||0;}}}const roas=spend.map((sp,i)=>sp>0?gmv[i]/sp:0);const lbls=dates.map(d=>d.slice(5));mkChart('adsTrendCv','bar',{labels:lbls,datasets:[{type:'bar',label:'Spend',data:spend,backgroundColor:'#5B7BB0',yAxisID:'y',order:2},{type:'line',label:'ROAS',data:roas,borderColor:'#d4860a',backgroundColor:'#d4860a',yAxisID:'y1',tension:.3,order:1,pointRadius:2}]},{scales:{y:{position:'left',title:{display:true,text:'Spend'}},y1:{position:'right',grid:{drawOnChartArea:false},title:{display:true,text:'ROAS'}}}});}
-  function _drawDonut(rows){const top=rows.slice().sort((a,b)=>b.spend-a.spend).slice(0,8);const other=rows.slice(8).reduce((a,r)=>a+r.spend,0);const labels=top.map(r=>r.nm);const data=top.map(r=>r.spend);if(other>0){labels.push('Other');data.push(other);}mkChart('adsDonutCv','doughnut',{labels,datasets:[{data,backgroundColor:['#2E4162','#EB8B2C','#E25F43','#3a7d44','#5B7BB0','#d4860a','#9c4dcc','#288B93','#94A3B8']}]},{cutout:'58%'});}
-
-
-  // ---------- DRILLDOWN HELPERS ----------
-  function _skuDetailRow(r){const cols=_adsPlat==='Blinkit'?7:6;return '<tr><td colspan="'+cols+'" style="padding:8px 12px 14px;background:#FAF7FE"><div style="font-size:11px;color:#7A4FC0;font-weight:700;margin-bottom:4px">'+esc(r.nm)+' \u2014 daily spend vs ROAS</div><div style="height:170px"><canvas id="adsSkuCv_'+r.sku+'"></canvas></div></td></tr>';}
-  function _drawSkuTrend(sku,map){const o=map[sku];if(!o)return;const dates=(_adsPlat==='Blinkit'?getStore().meta.bkDates:getStore().meta.imDates)||[];const bd=o.byDay||{};const di={};dates.forEach((d,i)=>di[d]=i);const spend=dates.map(_=>0),gmv=dates.map(_=>0);for(const d in bd){if(di[d]!=null){spend[di[d]]=bd[d].spend||0;gmv[di[d]]=((_adsRoas==='direct'?bd[d].ds:_adsRoas==='indirect'?bd[d].is:bd[d].gmv))||0;}}const roas=spend.map((sp,i)=>sp>0?gmv[i]/sp:0);mkChart('adsSkuCv_'+sku,'bar',{labels:dates.map(d=>d.slice(5)),datasets:[{type:'bar',label:'Spend',data:spend,backgroundColor:'#B9A0E0',yAxisID:'y',order:2},{type:'line',label:'ROAS',data:roas,borderColor:'#7A4FC0',backgroundColor:'#7A4FC0',yAxisID:'y1',tension:.3,order:1,pointRadius:2}]},{scales:{y:{position:'left'},y1:{position:'right',grid:{drawOnChartArea:false}}}});}
-
-  function _catAgg(rows){const c={};rows.forEach(r=>{const k=r.cat||'Other';const o=c[k]=c[k]||{spend:0,gmv:0,ds:0,is:0,ord:0};o.spend+=r.spend;o.gmv+=r.gmv;o.ds+=r.ds||0;o.is+=r.is||0;o.ord+=r.ord||0;});return c;}
-  function _catCard(rows,T){const c=_catAgg(rows);const ks=Object.keys(c).sort((a,b)=>c[b].spend-c[a].spend);let x='<div class="card" style="margin-bottom:12px"><div style="font-weight:800;color:#2E4162;font-size:14px;margin-bottom:8px">Category Rollup</div><div style="overflow-x:auto"><table class="data" style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#2E4162;color:#fff"><th style="text-align:left;padding:7px 8px">Category</th><th style="padding:7px 8px">Spend</th><th style="padding:7px 8px">Ad GMV</th><th style="padding:7px 8px">ROAS</th><th style="padding:7px 8px">Spend %</th></tr></thead><tbody>';ks.forEach((k,i)=>{const o=c[k];const rr=(_adsRoas==='direct'?o.ds:_adsRoas==='indirect'?o.is:o.gmv)/(o.spend||1);const sh=(T.spend?o.spend/T.spend*100:0).toFixed(1);x+='<tr style="border-bottom:1px solid #EEF1F6;background:'+(i%2?'#FbFcFe':'#fff')+'"><td style="padding:6px 8px;text-align:left">'+esc(k)+'</td><td style="padding:6px 8px;text-align:center">'+adMoney(o.spend)+'</td><td style="padding:6px 8px;text-align:center">'+adMoney(o.gmv)+'</td><td style="padding:6px 8px;text-align:center;font-weight:800;color:'+roasColor(rr)+'">'+roasLabel(rr)+'</td><td style="padding:6px 8px;text-align:center">'+sh+'%</td></tr>';});x+='</tbody></table></div></div>';return x;}
-
-  function _quadCard(){return '<div class="card" style="margin-bottom:12px"><div style="font-weight:800;color:#2E4162;font-size:14px;margin-bottom:2px">Spend \u00d7 ROAS \u2014 Scale / Cut / Watch</div><div style="font-size:11px;color:#94A3B8;margin-bottom:8px">Green scale (hi spend, hi ROAS) \u00b7 Red cut (hi spend, lo ROAS) \u00b7 Amber grow (lo spend, hi ROAS) \u00b7 Grey watch</div><div style="height:300px"><canvas id="adsQuadCv"></canvas></div></div>';}
-  function _quadCol(sp,rr,med){const hs=sp>=med,hr=rr>=3.5;if(hs&&!hr)return'#e94560';if(hs&&hr)return'#3a7d44';if(!hs&&hr)return'#d4860a';return'#94A3B8';}
-  function _drawQuad(rows){if(!rows.length)return;const s=rows.map(r=>r.spend).slice().sort((a,b)=>a-b);const med=s[Math.floor(s.length/2)]||0;const pts=rows.map(r=>({x:r.spend,y:r.roas,nm:r.nm}));const cols=rows.map(r=>_quadCol(r.spend,r.roas,med));mkChart('adsQuadCv','scatter',{datasets:[{data:pts,pointBackgroundColor:cols,pointBorderColor:cols,pointRadius:6,pointHoverRadius:8}]},{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){const p=ctx.raw;return p.nm+': '+adMoney(p.x)+' \u00b7 '+(p.y||0).toFixed(2)+'\u00d7';}}}},scales:{x:{type:'linear',title:{display:true,text:'Spend (\u20b9)'}},y:{type:'linear',title:{display:true,text:'ROAS'}}}});}
-
-  function _gapCard(){return '<div class="card" style="margin-bottom:12px"><div style="font-weight:800;color:#2E4162;font-size:14px;margin-bottom:2px">Spend % vs GMV % \u2014 Investment Gap</div><div style="font-size:11px;color:#94A3B8;margin-bottom:8px">Red over-invested (spend share &gt; return share) \u00b7 Green under-invested (headroom)</div><div style="height:300px"><canvas id="adsGapCv"></canvas></div></div>';}
-  function _drawGap(rows,T){if(!rows.length)return;const g=rows.map(r=>({nm:r.nm,gap:(T.spend?r.spend/T.spend*100:0)-(T.gmv?r.gmv/T.gmv*100:0)}));g.sort((a,b)=>b.gap-a.gap);const seen={};const top=g.slice(0,8).concat(g.slice(-8)).filter(v=>{if(seen[v.nm])return false;seen[v.nm]=1;return true;});mkChart('adsGapCv','bar',{labels:top.map(v=>v.nm),datasets:[{data:top.map(v=>+v.gap.toFixed(2)),backgroundColor:top.map(v=>v.gap>0?'#e94560':'#3a7d44')}]},{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return (ctx.parsed.x>0?'+':'')+ctx.parsed.x+' pp';}}}},scales:{x:{title:{display:true,text:'Spend% \u2212 GMV% (pp)'}}}});}
-
-  function _dowCard(){return '<div class="card" style="margin-bottom:12px"><div style="font-weight:800;color:#2E4162;font-size:14px;margin-bottom:8px">Day-of-Week \u2014 Spend vs ROAS</div><div style="height:250px"><canvas id="adsDowCv"></canvas></div></div>';}
-  function _drawDow(map){const nm=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];const sp=[0,0,0,0,0,0,0],gm=[0,0,0,0,0,0,0];for(const k in map){const bd=map[k].byDay||{};for(const d in bd){const dt=new Date(d+'T00:00:00');if(isNaN(dt.getTime()))continue;const wd=(dt.getDay()+6)%7;sp[wd]+=bd[d].spend||0;gm[wd]+=((_adsRoas==='direct'?bd[d].ds:_adsRoas==='indirect'?bd[d].is:bd[d].gmv))||0;}}const roas=sp.map((s,i)=>s>0?gm[i]/s:0);mkChart('adsDowCv','bar',{labels:nm,datasets:[{type:'bar',label:'Spend',data:sp,backgroundColor:'#5B7BB0',yAxisID:'y',order:2},{type:'line',label:'ROAS',data:roas,borderColor:'#d4860a',backgroundColor:'#d4860a',yAxisID:'y1',tension:.3,order:1,pointRadius:3}]},{scales:{y:{position:'left'},y1:{position:'right',grid:{drawOnChartArea:false}}}});}
-
-
 })();
 </script>
 
