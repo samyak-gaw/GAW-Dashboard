@@ -6829,6 +6829,7 @@ function _availRenderTrendingDegradation(){
         const drop=prevAvg-recAvg;
         if(drop>=5){
           const info=skuLookup(plat,sku);
+          if(CM_DISCONTINUED.has(cmKey(info.name)))return; // discontinued — residual sales, not real de-growth
           issues.push({plat,sku,name:info.name,cat:info.cat,prevAvg,recAvg,drop});
         }
       }
