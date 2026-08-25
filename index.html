@@ -1463,11 +1463,19 @@ function _fkDiscActive(monthKey){
   const me = MONTH_NUM_FROM_KEY(em) + YEAR_FROM_KEY(em)*12;
   return mk >= me;
 }
-// BigBasket fixed-rate discount, per month. Aug-2026 renegotiated to 25%; earlier months 30%.
-// Add a month key here when the rate changes again; historical months keep their own rate.
+// BigBasket fixed-rate discount, per month, with an optional intra-month renegotiation date.
+// Aug-2026: 25% days 1-13, renegotiated to 30% from day 14 onward.
+// Add a month key to BB_DISC_RATES when the base rate changes again; add/adjust
+// BB_DISC_RATE_CHANGES for an in-month step change. Historical months keep their own rate.
 const BB_DISC_RATES = { 'Aug-2026': 0.25 };
+const BB_DISC_RATE_CHANGES = { 'Aug-2026': { fromDay: 14, rate: 0.30 } };
 const BB_DISC_DEFAULT = 0.30;
-function _bbRate(monthKey){ const r = BB_DISC_RATES[monthKey]; return (r === undefined ? BB_DISC_DEFAULT : r); }
+function _bbRate(monthKey, day){
+  const change = BB_DISC_RATE_CHANGES[monthKey];
+  if(change && day!=null && Number(day) >= change.fromDay) return change.rate;
+  const r = BB_DISC_RATES[monthKey];
+  return (r === undefined ? BB_DISC_DEFAULT : r);
+}
 
 // Amazon brand-funded discount is a fixed rate synthesised at ingest (no separate file).
 // Crazy-deal SKUs run at a DEEPER BF rate from a start date; everyone else stays at default.
@@ -2146,13 +2154,13 @@ function _buildMonthData(monthKey) {
     }
 
     if (p === 'BigBasket') {
-      // Re-derive BigBasket disc from the per-month fixed rate so a rate change applies to
-      // stored days without re-upload. Manual disc_overrides (if any) always win.
+      // Re-derive BigBasket disc from the day-aware rate so a rate change (incl. an
+      // in-month step change) applies to stored days without re-upload. Manual
+      // disc_overrides (if any) always win.
       const hasOverride = (d) => (deltaP.disc_overrides || {})[d] !== undefined;
-      const bbRate = _bbRate(monthKey);
       Object.values(dayMap).forEach(d => {
         if (d && d.day && d.gmv > 0 && !hasOverride(d.day) && !hasOverride(String(d.day))) {
-          d.disc = Math.round(d.gmv * bbRate * 100) / 100;
+          d.disc = Math.round(d.gmv * _bbRate(monthKey, d.day) * 100) / 100;
         }
       });
     }
@@ -5616,14 +5624,13 @@ function procFlipkart(rows){
 
 // ══════════════════════════════════════════════
 // BIGBASKET PARSER
-// disc = fixed rate per month via _bbRate (Aug-2026 = 25%, earlier = 30%).
+// disc = day-aware fixed rate via _bbRate (Aug-2026: 25% days 1-13, 30% from day 14).
 // Build-time (_buildMonthData) re-derives disc from _bbRate, so a rate change applies
 // to already-stored days on render without re-upload; historical months keep their rate.
 // City data available; date col is date_range (datetime object from SheetJS)
 // ══════════════════════════════════════════════
 function procBigBasket(rows){
   const ACTIVE=getActiveMonth();
-  const DISC_RATE=_bbRate(ACTIVE);
   const byD={};
   const sample=rows[0]||{};const keys=Object.keys(sample);
   const dateCol=keys.find(k=>/date.?range/i.test(k)||/^date$/i.test(k))||'date_range';
@@ -5642,7 +5649,7 @@ function procBigBasket(rows){
     const sku=skuRaw!==undefined&&skuRaw!==''?String(Number.isFinite(parseFloat(skuRaw))?Math.round(parseFloat(skuRaw)):skuRaw).trim():'';
     const units=colNum(r,unitCol,'total_quantity','units','qty')||0;
     const gmv=colNum(r,gmvCol,'total_mrp','gmv','revenue')||0;
-    const disc=Math.round(gmv*DISC_RATE*100)/100;
+    const disc=Math.round(gmv*_bbRate(ACTIVE,day)*100)/100;
     if(!byD[day])byD[day]={day,gmv:0,units:0,disc:0,city:{},sku:{},citysku:{}};
     byD[day].gmv+=gmv;byD[day].units+=units;byD[day].disc+=disc;
     if(!byD[day].city[city])byD[day].city[city]={gmv:0,units:0,disc:0};
@@ -9799,7 +9806,7 @@ const CM_FLOOR={Zepto:1000,Blinkit:800,Instamart:1000,Flipkart:400,BigBasket:300
 const CM_EMAILS={Zepto:'shreya.gupta@zepto.com',Blinkit:'banee.khurana@zomato.com',Instamart:'kshitij.sankhe@scootsy.com',Flipkart:'souraneer.bera@flipkart.com',BigBasket:'gaurav.surpur@bigbasket.com',Amazon:'divshanm@amazon.com'};
 const CM_CC={Flipkart:'shivanideepaks.vc@flipkart.com',BigBasket:'rohini.m@bigbasket.com'};
 const CM_PROXY='samyak.getawhey@gmail.com';
-const CM_DISCONTINUED=new Set(['redvelveticecreampastry','biscrunchicecreampastry','chocobrowniefudgeicecreamsandwich','chocolatebrownieicecreamsandwich2pieces']);
+const CM_DISCONTINUED=new Set(['redvelveticecreampastry','biscrunchicecreampastry','chocobrowniefudgeicecreamsandwich','chocolatebrownieicecreamsandwich2pieces','veryberryicecreamcup100ml']);
 const CM_POC={Zepto:'Shreya',Blinkit:'Banee',Instamart:'Kshitij',Flipkart:'Souraneer',BigBasket:'Gaurav',Amazon:''}; // first-name for greeting; blank = derive from email
 const CM_PLATS=['Zepto','Blinkit','Instamart','Flipkart','BigBasket'];
 const CM_TRACK_PLAT={'big basket':'BigBasket','bigbasket':'BigBasket','blinkit':'Blinkit','zepto':'Zepto','instamart':'Instamart','swiggy instamart':'Instamart','flipkart':'Flipkart','amazon':'Amazon'};
