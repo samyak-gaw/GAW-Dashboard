@@ -5402,7 +5402,7 @@ function procBlinkit(){
   // ── Sales rows ──
   const ss=sr[0]||{};const sk=Object.keys(ss);
   const sDateCol=sk.find(k=>/^date$/i.test(k)||/order.?date/i.test(k))||'date';
-  const sItemCol=sk.find(k=>/^item.?id$/i.test(k)||/product.?id/i.test(k))||'item_id';
+  const sItemCol=sk.find(k=>/^item.?id$/i.test(k))||sk.find(k=>/item/i.test(k)&&/id/i.test(k))||sk.find(k=>/^product.?id$/i.test(k))||sk.find(k=>/product.?id/i.test(k))||'item_id';
   const sCityCol=sk.find(k=>/^city$/i.test(k)||/city[\s_]?name/i.test(k)||/delivery[\s_]?city/i.test(k)||/ship[\s_]?city/i.test(k)||/store[\s_]?city/i.test(k)||/customer[\s_]?city/i.test(k)||/hub[\s_]?city/i.test(k)||/^zone$/i.test(k)||/^location$/i.test(k))||sk.find(k=>/city/i.test(k))||'city';
   const _blRawCities=new Map(); // raw city value → GMV for diagnostics
   const sQtyCol=sk.find(k=>/qty.?sold/i.test(k)||/units.?sold/i.test(k)||/^units$/i.test(k))||'qty_sold';
@@ -5429,7 +5429,17 @@ function procBlinkit(){
   // ── Discount rows ──
   const ds=dr[0]||{};const dk=Object.keys(ds);
   const dDateCol=dk.find(k=>/^date$/i.test(k)||/order.?date/i.test(k))||'date';
-  const dItemCol=dk.find(k=>/^item.?id$/i.test(k)||/product.?id/i.test(k))||dk.find(k=>/item/i.test(k)&&/id/i.test(k))||dk.find(k=>/sku/i.test(k)&&/id/i.test(k))||'item_id';
+  // Priority matters: some Blinkit discount exports carry BOTH product_id (Blinkit-internal,
+  // does not match sales item_id) and item_id (matches sales exactly). Must check item_id-shaped
+  // columns FIRST across all keys before ever falling back to product_id — a single combined
+  // regex in one .find() would pick whichever column happens to appear first in the file,
+  // which silently grabbed product_id and broke every SKU match (verified against real export).
+  const dItemCol=dk.find(k=>/^item.?id$/i.test(k))
+    ||dk.find(k=>/item/i.test(k)&&/id/i.test(k))
+    ||dk.find(k=>/^product.?id$/i.test(k))
+    ||dk.find(k=>/product.?id/i.test(k))
+    ||dk.find(k=>/sku/i.test(k)&&/id/i.test(k))
+    ||'item_id';
   const dCityCol=dk.find(k=>/^city$/i.test(k))||'city';
   // CRITICAL: match 'total_brand_fund' (total) NOT 'brandfund_absolute_value' (per-unit rate)
   const dDiscCol=dk.find(k=>k==='total_brand_fund')
