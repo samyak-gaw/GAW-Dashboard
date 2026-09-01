@@ -1540,7 +1540,8 @@ const NLC_MAP = {
     'Blueberry Cheesecake Ice Cream Cone': 50,
     'Malai Kulfi Stick': 30,
     'Mango Duet Stick': 32,
-    'Raspberry Duet Stick': 32
+    'Raspberry Duet Stick': 32,
+    'Blueberry Cheesecake Ice Cream Tub 500ml': 175
   },
   Amazon: {            // keyed by ASIN; gated to Jul-2026
     'B0GTZK6T6V': 140, // Mango Ice Cream Tub 500ml
@@ -1549,6 +1550,15 @@ const NLC_MAP = {
   }
 };
 const NLC_EFFECTIVE = { Flipkart:'live', Zepto:'live', Instamart:'live', Amazon:'Jul-2026' };
+// Per-SKU override: a SKU that joined NLC terms after its platform's other NLC SKUs went
+// live (e.g. Instamart's other 3 are 'live'; this one joined Aug-2026). Key = platform ->
+// SKU name (ASIN for Amazon) -> 'Mon-YYYY'. Absent = falls back to NLC_EFFECTIVE[plat].
+const NLC_SKU_EFFECTIVE = {
+  Instamart: { 'Blueberry Cheesecake Ice Cream Tub 500ml': 'Aug-2026' }
+};
+function _nlcEffFor(plat, key){
+  return (key!==undefined && NLC_SKU_EFFECTIVE[plat] && NLC_SKU_EFFECTIVE[plat][key]) || NLC_EFFECTIVE[plat];
+}
 
 // ── Aggregator-funded discount exclusion ──────────────────────────────
 // GAW does not fund consumer discounts on NLC SKUs: those SKUs are sold to the
@@ -1572,8 +1582,8 @@ function _nlcDiscExclActive(monthKey){
   return mk >= me;
 }
 // Normalised set of platform sku ids that sit on NLC terms.
-function _nlcIdSet(plat){
-  const names = Object.keys(NLC_MAP[plat] || {});
+function _nlcIdSet(plat, monthKey){
+  const names = Object.keys(NLC_MAP[plat] || {}).filter(n => _nlcActive(plat, monthKey, n));
   if(!names.length) return null;
   if(plat === 'Amazon') return new Set(names.map(n => _normSkuId(n)));
   const idx = _nlcSkuIdByName(plat);
@@ -1581,9 +1591,9 @@ function _nlcIdSet(plat){
   return ids.length ? new Set(ids) : null;
 }
 // day -> {gmv, disc} contributed by NLC SKUs, from SKU-level rows.
-function _nlcDayTotals(plat, skuRows){
+function _nlcDayTotals(plat, skuRows, monthKey){
   const out = {};
-  const ids = _nlcIdSet(plat);
+  const ids = _nlcIdSet(plat, monthKey);
   if(!ids || !skuRows || !skuRows.length) return out;
   skuRows.forEach(r => {
     if(!ids.has(_normSkuId(r.sku_code))) return;
@@ -1595,11 +1605,13 @@ function _nlcDayTotals(plat, skuRows){
   return out;
 }
 
-// Amazon NLC applies only from Jul-2026 (same ordinal compare as _fkDiscActive)
-function _nlcActive(plat, monthKey){
-  if(plat!=='Amazon') return true;
+// Platform-level gate when key omitted (existing callers, unchanged behaviour).
+// Per-SKU gate when key given — checks NLC_SKU_EFFECTIVE override first, else platform default.
+function _nlcActive(plat, monthKey, key){
+  const eff = key!==undefined ? _nlcEffFor(plat, key) : NLC_EFFECTIVE[plat];
+  if(!eff || eff==='live') return true;
   const mk = MONTH_NUM_FROM_KEY(monthKey) + YEAR_FROM_KEY(monthKey)*12;
-  const me = MONTH_NUM_FROM_KEY('Jul-2026') + YEAR_FROM_KEY('Jul-2026')*12;
+  const me = MONTH_NUM_FROM_KEY(eff) + YEAR_FROM_KEY(eff)*12;
   return mk >= me;
 }
 
@@ -1675,22 +1687,25 @@ function renderNLCSection(){
   const plats = ['Flipkart','Zepto','Instamart','Amazon'];
   let totRealized=0, totGmv=0, totAggDisc=0, rowsHtml='', anyPending=false;
 
+  let pendingList=[];
   plats.forEach(plat=>{
     const map = NLC_MAP[plat]||{}; const keys=Object.keys(map);
     if(!keys.length) return;
-    const active = _nlcActive(plat, mk);
     const nameIdx = (plat==='Amazon') ? null : _nlcSkuIdByName(plat);
-    let pRealized=0, pGmv=0, pAggDisc=0, body='';
+    let pRealized=0, pGmv=0, pAggDisc=0, body='', anyActiveInPlat=false;
     keys.forEach(key=>{
       const nlc = map[key];
+      const active = _nlcActive(plat, mk, key); // per-SKU: a platform can carry a mix (e.g. Instamart)
       const skuId = (plat==='Amazon') ? key : (nameIdx[key]||null);
       const nm = (plat==='Amazon') ? (skuLookup('Amazon',key).name||key) : key;
       const m = skuId ? _nlcMtd(plat, skuId) : {units:0,gmv:0};
       const realized = active ? m.units*nlc : 0;
       const realPct = (active && m.gmv>0) ? (realized/m.gmv*100) : null;
-      if(active){ pRealized+=realized; pGmv+=m.gmv; pAggDisc+=(m.disc||0); totAggDisc+=(m.disc||0); } else { anyPending=true; }
+      if(active){ pRealized+=realized; pGmv+=m.gmv; pAggDisc+=(m.disc||0); totAggDisc+=(m.disc||0); anyActiveInPlat=true; }
+      else { anyPending=true; pendingList.push(plat+' \u2014 '+nm+' (eff '+_nlcEffFor(plat,key)+')'); }
+      const rowEff = active ? '' : ' <span style="font-size:9px;color:#B96C10">(eff '+_nlcEffFor(plat,key)+')</span>';
       body += '<tr>'
-        + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+nm+'</td>'
+        + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+nm+rowEff+'</td>'
         + '<td style="padding:6px 10px;font-size:12px;text-align:center">\u20B9'+nlc+'</td>'
         + '<td style="padding:6px 10px;font-size:12px;text-align:center">'+(active?Math.round(m.units).toLocaleString('en-IN'):'\u2014')+'</td>'
         + '<td style="padding:6px 10px;font-size:12px;text-align:center;font-weight:700">'+(active?fC(realized):'\u2014')+'</td>'
@@ -1700,10 +1715,9 @@ function renderNLCSection(){
         + '</tr>';
     });
     totRealized+=pRealized; totGmv+=pGmv;
-    const eff = active ? '' : ' <span style="font-size:10px;color:#B96C10">(NLC effective '+NLC_EFFECTIVE[plat]+')</span>';
-    rowsHtml += '<tr style="background:#EEF1F6"><td colspan="7" style="padding:6px 10px;font-size:11px;font-weight:800;text-transform:uppercase;color:#103E70;text-align:center">'+plat+eff+'</td></tr>'
+    rowsHtml += '<tr style="background:#EEF1F6"><td colspan="7" style="padding:6px 10px;font-size:11px;font-weight:800;text-transform:uppercase;color:#103E70;text-align:center">'+plat+'</td></tr>'
       + body
-      + (active ? '<tr><td colspan="3" style="padding:6px 10px;font-size:11px;color:var(--muted);text-align:center">Subtotal</td><td style="padding:6px 10px;font-size:12px;text-align:center;font-weight:800">'+fC(pRealized)+'</td><td style="padding:6px 10px;font-size:12px;text-align:center">'+fC(pGmv)+'</td><td style="padding:6px 10px;font-size:12px;text-align:center;color:var(--muted)">'+fC(pAggDisc)+'</td><td></td></tr>' : '');
+      + (anyActiveInPlat ? '<tr><td colspan="3" style="padding:6px 10px;font-size:11px;color:var(--muted);text-align:center">Subtotal</td><td style="padding:6px 10px;font-size:12px;text-align:center;font-weight:800">'+fC(pRealized)+'</td><td style="padding:6px 10px;font-size:12px;text-align:center">'+fC(pGmv)+'</td><td style="padding:6px 10px;font-size:12px;text-align:center;color:var(--muted)">'+fC(pAggDisc)+'</td><td></td></tr>' : '');
   });
 
   host.innerHTML = '<div class="card" style="margin-bottom:16px">'
@@ -1723,7 +1737,7 @@ function renderNLCSection(){
     + '<td style="padding:8px 10px;font-size:12px;text-align:center">'+fC(totGmv)+'</td>'
     + '<td style="padding:8px 10px;font-size:12px;text-align:center;color:var(--muted)">'+fC(totAggDisc)+'</td>'
     + '<td style="padding:8px 10px;font-size:12px;text-align:center">'+(totGmv>0?Math.round(totRealized/totGmv*100)+'%':'\u2014')+'</td></tr></tfoot></table></div>'
-    + (anyPending ? '<div style="font-size:11px;color:#B96C10;margin-top:8px">\u23F3 Amazon NLC (3 SKUs) effective Jul-2026 \u2014 excluded until pre-NLC SOH is exhausted.</div>' : '')
+    + (anyPending ? '<div style="font-size:11px;color:#B96C10;margin-top:8px">\u23F3 '+pendingList.join(' \u00B7 ')+' \u2014 excluded until pre-NLC SOH is exhausted.</div>' : '')
     + '</div>';
 }
 
@@ -2137,7 +2151,7 @@ function _buildMonthData(monthKey) {
                      && DISC_SOURCE[p] === 'consumer';
     const _needNlcDay = _nlcDiscExclActive(monthKey) && _nlcActive(p, monthKey)
                         && DISC_SOURCE[p] !== 'brand';
-    const _nlcDay  = _needNlcDay ? _nlcDayTotals(p, _skuRows) : {};
+    const _nlcDay  = _needNlcDay ? _nlcDayTotals(p, _skuRows, monthKey) : {};
 
     if (p === 'Flipkart' && _fkDiscActive(monthKey)) {
       const hasOverride = (d) => (deltaP.disc_overrides || {})[d] !== undefined;
@@ -3100,7 +3114,7 @@ function getMTD(p){return validDays(DB.april[p].daily).reduce((a,r)=>({gmv:a.gmv
 // MTD GMV + reported discount contributed by a platform's NLC SKUs (valid days only).
 // has=true means the platform carries NLC SKUs and NLC is active for the viewing month.
 function _nlcMTD(p){
-  const ids=_nlcIdSet(p);
+  const ids=_nlcIdSet(p, getViewingMonth());
   if(!ids || !_nlcActive(p, getViewingMonth()) || !DB.april[p] || !DB.april[p].sku) return {gmv:0,disc:0,has:false};
   const vd=new Set(validDays(DB.april[p].daily).map(r=>r.day));
   let gmv=0,disc=0;
@@ -3967,7 +3981,7 @@ function renderSkuAnalysis(){
     // belongs entirely to the promoted, non-NLC SKUs.
     const _zpDD={},_zpDG={};
     if(p==='Zepto'){
-      const _zpNlc=(_nlcDiscExclActive(getViewingMonth())&&_nlcActive('Zepto',getViewingMonth()))?_nlcIdSet('Zepto'):null;
+      const _zpNlc=(_nlcDiscExclActive(getViewingMonth())&&_nlcActive('Zepto',getViewingMonth()))?_nlcIdSet('Zepto',getViewingMonth()):null;
       const _isNlc=r=>!!(_zpNlc&&_zpNlc.has(_normSkuId(r.sku_code)));
       [...new Set(rows.map(r=>r.day))].forEach(d=>{
         const g=getForDay('Zepto',d);
