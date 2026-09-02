@@ -1440,7 +1440,9 @@ const FK_BF_DISC = { weekday: 0.30, weekend: 0.35, effectiveFrom: 'Jun-2026' };
 // GAW funds BF only; Flipkart's own FK% top-up is excluded from GAW discount.
 const FK_BF_RATES = {
   'Jul-2026': { weekday: 0.30, weekend: 0.35 },
-  'Aug-2026': { weekday: 0.30, weekend: 0.35 }
+  'Aug-2026': { weekday: 0.30, weekend: 0.35 },
+  'Sep-2026': { weekday: 0.30, weekend: 0.35 } // confirmed same construct — FK Birthday/BBD commercials still
+                                                // pending finalization per 26-Aug-2026 MOM; revisit if/when that lands
 };
 function _fkBfRate(monthKey){ return FK_BF_RATES[monthKey] || { weekday: FK_BF_DISC.weekday, weekend: FK_BF_DISC.weekend }; }
 // Returns true if (monthKey, day) falls on Sat/Sun (Flipkart BF construct excludes Fri).
@@ -1467,7 +1469,7 @@ function _fkDiscActive(monthKey){
 // Aug-2026: 25% days 1-13, renegotiated to 30% from day 14 onward.
 // Add a month key to BB_DISC_RATES when the base rate changes again; add/adjust
 // BB_DISC_RATE_CHANGES for an in-month step change. Historical months keep their own rate.
-const BB_DISC_RATES = { 'Aug-2026': 0.25 };
+const BB_DISC_RATES = { 'Aug-2026': 0.25, 'Sep-2026': 0.30 };
 const BB_DISC_RATE_CHANGES = { 'Aug-2026': { fromDay: 14, rate: 0.30 } };
 const BB_DISC_DEFAULT = 0.30;
 function _bbRate(monthKey, day){
@@ -1481,10 +1483,16 @@ function _bbRate(monthKey, day){
 // Crazy-deal SKUs run at a DEEPER BF rate from a start date; everyone else stays at default.
 // To adjust: change the rate, the window (from month + fromDay), or the ASIN set here.
 const AMZ_DEFAULT_DISC = 0.33;
+// Sep-2026: confirmed "full catalog" at 33% BF + 17% Amazon Fund (50% consumer, SP = MRP/2) across
+// 24 ASINs, explicitly excluding NLC and discontinued ASINs — no elevated/differential rate for any
+// subset this month. Source: "Sep'26 Consumer Offers" thread, Samyak<>Abhijit (Amazon), 24-25 Aug 2026,
+// incl. Vanilla Chocobar MRP correction (₹100, not ₹120) on 25-Aug. This is why AMZ_CRAZY_DEAL below
+// is bounded to end Aug-2026 — its 4 ASINs fold back into the standard default rate from September.
 const AMZ_CRAZY_DEAL = {
   rate: 0.45,
   from: 'Aug-2026',   // month the deal starts
   fromDay: 1,         // inclusive day within `from` month; earlier days keep the default rate — confirmed live 08/01 per Amazon (Shanmugam, Divya) email 06-Aug-2026
+  to: 'Aug-2026',      // last month at the elevated rate — Sep-2026 reverts these ASINs to AMZ_DEFAULT_DISC (see note above)
   asins: new Set([    // per 07/23 discussion — same crazy-deal construct; 45% BF / 22.5% AMZ funded
     'B0F1Y3Z7XP',     // Chocolate Brownie Ice Cream Cone
     'B0F1Y4LBLT',     // Brownie Crunch Ice Cream Bar
@@ -1517,7 +1525,9 @@ function _amzDiscRate(asin, monthKey, day){
   if(a && c.asins.has(a)){
     const ord  = MONTH_NUM_FROM_KEY(monthKey) + YEAR_FROM_KEY(monthKey)*12;
     const from = MONTH_NUM_FROM_KEY(c.from)   + YEAR_FROM_KEY(c.from)*12;
-    if(ord > from || (ord === from && Number(day) >= c.fromDay)) return c.rate;
+    const to   = c.to ? (MONTH_NUM_FROM_KEY(c.to) + YEAR_FROM_KEY(c.to)*12) : Infinity;
+    const afterStart = ord > from || (ord === from && Number(day) >= c.fromDay);
+    if(afterStart && ord <= to) return c.rate;
   }
   return AMZ_DEFAULT_DISC;
 }
