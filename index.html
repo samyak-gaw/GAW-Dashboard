@@ -413,7 +413,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 </div>
   <div class="topbar-right">
     <span id="clockEl" class="ts-badge"></span>
-    <span class="ts-badge"> <span class="lbl-full">Last upload:</span><b id="lastUpdEl">—</b></span>
+    <span class="ts-badge"> <span class="lbl-full">Last upload:</span><b id="lastUpdEl" title="">—</b></span>
     <span class="ts-badge" id="dayEl">—</span>
     <span id="userBadge" style="display:none;background:#22304A;color:#fff;font-size:11px;padding:4px 12px;border-radius:20px;font-weight:700;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
     <button id="logoutBtn" onclick="signOut()" style="display:none;background:transparent;border:1px solid var(--border);padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;color:var(--muted)">Sign out</button>
@@ -1990,7 +1990,11 @@ let SELECTED_DAY=null;
 //   _delta.viewing_month = optional    (the month currently displayed via switcher; defaults to active_month)
 //   _delta.zepto_disc_pending = bool   (legacy flag; respected for back-compat)
 // ══════════════════════════════════════════════
-const DELTA_KEY = 'gaw_delta_v3';
+const DELTA_KEY = 'gaw_delta_v3';  // legacy combined key — migration-read only, no longer written (see saveDB)
+// v12: split the combined delta into two keys so a large historical archive can never block
+// saving the one thing that's genuinely at risk — the live, editable active month.
+const ACTIVE_KEY = 'gaw_delta_active_v1'; // everything except frozen/avail/soh/dsc — small, critical, must-save
+const FROZEN_KEY = 'gaw_frozen_v1';       // trimmed frozen archive — large, cache-only, safe to fail (cloud has full copy)
 // Stage 2: split-out large data slots to avoid localStorage quota.
 // Each kept in its own key so the main delta stays small.
 const AVAIL_KEY = 'gaw_avail_v1';
@@ -2013,6 +2017,13 @@ let _delta = {
 function _emptyPlatDelta() {
   return { daily: {}, disc_overrides: {}, _city: {}, _sku: {}, _citysku: {} };
 }
+// Records the actual wall-clock time a platform's sales file was uploaded — separate from
+// `maxDay2` in renderAll(), which is just the latest calendar DAY found in the data, not when
+// the upload happened. Persisted in _delta so it survives reloads and syncs across devices.
+function _stampUploadTime(platform){
+  _delta.last_upload_ts = _delta.last_upload_ts || {};
+  _delta.last_upload_ts[platform] = new Date().toISOString();
+}
 
 // One-time migration: legacy v3 stored everything under _delta.april with no months map.
 // This runs every load (idempotent — does nothing if already migrated).
@@ -2031,6 +2042,7 @@ function _migrateLegacyDelta() {
   if (!_delta.open_po)           _delta.open_po          = {po:{},ts:0,month:''};
   if (!('fr' in _delta))         _delta.fr               = null;
   if (!_delta.targets_by_month)  _delta.targets_by_month = {};
+  if (!_delta.last_upload_ts)    _delta.last_upload_ts   = {};
   if (!_delta.active_month)      _delta.active_month     = 'Apr-2026';
   // viewing_month falls back to active_month at read time
 }
@@ -2294,20 +2306,36 @@ function initDB() {
   // Safety escape hatch: ?reset=1 in URL clears all dashboard localStorage (for stuck mobile users)
   try {
     if (typeof window!=='undefined' && window.location && window.location.search && window.location.search.indexOf('reset=1')!==-1) {
-      ['gaw_delta_v3','gaw_apr26_v6','gaw_apr26_v7','gaw_apr26_v8','gaw_apr26_v9','gaw_apr26_v10','gaw_delta_v2'].forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
+      ['gaw_delta_v3','gaw_delta_active_v1','gaw_frozen_v1','gaw_apr26_v6','gaw_apr26_v7','gaw_apr26_v8','gaw_apr26_v9','gaw_apr26_v10','gaw_delta_v2'].forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
       console.log('🔄 Reset done via ?reset=1 — all dashboard data cleared from localStorage.');
     }
   } catch(e){}
   // Clear old oversized storage keys from previous deploys
   ['gaw_apr26_v6','gaw_apr26_v7','gaw_apr26_v8','gaw_apr26_v9','gaw_apr26_v10','gaw_delta_v2'].forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
 
-  const saved = localStorage.getItem(DELTA_KEY);
-  if (saved) {
+  // v12: active delta and frozen archive are separate keys (see saveDB). Falls back to the
+  // legacy combined key on first load after this update; saveDB() below writes the split keys
+  // and retires the legacy key going forward.
+  const savedActive = localStorage.getItem(ACTIVE_KEY);
+  const savedFrozen = localStorage.getItem(FROZEN_KEY);
+  if (savedActive) {
     try {
-      _delta = JSON.parse(saved);
+      _delta = JSON.parse(savedActive);
+      _delta.frozen = savedFrozen ? JSON.parse(savedFrozen) : {};
     } catch(e) {
       console.error('Delta parse error — resetting:', e);
       _delta = {};
+    }
+  } else {
+    const savedLegacy = localStorage.getItem(DELTA_KEY);
+    if (savedLegacy) {
+      try {
+        _delta = JSON.parse(savedLegacy);
+        console.log('[migration] Read legacy combined delta — will split into active + frozen keys on next save');
+      } catch(e) {
+        console.error('Delta parse error — resetting:', e);
+        _delta = {};
+      }
     }
   }
   // Load split-out heavy slots
@@ -2446,16 +2474,49 @@ function _sohWoWForPlat(plat){
 }
 
 function saveDB() {
-  // Extract heavy slots so the main delta stays small
   const heavyAvail = _trimAvailForStorage(_delta.avail || {});
   const heavySoh = _trimSohForStorage(_delta.soh || {});
   const heavyDsc = _delta.dark_store_counts || {};
-  // Build trimmed delta for the main key
-  const trimmedDelta = Object.assign({}, _delta, { avail: {}, soh: {}, dark_store_counts: {},
-                                                   frozen: _trimFrozenForStorage(_delta.frozen) });
+
+  // ── 1. ACTIVE delta: everything except frozen/avail/soh/dsc (those have their own keys).
+  // This is the only thing genuinely at risk of being lost — a live upload that exists nowhere
+  // else until the next GitHub push. Saved in its own key, structurally separate from the much
+  // larger, purely-cached, always-recoverable-from-cloud frozen archive, so a bloated archive
+  // can never block this save. ~2-10KB typically; should essentially never fail.
+  const activeDelta = Object.assign({}, _delta);
+  delete activeDelta.frozen;
+  activeDelta.avail = {}; activeDelta.soh = {}; activeDelta.dark_store_counts = {};
+  let activeError = null;
+  try { localStorage.setItem(ACTIVE_KEY, JSON.stringify(activeDelta)); }
+  catch(e){ activeError = e.message; }
+  if(!activeError){
+    // Migration complete — reclaim the stale legacy blob's space (often several MB).
+    try{ if(localStorage.getItem(DELTA_KEY)!==null) localStorage.removeItem(DELTA_KEY); }catch(e){}
+  }
+
+  // ── 2. FROZEN cache: large, historical, read-only, purely a local speed-up — cloud always
+  // has the full copy (githubPush sends the untrimmed in-memory _delta), so any failure here
+  // means a slower old-month view until the next sync, never data loss. Adaptive: try the
+  // standard citysku+sku trim across all months; if that still doesn't fit (more months keep
+  // freezing every month forever), progressively shrink to a smaller recency window until it
+  // fits or there's nothing left to cut. This makes the local footprint self-bounding — it
+  // never needs another manual patch as the archive keeps growing.
+  let frozenOk=false, frozenWindow=null;
+  for (const win of [null, 12, 6, 3, 1, 0]) {
+    try {
+      localStorage.setItem(FROZEN_KEY, JSON.stringify(_trimFrozenForStorage(_delta.frozen, win)));
+      frozenOk=true; frozenWindow=win; break;
+    } catch(e){ /* try a smaller window */ }
+  }
+  if(!frozenOk){
+    try{ localStorage.removeItem(FROZEN_KEY); }catch(e){}
+    console.warn('[saveDB] Frozen archive cache would not fit locally at any size — old months will load from cloud on next sync. Current work is not at risk.');
+  } else if(frozenWindow!=null){
+    console.warn('[saveDB] Frozen cache shrunk to the last '+frozenWindow+' month(s) locally to fit quota — older months reload from cloud on next sync. (Not data loss — cloud always has the full archive.)');
+  }
+
   let errors = [];
-  try { localStorage.setItem(DELTA_KEY, JSON.stringify(trimmedDelta)); }
-  catch(e){ errors.push('main: '+e.message); }
+  if (activeError) errors.push('active: '+activeError);
   try { localStorage.setItem(AVAIL_KEY, JSON.stringify(heavyAvail)); }
   catch(e){ errors.push('avail: '+e.message); }
   try { localStorage.setItem(SOH_KEY, JSON.stringify(heavySoh)); }
@@ -2475,12 +2536,14 @@ function saveDB() {
     // Quota errors are non-fatal: in-memory data is intact and GitHub cloud sync carries the
     // full dataset. Log quietly instead of alarming the user with a modal on every upload.
     console.warn('[saveDB] localStorage quota — some slots not persisted locally (cloud sync unaffected):', errors);
-    // A failed `main` write is NOT cosmetic: the in-memory delta is the only copy until a
+    // A failed `active` write is NOT cosmetic: the in-memory delta is the only copy until a
     // push lands, so a refresh before pushing silently reverts the work. Say so loudly.
-    if(errors.some(e=>e.indexOf('main:')===0)){
-      console.error('%c[saveDB] MAIN DELTA NOT SAVED LOCALLY — push to GitHub before refreshing, or this change is lost.','color:#BD2635;font-weight:bold');
+    if(errors.some(e=>e.indexOf('active:')===0)){
+      console.error('%c[saveDB] ACTIVE DELTA NOT SAVED LOCALLY — push to GitHub before refreshing, or this change is lost.','color:#BD2635;font-weight:bold');
       window._gawUnsavedMain=true;
     } else { window._gawUnsavedMain=false; }
+  } else {
+    window._gawUnsavedMain=false;
   }
   _buildDB(); // keep in-memory DB in sync after every save
   // Integrity runs after every save so a bad upload is caught at upload time,
@@ -2492,18 +2555,20 @@ function saveDB() {
     },1200);
   }catch(e){}
 }
-// One-click full local backup — same 4 keys saveDB() writes (DELTA_KEY holds everything EXCEPT
-// avail/soh/dark_store_counts, which live in their own keys to keep the main key small),
-// reassembled into one file so nothing needs a manual console dump.
+// One-click full local backup — sourced from the in-memory _delta directly (not the localStorage
+// keys), so it's always the fullest copy available and immune to any local trimming/windowing
+// saveDB() applies to the frozen archive. Same 4-field shape as before for compatibility.
 function downloadFullBackup(){
   try{
+    const deltaOnly = Object.assign({}, _delta);
+    deltaOnly.avail = {}; deltaOnly.soh = {}; deltaOnly.dark_store_counts = {};
     const backup = {
-      delta: JSON.parse(localStorage.getItem(DELTA_KEY) || 'null'),
-      soh:   JSON.parse(localStorage.getItem(SOH_KEY)   || 'null'),
-      dsc:   JSON.parse(localStorage.getItem(DSC_KEY)   || 'null'),
-      avail: JSON.parse(localStorage.getItem(AVAIL_KEY) || 'null')
+      delta: deltaOnly,
+      soh:   _delta.soh || null,
+      dsc:   _delta.dark_store_counts || null,
+      avail: _delta.avail || null
     };
-    if(!backup.delta){ alert('⚠ No local data found — nothing to back up.'); return; }
+    if(!backup.delta || !Object.keys(backup.delta).length){ alert('⚠ No local data found — nothing to back up.'); return; }
     const jsonStr = JSON.stringify(backup);
     const blob = new Blob([jsonStr], {type:'application/json'});
     const url = URL.createObjectURL(blob);
@@ -2581,7 +2646,7 @@ function gawIntegrityCheck(verbose){
     for(let i=0;i<localStorage.length;i++)used+=(localStorage.getItem(localStorage.key(i))||'').length;
     const kb=Math.round(used/1024);
     if(window._gawUnsavedMain)
-      add('critical','storage','Main delta NOT saved locally — push to GitHub before refreshing or this session is lost','~'+kb+'KB used of ~5120KB');
+      add('critical','storage','Active delta NOT saved locally — push to GitHub before refreshing or this session is lost','~'+kb+'KB used of ~5120KB');
     else if(kb>4300)
       add('warn','storage','localStorage at '+kb+'KB of ~5120KB — saves will start failing silently','');
   }catch(e){}
@@ -2727,22 +2792,32 @@ function _giBanner(nCrit,nWarn){
   }catch(e){}
 }
 
-// Trim frozen months for localStorage: drop `citysku`, which is ~69% of the frozen bulk
-// (measured Jul-2026: 2,440KB of 3,568KB across Apr/May/Jun). Without this the delta alone
-// is 4.2MB and localStorage silently rejects every write — which is how a repaired month
-// could revert on refresh.
-// In-memory _delta.frozen and the GitHub payload always retain the full data (githubPush
-// sends `_delta`, not this trimmed copy). On pull, _applyGHPayload deep-copies cloud frozen
-// and only falls back to local for months cloud lacks, so citysku repopulates from cloud.
-// Same contract as _trimSohForStorage: local persistence only, never the source of truth.
-function _trimFrozenForStorage(frozen){
+// Trim frozen months for localStorage: always drop `citysku` + `sku` (see saveDB header comment
+// for the sizing history). If that alone still doesn't fit — e.g. more months keep accumulating —
+// saveDB() calls this again with a shrinking `recencyWindow`: only the N chronologically-latest
+// frozen months keep daily+city detail; anything older is emptied to an empty shell. This makes
+// the local footprint self-bounding no matter how many months freeze over time. An emptied month
+// is never data loss: cloud always holds the full archive and _applyGHPayload refills it on the
+// next sync (same contract citysku/sku already rely on).
+// recencyWindow: null/undefined = no window, every month gets the same citysku+sku trim.
+//                integer N      = only the N most recent months keep daily+city.
+function _trimFrozenForStorage(frozen, recencyWindow){
   if(!frozen)return {};
   const out={};
+  let keepSet=null;
+  if(recencyWindow!=null){
+    const ordered=Object.keys(frozen).sort((a,b)=>
+      (MONTH_NUM_FROM_KEY(a)+YEAR_FROM_KEY(a)*12) - (MONTH_NUM_FROM_KEY(b)+YEAR_FROM_KEY(b)*12));
+    keepSet=new Set(ordered.slice(Math.max(0,ordered.length-recencyWindow)));
+  }
   Object.keys(frozen).forEach(mk=>{
     out[mk]={};
+    const inWindow = keepSet===null || keepSet.has(mk);
     Object.keys(frozen[mk]||{}).forEach(plat=>{
       const f=frozen[mk][plat]||{};
-      out[mk][plat]=Object.assign({},f,{citysku:{}});
+      out[mk][plat] = inWindow
+        ? Object.assign({},f,{citysku:{},sku:[]})
+        : {daily:[],city:[],sku:[],citysku:{}};
     });
   });
   return out;
@@ -2794,6 +2869,8 @@ function resetData() {
       viewing_month: null
     };
     try { localStorage.removeItem(DELTA_KEY); } catch(e) {}
+    try { localStorage.removeItem(ACTIVE_KEY); } catch(e) {}
+    try { localStorage.removeItem(FROZEN_KEY); } catch(e) {}
     try { localStorage.removeItem(AVAIL_KEY); } catch(e) {}
     try { localStorage.removeItem(SOH_KEY); } catch(e) {}
     try { localStorage.removeItem(DSC_KEY); } catch(e) {}
@@ -4747,7 +4824,26 @@ function renderAll(){
   const VIEW_MONTH_NAME = MONTH_LABEL(VIEW).split(' ')[0]; // e.g. "April"
   const VIEW_MONTH_ABBR = MONTH_SHORT[MONTH_NUM_FROM_KEY(VIEW)-1]; // "Apr"
   const isArchived = (VIEW !== getActiveMonth());
-  document.getElementById('lastUpdEl').textContent=`${VIEW_MONTH_ABBR} ${maxDay2} · ${platStatus}`;
+  // "Sep 2" alone is a calendar-day marker (latest day found in the data), not a wall-clock
+  // timestamp — easy to misread as "when did this upload happen". Append the actual time of
+  // the most recent upload across platforms (from _stampUploadTime), when we have one.
+  let _lastUpTime='';
+  try{
+    const stamps=Object.values(_delta.last_upload_ts||{}).map(s=>Date.parse(s)).filter(n=>!isNaN(n));
+    if(stamps.length){
+      const latest=new Date(Math.max(...stamps));
+      _lastUpTime=' · '+latest.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    }
+  }catch(e){}
+  document.getElementById('lastUpdEl').textContent=`${VIEW_MONTH_ABBR} ${maxDay2}${_lastUpTime} · ${platStatus}`;
+  try{
+    const tsMap=_delta.last_upload_ts||{};
+    const tipLines=PN.filter(p=>tsMap[p]).map(p=>{
+      const t=new Date(tsMap[p]);
+      return p+': '+t.toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    });
+    document.getElementById('lastUpdEl').title=tipLines.length?tipLines.join('\n'):'No upload timestamps recorded yet this session';
+  }catch(e){}
   document.getElementById('dayEl').textContent=`Day ${maxDay} of ${VIEW_MONTH_NAME}`;
 
   // Month-badge label reflects view + state
@@ -5316,6 +5412,7 @@ function procZepto(rows){
 
   const daysFound=Object.keys(byD).sort((a,b)=>a-b);
   window._zpLastResult={parsed,skipped,dateFails,gmvFails,daysFound,sampleKeys:keys.slice(0,10)};
+  if(parsed>0)_stampUploadTime('Zepto');
 
   if(!daysFound.length){
     const msg=`⚠ Zepto: parsed ${rows.length} rows but found 0 valid dates.\n\nColumn auto-detected as: "${dateCol}"\nSample keys in file: ${keys.slice(0,8).join(', ')}\n\nFirst row raw date value: "${rows[0]?.[dateCol]}"\n\nPlease screenshot this message and share with the dashboard owner.`;
@@ -5487,6 +5584,7 @@ function procBlinkit(){
   // Sort raw city values by GMV desc, take top 15 for diagnostics
   const _blCitySample=[..._blRawCities.entries()].sort((a,b)=>b[1]-a[1]).slice(0,15).map(([v])=>v||'(empty)');
   window._blLastResult={parsed:srParsed,dateFails:srFail,daysFound,discColUsed:dDiscCol,discItemColUsed:dItemCol,cityColUsed:sCityCol,rawCitySample:_blCitySample,discRowsSeen:discRows,discRowsMatchedToSku:discMatched};
+  if(srParsed>0)_stampUploadTime('Blinkit');
   if(discRows>0&&discMatched===0)console.warn('Blinkit: 0 of '+discRows+' discount rows matched a known SKU — item-id column used was "'+dItemCol+'". Per-SKU Disc will show \u20B90 even though day-level MTD Discount is correct. Check the discount file item-id column name.');
   window._blLastCols={sampleKeys:sk.slice(0,10)};
   if(sr.length>0&&!daysFound.length){alert(`⚠ Blinkit: 0 valid dates found in ${sr.length} rows.\nDate column tried: "${sDateCol}"\nSample keys: ${sk.slice(0,8).join(', ')}`);return;}
@@ -5555,6 +5653,7 @@ function procIM(){
   });
   const daysFound=Object.keys(byD).sort((a,b)=>a-b);
   window._imLastResult={parsed:srParsed,dateFails:srFail,daysFound,discColUsed:dDiscCol,itemColUsed:dItemCol,skuDiscMatched:drSkuMatched,skuDiscMissed:drSkuMissed};
+  if(srParsed>0)_stampUploadTime('Instamart');
   window._imLastCols={sampleKeys:sk.slice(0,10),discKeys:dk.slice(0,10)};
   // Diagnostic: visible in browser console after upload
   console.log('[IM] procIM result:',{
@@ -5605,6 +5704,7 @@ function procAmazon(rows){
   });
   const daysFound=Object.keys(byD).map(Number).sort((a,b)=>a-b);
   window._azLastResult={parsed,dateFails,daysFound};
+  if(parsed>0)_stampUploadTime('Amazon');
   window._azLastCols={sampleKeys:keys.slice(0,8)};
   if(!daysFound.length){alert(`⚠ Amazon: 0 valid dates found.\nDate col tried: "${dateCol}"\nSample keys: ${keys.slice(0,6).join(', ')}`);return false;}
   mergeInto('Amazon',byD);return true;
@@ -5653,6 +5753,7 @@ function procFlipkart(rows){
   });
   const daysFound=Object.keys(byD).map(Number).sort((a,b)=>a-b);
   window._fkLastResult={parsed,dateFails,daysFound};
+  if(parsed>0)_stampUploadTime('Flipkart');
   window._fkLastCols={sampleKeys:keys.slice(0,10),pidColUsed:pidCol,gmvColUsed:gmvCol,dateColUsed:dateCol,unitColUsed:unitCol};
   // Warn if daily has data but sku is empty for a day (silent failure indicator)
   const skuMissingDays=daysFound.filter(d=>byD[d]&&byD[d].gmv>0&&Object.keys(byD[d].sku||{}).length===0);
@@ -5700,6 +5801,7 @@ function procBigBasket(rows){
   });
   const daysFound=Object.keys(byD).map(Number).sort((a,b)=>a-b);
   window._bbLastResult={parsed,dateFails,daysFound};
+  if(parsed>0)_stampUploadTime('BigBasket');
   window._bbLastCols={sampleKeys:keys.slice(0,8)};
   if(!daysFound.length){alert(`⚠ BigBasket: 0 valid dates found.\nDate col tried: "${dateCol}"\nSample keys: ${keys.slice(0,6).join(', ')}`);return false;}
   mergeInto('BigBasket',byD);return true;
@@ -8643,6 +8745,17 @@ function _applyGHPayload(payload,logFn,manual){
 
     // fr: persisted FR%, keep newer by ts
     { const lt=(_delta.fr&&_delta.fr.ts)||0; const ct=(merged.fr&&merged.fr.ts)||0; if(lt>=ct && lt>0) merged.fr=_delta.fr; }
+
+    // last_upload_ts: platform → ISO timestamp of last successful upload. Keep newest per platform
+    // so a pull never rewinds the displayed "last upload" time to an older value.
+    if(_delta.last_upload_ts){
+      if(!merged.last_upload_ts)merged.last_upload_ts={};
+      Object.keys(_delta.last_upload_ts).forEach(plat=>{
+        const lt=Date.parse(_delta.last_upload_ts[plat]||0)||0;
+        const ct=Date.parse((merged.last_upload_ts||{})[plat]||0)||0;
+        if(lt>=ct)merged.last_upload_ts[plat]=_delta.last_upload_ts[plat];
+      });
+    }
 
     // avail_meta: platform → {last_updated} freshness stamps — keep newest
     if(_delta.avail_meta){
