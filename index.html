@@ -6347,6 +6347,10 @@ function availSetWindow(w){
   _availRenderRestockQueue();
   if(_availCurrentPlat&&document.getElementById('availSkuView').style.display!=='none')availRenderSkuTable();
   if(_availCurrentSku&&document.getElementById('availCityView').style.display!=='none')_availRenderCityTable();
+  // SOH Explorer FR% also follows this toggle now — re-render whichever SOH sub-view is visible.
+  const sohSkuEl=document.getElementById('availSohSkuView'), sohCityEl=document.getElementById('availSohCityView');
+  if(sohSkuEl&&sohSkuEl.style.display!=='none'&&typeof _availRenderSohSkuTable==='function')_availRenderSohSkuTable();
+  if(sohCityEl&&sohCityEl.style.display!=='none'&&typeof _availRenderSohCityTable==='function')_availRenderSohCityTable();
 }
 // Helpers to pick the right metric based on window toggle
 function _availDs(k){return _availWindow==='mtd'?k.ds_listing:k.day_ds_listing;}
@@ -7129,7 +7133,7 @@ function _applyAvailFilters(list,plat,view){
     if(st.city&&!_availSkuInCity(plat,r.sku,st.city))return false;
     if(st.skus&&!st.skus.has(r.sku))return false;
     if(st.po){ const po=(view==='osa')?_sohOpenPO(plat,r.name,null):r.openpo; const has=(po!=null&&po>0); if(st.po==='has'&&!has)return false; if(st.po==='none'&&has)return false; }
-    if(st.fr){ const f=(typeof _frForSku==='function')?_frForSku(plat,r.name):null; if(_frBand(f&&f.fr)!==st.fr)return false; }
+    if(st.fr){ const f=(typeof _frForSku==='function')?_frForSku(plat,r.name,view==='osa'&&_availWindow==='mtd'):null; if(_frBand(f&&f.fr)!==st.fr)return false; }
     if(view==='osa'&&st.osa){ if(_osaBand(r.wt_osa_ls)!==st.osa)return false; }
     if(view==='soh'&&st.ds){ if(_dsBand(r.dts)!==st.ds)return false; }
     return true;
@@ -7246,7 +7250,7 @@ function availRenderSkuTable(){
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.day_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.day_osa_ls)}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(r.wt_osa_ls)}</td>
     <td style="padding:8px 10px;font-size:12px" title="7-day avg vs prior 7-day avg">${_osaWoWBadge(r._wow)}</td>
-    ${_showFR?_frCellHtml(plat,r.name):''}
+    ${_showFR?_frCellHtml(plat,r.name,_availWindow==='mtd'):''}
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(_availDs(r),'ds')};font-weight:700">${_availFmtPct(_availDs(r))}</td>
     <td style="padding:8px 10px;font-size:12px" title="DS listing: 7-day avg vs prior 7-day avg">${_osaWoWBadge(r._dsWow)}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_availColor(r.doi,'doi')};font-weight:700">${_availFmtDays(r.doi,r.doi_flag)}</td>
@@ -7254,7 +7258,7 @@ function availRenderSkuTable(){
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr||0)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:#BD2635;font-weight:700">${_availFmtRupees(_availLost(r))}</td>
   </tr>`).join('');
-  document.getElementById('availSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:900px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA Today</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA MTD</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="7d avg vs prior 7d">OSA WoW</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="DS listing 7d avg vs prior 7d">DS WoW</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  document.getElementById('availSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:900px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA Today</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA MTD</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="7d avg vs prior 7d">OSA WoW</th>${_showFR?`<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, ${_availWindow==='mtd'?'month-to-date':'last 10 days'}, delivered POs">FR% (${_availWindow==='mtd'?'MTD':'10d'})</th>`:''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="DS listing 7d avg vs prior 7d">DS WoW</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DOI</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Lost GMV</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function availDrillToSku(plat,sku){
@@ -7364,6 +7368,7 @@ function _availRenderCityTable(){
   // SOH is granular-keyed; roll it into the same metro buckets as OSA so Delhi NCR shows
   // summed SOH of its sub-cities instead of 0.
   const _metroSoh=_metroRollupSoh(plat,data);
+  const _frMtd=(_availWindow==='mtd');
   const rows=cities.map(c=>{
     const cd=data.by_city[c];
     const totalStores=dsc[c]?dsc[c].dark_stores:null;
@@ -7375,9 +7380,10 @@ function _availRenderCityTable(){
     const skuListed=(totalStores&&cd.ds_listing!=null)?Math.round(cd.ds_listing/100*totalStores):null;
     const skuStoresStr=(skuListed!=null&&totalStores)?`${skuListed}/${totalStores}`:'—';
     const csoh=(_metroSoh[c]!=null)?_metroSoh[c]:cd.soh;
-    // Per-city FR% over the same 10-day delivered-PO window used everywhere else.
-    // True city-level (issued ÷ indent for this SKU's POs in this city); "—" when no PO landed there.
-    const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,info.name,c):null;
+    // Per-city FR%, window follows the Today/MTD toggle — MTD (1st of month → latest PO) when
+    // MTD is selected, else the standard 10-day trailing window. True city-level (issued ÷ indent
+    // for this SKU's POs in this city); "—" when no PO landed there in the selected window.
+    const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,info.name,c,_frMtd):null;
     const frTxt=(cf&&cf.fr!=null)
       ? `<span style="color:${_frColor(cf.fr)};font-weight:700">${_frFmt(cf.fr)}</span><span style="font-size:9px;color:#8B97AD"> ${cf.n}PO</span>`
       : '<span style="color:#D9E0EC">—</span>';
@@ -7385,7 +7391,7 @@ function _availRenderCityTable(){
       <td style="padding:8px 10px;font-size:12px"><b>${c}</b></td>
       <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.wt_osa_ls,'osa')};font-weight:700">${_availFmtPct(cd.wt_osa_ls)}</td>
       <td style="padding:8px 10px;font-size:12px;color:${_availColor(cd.ds_listing,'ds')};font-weight:700">${_availFmtPct(cd.ds_listing)}</td>
-      <td style="padding:8px 10px;font-size:12px" title="Fill Rate: issued ÷ indent for this SKU's delivered POs in this city, last 10 days">${frTxt}</td>
+      <td style="padding:8px 10px;font-size:12px" title="Fill Rate: issued ÷ indent for this SKU's delivered POs in this city, ${_frMtd?'month-to-date':'last 10 days'}">${frTxt}</td>
       <td style="padding:8px 10px;font-size:12px;font-weight:600;text-align:center">${skuStoresStr}</td>
       <td style="padding:8px 10px;font-size:12px;font-weight:600;text-align:center">${storesStr}</td>
       <td style="padding:8px 10px;font-size:12px;font-weight:600;text-align:center">${csoh!=null?Math.round(csoh).toLocaleString('en-IN'):'<span style="color:var(--muted);font-weight:400">—</span>'}</td>
@@ -7402,8 +7408,8 @@ function _availRenderCityTable(){
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Lost GMV (MTD)</div><div style="font-size:16px;font-weight:800;color:#BD2635">${_availFmtRupees(data.lost_gmv)}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">MRP</div><div style="font-size:16px;font-weight:800">${info.mrp?'₹'+info.mrp:'—'}</div></div>
   </div>
-  <div style="font-size:10px;color:var(--muted);margin-bottom:8px">City rows below show MTD averages.</div>`;
-  document.getElementById('availCityTable').innerHTML=summary+`<div class="scroll-table"><table style="width:100%;min-width:680px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's store presence — % of stores carrying this exact SKU">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate — issued ÷ indent for this SKU's delivered POs in this city, last 10 days">FR% (10d)</th><th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's listed stores in this city (derived: DS Listing % × city's total dark stores) — same denominator as Brand DS Coverage, so the two are directly comparable.">SKU DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Brand-level dark-store coverage across ALL GAW SKUs — not specific to this SKU. Differs from DS Listing by design.">Brand DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  <div style="font-size:10px;color:var(--muted);margin-bottom:8px">City OSA/DS Listing rows below are always MTD averages; FR% follows the window toggle above (${_frMtd?'MTD':'10-day'}).</div>`;
+  document.getElementById('availCityTable').innerHTML=summary+`<div class="scroll-table"><table style="width:100%;min-width:680px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OSA (LS)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's store presence — % of stores carrying this exact SKU">DS Listing</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate — issued ÷ indent for this SKU's delivered POs in this city, ${_frMtd?'month-to-date':'last 10 days'}">FR% (${_frMtd?'MTD':'10d'})</th><th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)" title="This SKU's listed stores in this city (derived: DS Listing % × city's total dark stores) — same denominator as Brand DS Coverage, so the two are directly comparable.">SKU DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Brand-level dark-store coverage across ALL GAW SKUs — not specific to this SKU. Differs from DS Listing by design.">Brand DS Coverage (Listed/Total)</th><th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function availBackToPlatforms(){
@@ -7709,12 +7715,12 @@ function _sohExportXlsx(){
   var wb=X.utils.book_new();
   plats.forEach(function(plat){
     // Head is per-sheet: each sheet is one platform, and cover target is platform-specific.
-    var head=['SKU','Category','SOH (units)','Days to Stockout','Open PO (units)','FR% (10d)','Reorder '+_sohCoverDays(plat)+'d (units)','DRR (u/day)','Cities'];
+    var head=['SKU','Category','SOH (units)','Days to Stockout','Open PO (units)','FR% ('+(_availWindow==='mtd'?'MTD':'10d')+')','Reorder '+_sohCoverDays(plat)+'d (units)','DRR (u/day)','Cities'];
     var pd=window._availMTD[plat]||{skus:{}};
     var list=Object.keys(pd.skus).map(function(sku){
       var info=skuLookup(plat,sku), k=pd.skus[sku], best=_sohBestDTS(plat,k), _opo=_sohOpenPO(plat,info.name,null), reorder=_sohReorderQty(k,plat,_opo);
       var sohCities=k.soh_by_city||{}; var nCities=Object.keys(sohCities).filter(function(c){return (sohCities[c]||0)>0;}).length;
-      var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name):null; var _frv=_f?(_f.level==='sku'?Math.round(_f.fr)+'%':Math.round(_f.fr)+'% (plat)'):'';
+      var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name,_availWindow==='mtd'):null; var _frv=_f?(_f.level==='sku'?Math.round(_f.fr)+'%':Math.round(_f.fr)+'% (plat)'):'';
       return {name:info.name,cat:info.cat||'',soh:Math.round(k.soh||0),dts:best.days,drr:Math.round(k.drr||0),reorder:reorder,openpo:_opo,fr:_frv,nCities:nCities};
     }).filter(function(r){return r.soh>0||r.drr>0;}).sort(function(a,b){return (a.dts==null?99999:a.dts)-(b.dts==null?99999:b.dts);});
     var aoa=[['GAW \u00B7 '+plat+' \u00B7 SOH Explorer \u00B7 '+mk,'','','','','','','',''],head];
@@ -7860,7 +7866,7 @@ function _osaExportXlsx(){
   if(!plats.length){alert('No OSA data loaded to export.');return;}
   var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
   var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var head=['SKU','Category','OSA MTD','OSA Today','OSA WoW (pp)','FR% (10d)','DS Listing','DS WoW (pp)','DOI','SOH','DRR (u/day)'];
+  var head=['SKU','Category','OSA MTD','OSA Today','OSA WoW (pp)','FR% ('+(_availWindow==='mtd'?'MTD':'10d')+')','DS Listing','DS WoW (pp)','DOI','SOH','DRR (u/day)'];
   var wb=X.utils.book_new();
   var _pct=function(v){return (v==null||isNaN(v))?'':(Math.round(v*10)/10)+'%';};
   var _cityTag='';
@@ -7869,7 +7875,7 @@ function _osaExportXlsx(){
     if(plat===_availCurrentPlat && typeof _osaScopedList==='function'){
       var sc=_osaScopedList(plat); cityScope=sc.cityScope; _cityTag=cityScope?('_'+cityScope):'';
       rows=sc.list.map(function(k){
-        var _f=cityScope?((typeof _frForSkuCity==='function')?_frForSkuCity(plat,k.name,cityScope):null):((typeof _frForSku==='function')?_frForSku(plat,k.name):null);
+        var _f=cityScope?((typeof _frForSkuCity==='function')?_frForSkuCity(plat,k.name,cityScope,_availWindow==='mtd'):null):((typeof _frForSku==='function')?_frForSku(plat,k.name,_availWindow==='mtd'):null);
         var _frv=_f?((_f.level==='sku'||cityScope)?Math.round(_f.fr)+'%':Math.round(_f.fr)+'% (plat)'):'';
         var doiv=(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':''):Math.round(k.doi)+(k.doi_flag==='capped'?'+':'');
         var wow=(k._wow&&k._wow.delta!=null)?(Math.round(k._wow.delta*10)/10):'';
@@ -7881,7 +7887,7 @@ function _osaExportXlsx(){
       rows=Object.keys(pd.skus).map(function(sku){
         var info=skuLookup(plat,sku), k=pd.skus[sku];
         var dsVal=(typeof _availDs==='function')?_availDs(k):k.ds_listing;
-        var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name):null;
+        var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name,_availWindow==='mtd'):null;
         var _frv=_f?(_f.level==='sku'?Math.round(_f.fr):Math.round(_f.fr)+' (plat)'):'';
         var doiv=(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':''):Math.round(k.doi)+(k.doi_flag==='capped'?'+':'');
         var ww=(typeof _osaWoWForSku==='function')?_osaWoWForSku(plat,sku):null;
@@ -8006,12 +8012,12 @@ function _availRenderSohSkuTable(){
     <td style="padding:8px 10px;font-size:12px;font-weight:700">${Math.round(r.soh).toLocaleString('en-IN')}</td>
     <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(r.dts)};font-weight:700">${_sohFmtDTS(r.dts)}${r.dts_flag==='capped'?'<span style="font-size:9px;color:#8B97AD">+</span>':''}</td>
     <td style="padding:8px 10px;font-size:12px">${_sohPoCell(r.openpo)}</td>
-    ${_showFR?_frCellHtml(plat,r.name):''}
+    ${_showFR?_frCellHtml(plat,r.name,_availWindow==='mtd'):''}
     <td style="padding:8px 10px;font-size:12px">${reorderTxt}</td>
     <td style="padding:8px 10px;font-size:12px">${Math.round(r.drr)}u/day</td>
     <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${r.nCities} cities</td>
   </tr>`;}).join('');
-  document.getElementById('availSohSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:680px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th>${_showFR?'<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, last 10 days, delivered POs">FR% (10d)</th>':''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Units to add for ${_sohCoverDays(plat)}-day cover, net of SOH and inbound open PO">Reorder (${_sohCoverDays(plat)}d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table></div>
+  document.getElementById('availSohSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:680px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th>${_showFR?`<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, ${_availWindow==='mtd'?'month-to-date':'last 10 days'}, delivered POs">FR% (${_availWindow==='mtd'?'MTD':'10d'})</th>`:''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Units to add for ${_sohCoverDays(plat)}-day cover, net of SOH and inbound open PO">Reorder (${_sohCoverDays(plat)}d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table></div>
   <div style="font-size:10px;color:var(--muted);margin-top:8px">Days to Stockout: ${plat==='Instamart'?'Instamart native DaysOnHand':'SOH ÷ DRR'}. Reorder (${_sohCoverDays(plat)}d) = units to add for ${_sohCoverDays(plat)}-day cover, net of current stock and inbound open PO.${plat==='Blinkit'?' Blinkit uses an 8-day target — their WH holds ~8d across backend + frontend.':''} Open PO = open indent units inbound (tracker \u00D7 SN) \u2014 upload both in the Upload tab. Rows tinted <span style="color:#BD2635">red &lt;3d</span> / <span style="color:#EB8B2C">amber &lt;7d</span>.</div>`;
 }
 
@@ -8064,12 +8070,13 @@ function _availRenderSohCityTable(){
   // share) collapsed algebraically to totalSOH/DRR for every city — an identical, useless number.
   const totalSoh=k.soh||0;
   const _mreoDts=(function(){try{const r=_sohCityReorder(plat,info.name,byCity);const m={};if(r&&r.rows)r.rows.forEach(x=>{m[x.metro]=x.dts;});return m;}catch(e){return {};}})();
+  const _sohFrMtd=(_availWindow==='mtd');
   const cityRows=cities.map(c=>{
     const csoh=byCity[c]||0;
     const _cm=(typeof nCity==='function')?nCity(c):c;
     const cdts=(_cm in _mreoDts)?_mreoDts[_cm]:null; // metro real-DRR DTS; null = no metro velocity
     const cpo=_sohOpenPO(plat,info.name,c);
-    const cf=_frForSkuCity(plat,info.name,c); const cfCol=_frColor(cf&&cf.fr);
+    const cf=_frForSkuCity(plat,info.name,c,_sohFrMtd); const cfCol=_frColor(cf&&cf.fr);
     const _incomingOnly=(csoh<=0&&cpo>0);
     return `<tr${_incomingOnly?' style="background:#F7F9FC"':''}>
       <td style="padding:8px 10px;font-size:12px"><b>${c}</b>${_incomingOnly?' <span style="font-size:9px;color:#1E7A46;font-weight:700;background:#E6F2EA;padding:1px 5px;border-radius:8px">incoming</span>':''}</td>
@@ -8077,11 +8084,11 @@ function _availRenderSohCityTable(){
       <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${totalSoh>0?((csoh/totalSoh)*100).toFixed(0):0}%</td>
       <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(cdts)};font-weight:700">${(csoh<=0||cdts==null)?'\u2014':_sohFmtDTS(cdts)}</td>
       <td style="padding:8px 10px;font-size:12px">${_sohPoCell(cpo)}</td>
-      <td style="padding:8px 10px;font-size:12px;color:${cfCol};font-weight:700" title="True per-city fill rate · issued ÷ indent · 10d delivered">${cf?_frFmt(cf.fr):'\u2014'}</td>
+      <td style="padding:8px 10px;font-size:12px;color:${cfCol};font-weight:700" title="True per-city fill rate · issued ÷ indent · ${_sohFrMtd?'month-to-date':'10d'} delivered">${cf?_frFmt(cf.fr):'\u2014'}</td>
     </tr>`;
   }).join('');
   const cityTable=`<div style="font-size:11px;font-weight:700;color:#103E70;text-transform:uppercase;margin:4px 0 8px">By City</div>
-    <div class="scroll-table"><table style="width:100%;min-width:640px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Share</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout*</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="True per-city fill rate (issued ÷ indent), 10d delivered POs">FR% (10d)</th></tr></thead><tbody>${cityRows}</tbody></table></div>`;
+    <div class="scroll-table"><table style="width:100%;min-width:640px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">City</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Share</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout*</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="True per-city fill rate (issued ÷ indent), ${_sohFrMtd?'month-to-date':'10d'} delivered POs">FR% (${_sohFrMtd?'MTD':'10d'})</th></tr></thead><tbody>${cityRows}</tbody></table></div>`;
 
   // Facility table (only platforms that report it: Blinkit/IM/FK/Amazon)
   let facTable='';
@@ -10147,6 +10154,30 @@ function _frParseDate(v){
 }
 function _frColor(fr){if(fr==null)return '#8B97AD';if(fr>=95)return '#1E7A46';if(fr>=85)return '#EB8B2C';return '#BD2635';}
 function _frFmt(fr){return fr==null?'\u2014':Math.round(fr)+'%';}
+function _frAggregateWindow(all,idx,hasIss,rangeStart,rangeEnd){
+  const bySku={},byPlat={},bySkuCity={}; let nWin=0;
+  Object.keys(all).forEach(po=>{
+    const mt=all[po];
+    if(!mt.plat||!CM_DELIVERED.has(mt.status))return;
+    if(!mt.recv)return; const t=mt.recv.getTime(); if(t<rangeStart||t>rangeEnd)return;
+    const bp=(byPlat[mt.plat]=byPlat[mt.plat]||{poVal:0,invVal:0,nPO:0}); bp.poVal+=mt.poVal||0; bp.invVal+=mt.invVal||0; bp.nPO++; nWin++;
+    if(idx&&hasIss&&_cmSN.byPO[po]){
+      const cty=(mt.city&&mt.city!=='Unknown')?mt.city:null; // honest per-city: skip unattributed POs
+      _cmSN.byPO[po].forEach(it=>{ if(it.issued==null)return; const canon=cmMapName(it.nm,idx);
+        if(!canon||CM_DISCONTINUED.has(cmKey(canon))||CM_DISCONTINUED.has(cmKey(it.nm)))return;
+        const bs=(bySku[mt.plat]=bySku[mt.plat]||{}); const o=(bs[canon]=bs[canon]||{indent:0,issued:0,nPO:0}); o.indent+=it.q||0; o.issued+=it.issued||0; o.nPO++;
+        if(cty){
+          const pc=(bySkuCity[mt.plat]=bySkuCity[mt.plat]||{}); const cc=(pc[cty]=pc[cty]||{});
+          const oc=(cc[canon]=cc[canon]||{indent:0,issued:0,nPO:0}); oc.indent+=it.q||0; oc.issued+=it.issued||0; oc.nPO++;
+        }
+      });
+    }
+  });
+  Object.keys(byPlat).forEach(p=>{const o=byPlat[p];o.fr=o.poVal>0?(o.invVal/o.poVal*100):null;});
+  Object.keys(bySku).forEach(p=>Object.keys(bySku[p]).forEach(c=>{const o=bySku[p][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;}));
+  Object.keys(bySkuCity).forEach(p=>Object.keys(bySkuCity[p]).forEach(ct=>Object.keys(bySkuCity[p][ct]).forEach(c=>{const o=bySkuCity[p][ct][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;})));
+  return {bySku,byPlat,bySkuCity,nWin};
+}
 function cmBuildFR(){
   try{
     window._frIdx=null;
@@ -10156,27 +10187,14 @@ function cmBuildFR(){
     const end=maxT||Date.now(); const start=end-9*86400000;  // 10 calendar days inclusive
     const idx=(typeof _cmSN!=='undefined'&&_cmSN)?cmCanonIndex():null;
     const hasIss=!!(typeof _cmSN!=='undefined'&&_cmSN&&_cmSN.hasIssued);
-    const bySku={},byPlat={},bySkuCity={}; let nWin=0;
-    Object.keys(all).forEach(po=>{
-      const mt=all[po];
-      if(!mt.plat||!CM_DELIVERED.has(mt.status))return;
-      if(!mt.recv)return; const t=mt.recv.getTime(); if(t<start||t>end)return;
-      const bp=(byPlat[mt.plat]=byPlat[mt.plat]||{poVal:0,invVal:0,nPO:0}); bp.poVal+=mt.poVal||0; bp.invVal+=mt.invVal||0; bp.nPO++; nWin++;
-      if(idx&&hasIss&&_cmSN.byPO[po]){
-        const cty=(mt.city&&mt.city!=='Unknown')?mt.city:null; // honest per-city: skip unattributed POs
-        _cmSN.byPO[po].forEach(it=>{ if(it.issued==null)return; const canon=cmMapName(it.nm,idx);
-          if(!canon||CM_DISCONTINUED.has(cmKey(canon))||CM_DISCONTINUED.has(cmKey(it.nm)))return;
-          const bs=(bySku[mt.plat]=bySku[mt.plat]||{}); const o=(bs[canon]=bs[canon]||{indent:0,issued:0,nPO:0}); o.indent+=it.q||0; o.issued+=it.issued||0; o.nPO++;
-          if(cty){
-            const pc=(bySkuCity[mt.plat]=bySkuCity[mt.plat]||{}); const cc=(pc[cty]=pc[cty]||{});
-            const oc=(cc[canon]=cc[canon]||{indent:0,issued:0,nPO:0}); oc.indent+=it.q||0; oc.issued+=it.issued||0; oc.nPO++;
-          }
-        });
-      }
-    });
-    Object.keys(byPlat).forEach(p=>{const o=byPlat[p];o.fr=o.poVal>0?(o.invVal/o.poVal*100):null;});
-    Object.keys(bySku).forEach(p=>Object.keys(bySku[p]).forEach(c=>{const o=bySku[p][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;}));
-    Object.keys(bySkuCity).forEach(p=>Object.keys(bySkuCity[p]).forEach(ct=>Object.keys(bySkuCity[p][ct]).forEach(c=>{const o=bySkuCity[p][ct][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;})));
+    const tenDay=_frAggregateWindow(all,idx,hasIss,start,end);
+    const {bySku,byPlat,bySkuCity,nWin}=tenDay;
+    // MTD window: 1st of the month `end` falls in, through `end`. Powers the Availability page's
+    // FR% (MTD) display when the Today/MTD toggle is set to MTD — same toggle _availWindow already
+    // drives for OSA/DS Listing, extended to FR% so the two never show inconsistent windows.
+    const endDate=new Date(end);
+    const mtdStart=new Date(endDate.getFullYear(),endDate.getMonth(),1).getTime();
+    const mtd=_frAggregateWindow(all,idx,hasIss,mtdStart,end);
     // WoW: platform-level qty fill-rate (Σissued/Σindent) for the prior 10-day window vs current.
     const pStart=start-10*86400000, pEnd=start-1, prevQty={};
     if(idx&&hasIss){ Object.keys(all).forEach(po=>{ const mt=all[po];
@@ -10191,36 +10209,38 @@ function cmBuildFR(){
       const cf=(c&&c.indent>0)?(c.issued/c.indent*100):null, pf=(pr&&pr.indent>0)?(pr.issued/pr.indent*100):null;
       frWoW[p]={cur:cf,prev:pf,delta:(cf!=null&&pf!=null)?(cf-pf):null};
     });
-    _cmFR={bySku,byPlat,bySkuCity,frWoW,window:{start,end},hasSku:Object.keys(bySku).length>0,nWin,hasIssued:hasIss,nPlat:Object.keys(byPlat).length,nSku:Object.keys(bySku).reduce((a,p)=>a+Object.keys(bySku[p]).length,0),builtAt:new Date()};
-    try{ if(typeof _delta!=='undefined'&&_delta){ _delta.fr={bySku,byPlat,bySkuCity,frWoW,window:{start,end},hasSku:_cmFR.hasSku,nWin:_cmFR.nWin,nPlat:_cmFR.nPlat,nSku:_cmFR.nSku,hasIssued:hasIss,month:(typeof getViewingMonth==='function'?getViewingMonth():''),ts:Date.now()}; } }catch(e){}
+    _cmFR={bySku,byPlat,bySkuCity,bySkuMtd:mtd.bySku,byPlatMtd:mtd.byPlat,bySkuCityMtd:mtd.bySkuCity,frWoW,window:{start,end},mtdWindow:{start:mtdStart,end},hasSku:Object.keys(bySku).length>0,nWin,nWinMtd:mtd.nWin,hasIssued:hasIss,nPlat:Object.keys(byPlat).length,nSku:Object.keys(bySku).reduce((a,p)=>a+Object.keys(bySku[p]).length,0),builtAt:new Date()};
+    try{ if(typeof _delta!=='undefined'&&_delta){ _delta.fr={bySku,byPlat,bySkuCity,bySkuMtd:mtd.bySku,byPlatMtd:mtd.byPlat,bySkuCityMtd:mtd.bySkuCity,frWoW,window:{start,end},mtdWindow:{start:mtdStart,end},hasSku:_cmFR.hasSku,nWin:_cmFR.nWin,nWinMtd:mtd.nWin,nPlat:_cmFR.nPlat,nSku:_cmFR.nSku,hasIssued:hasIss,month:(typeof getViewingMonth==='function'?getViewingMonth():''),ts:Date.now()}; } }catch(e){}
   }catch(e){console.warn('cmBuildFR failed',e);_cmFR=null;}
 }
 function _frState(){ if(typeof _cmFR!=='undefined'&&_cmFR)return _cmFR; if(typeof DB!=='undefined'&&DB&&DB.fr)return DB.fr; return null; }
 function _frWoWForPlat(plat){ const F=_frState(); return (F&&F.frWoW&&F.frWoW[plat])?F.frWoW[plat]:null; }
-function _frForSku(plat,name){
+function _frForSku(plat,name,mtd){
   const F=_frState(); if(!F)return null;
-  if(F.bySku&&F.bySku[plat]){
+  const bySkuSrc=mtd?F.bySkuMtd:F.bySku, byPlatSrc=mtd?F.byPlatMtd:F.byPlat;
+  if(bySkuSrc&&bySkuSrc[plat]){
     const idx=window._frIdx||(window._frIdx=cmCanonIndex());
     const canon=cmMapName(name,idx);
-    if(canon&&F.bySku[plat][canon]&&F.bySku[plat][canon].fr!=null)return{fr:F.bySku[plat][canon].fr,level:'sku',n:F.bySku[plat][canon].nPO};
+    if(canon&&bySkuSrc[plat][canon]&&bySkuSrc[plat][canon].fr!=null)return{fr:bySkuSrc[plat][canon].fr,level:'sku',n:bySkuSrc[plat][canon].nPO};
   }
-  if(F.byPlat&&F.byPlat[plat]&&F.byPlat[plat].fr!=null)return{fr:F.byPlat[plat].fr,level:'plat',n:F.byPlat[plat].nPO};
+  if(byPlatSrc&&byPlatSrc[plat]&&byPlatSrc[plat].fr!=null)return{fr:byPlatSrc[plat].fr,level:'plat',n:byPlatSrc[plat].nPO};
   return null;
 }
 // True per-city FR (issued ÷ indent for that SKU's POs in that city). No SKU-level fallback — "—" when absent.
-function _frForSkuCity(plat,name,city){
-  const F=_frState(); if(!F||!F.bySkuCity||!F.bySkuCity[plat])return null;
+function _frForSkuCity(plat,name,city,mtd){
+  const F=_frState(); if(!F)return null;
+  const src=mtd?F.bySkuCityMtd:F.bySkuCity; if(!src||!src[plat])return null;
   const cty=(typeof nCity==='function')?nCity(city||''):(city||'');
-  const pc=F.bySkuCity[plat][cty]; if(!pc)return null;
+  const pc=src[plat][cty]; if(!pc)return null;
   const idx=window._frIdx||(window._frIdx=cmCanonIndex());
   const canon=cmMapName(name,idx);
   if(canon&&pc[canon]&&pc[canon].fr!=null)return{fr:pc[canon].fr,n:pc[canon].nPO};
   return null;
 }
-function _frCellHtml(plat,name){
-  const f=_frForSku(plat,name); const col=_frColor(f&&f.fr);
+function _frCellHtml(plat,name,mtd){
+  const f=_frForSku(plat,name,mtd); const col=_frColor(f&&f.fr);
   const tag=(f&&f.level==='plat')?'<span style="font-size:9px;color:#8B97AD" title="platform-level fallback (no per-SKU PO match in window)">\u00b7plat</span>':'';
-  return '<td style="padding:8px 10px;font-size:12px;color:'+col+';font-weight:700" title="Fill Rate, last 10 days, delivered POs">'+(f?_frFmt(f.fr):'\u2014')+tag+'</td>';
+  return '<td style="padding:8px 10px;font-size:12px;color:'+col+';font-weight:700" title="Fill Rate, '+(mtd?'month-to-date':'last 10 days')+', delivered POs">'+(f?_frFmt(f.fr):'\u2014')+tag+'</td>';
 }
 
 /* ---- build open-PO map (tracker × SN) ---- */
