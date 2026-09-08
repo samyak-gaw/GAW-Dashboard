@@ -5903,8 +5903,10 @@ function procAvail(platform,rows){
   const cityCol=sk.find(k=>k==='City')||sk.find(k=>/^city$/i.test(k))||'City';
   // OSA in LS column — handle both "Wt. OSA in LS" (Q-comm) and "Wt. OSA% in LS" (BB/FK)
   const osaLsCol=sk.find(k=>/wt\.?\s*osa\s*%?\s*in\s*ls/i.test(k))||sk.find(k=>/wt\.?\s*osa\s*in\s*ls/i.test(k))||'Wt. OSA in LS';
-  // DS Listing column — handle both "DS Listing" and "DS Listing %"
-  const dsCol=sk.find(k=>/^ds\.?\s*listing\s*%?$/i.test(k))||'DS Listing';
+  // DS Listing column — handle "DS Listing" / "DS Listing %" (most platforms) and Flipkart's
+  // "Listing %" (no "DS" prefix — flipkart_minutes_availability.csv uses this bare name).
+  // Second pattern anchored tight so it can't accidentally match "Listed SKUs" or similar.
+  const dsCol=sk.find(k=>/^ds\.?\s*listing\s*%?$/i.test(k))||sk.find(k=>/^listing\s*%?$/i.test(k))||'DS Listing';
   const bundleCol=sk.find(k=>/is\.?\s*platform\.?\s*bundle/i.test(k))||null;
 
   // Aggregate: monthKey → sku → day → {cities, samples}
