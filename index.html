@@ -6071,9 +6071,16 @@ function _sohZepto(rows){
 function _sohBlinkit(rows){
   const sk=Object.keys(rows[0]||{});
   const skuCol=sk.find(k=>k==='item_id')||sk.find(k=>/item.?id/i.test(k))||'item_id';
-  const facCol=sk.find(k=>k==='backend_facility_name')||sk.find(k=>/facility.?name/i.test(k))||'backend_facility_name';
+  // facCol: old export = 'backend_facility_name'; new export (Sep-2026, "Manufacturer_<id>_data.xlsx"
+  // format) = 'Outlet Name'. Both matched, old exact-match tried first so nothing shifts for old files.
+  const facCol=sk.find(k=>k==='backend_facility_name')||sk.find(k=>k==='Outlet Name')||sk.find(k=>/facility.?name/i.test(k)||/outlet.?name/i.test(k))||'backend_facility_name';
   const beCol=sk.find(k=>k==='backend_inv_qty')||sk.find(k=>/backend.?inv/i.test(k))||'backend_inv_qty';
   const feCol=sk.find(k=>k==='frontend_inv_qty')||sk.find(k=>/frontend.?inv/i.test(k))||'frontend_inv_qty';
+  // New export also carries a direct 'City Name' column — ground truth from Blinkit, not present
+  // in the old format. Some outlet names carry a stale/reassigned city (e.g. "CPC-KOL2-FRZ(HP)"
+  // now serves Delhi, "CPC-INDORE2-FRZ(HP)" serves Delhi), so this column is more reliable than
+  // regex-parsing the outlet name. null on old-format files -> falls through to extractCity below.
+  const cityCol=sk.find(k=>k==='City Name')||sk.find(k=>/city.?name/i.test(k))||null;
   const data={};let unmatched=0,totalU=0;const fac=new Set();
   // Robust city extractor for Blinkit facility names. Real-world patterns:
   //   "CPC - Gurgaon3 (HP)"        → Gurgaon
@@ -6115,7 +6122,8 @@ function _sohBlinkit(rows){
     const be=parseFloat(r[beCol])||0;
     const fe=parseFloat(r[feCol])||0;
     const u=be+fe;
-    const cityRaw=extractCity(facility);
+    const cityFromFile=cityCol?String(r[cityCol]||'').trim():'';
+    const cityRaw=cityFromFile||extractCity(facility);
     const city=_sohCity(cityRaw,facility);
     if(!data[sku])data[sku]={total:0,by_city:{},by_facility:{}};
     data[sku].total+=u;
