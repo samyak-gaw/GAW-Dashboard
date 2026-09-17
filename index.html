@@ -1935,7 +1935,21 @@ function whCity(name){
 }
 // Rebuild SOH city aggregation at granular level from per-facility stock (falls back to stored soh_by_city).
 function _sohGranularByCity(plat,k){
-  const byFac=k.by_facility||{}; const fk=Object.keys(byFac);
+  // Flipkart's by_facility keys are raw wide-format column names ("Ahmedabad_store", "Blr_SH")
+  // that whCity() below wasn't built to parse. _sohFK already resolves these correctly at
+  // upload time (FK_CITY_MAP -> whCity -> _cleanCity -> 'Rest', always succeeds) into by_city,
+  // so Flipkart always uses that instead of reconstructing from facility columns here.
+  // Confirmed Sep-2026: whCity() only recognizes FK's 3-letter "_SH" hub codes plus a couple of
+  // "_store" names that happen to fit WH_CITY_MAP's generic fallback entries — typically
+  // 40-60% of a SKU's stock — silently dropping the rest (whole cities, not just units).
+  // When that partial sum happened to clear the 50% threshold below, it replaced the correct,
+  // complete by_city breakdown with an incomplete one, undercounting Availability's SOH
+  // Explorer "Spread" for roughly a third of Flipkart SKUs (e.g. one SKU showed 6 cities
+  // instead of the true 9) and the same wrong data fed the OSA-SOH city join and metro
+  // reorder tables. Amazon's FC codes ("BLR7" etc.) never resolve at all (0% attributed), so
+  // they always fell back safely — Flipkart's mixed SH/store naming was the one platform that
+  // landed in the failure zone.
+  const byFac=(plat==='Flipkart')?{}:(k.by_facility||{}); const fk=Object.keys(byFac);
   if(fk.length){
     const out={}; let attributed=0;
     fk.forEach(f=>{
