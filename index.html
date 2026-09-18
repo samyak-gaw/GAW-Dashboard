@@ -711,9 +711,10 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 <!-- PROJECTIONS -->
 <div id="projections" class="content">
   <div id="projKpis" class="kpi-row"></div>
-  <div id="forecastAccuracy"></div>
+  <div id="skuPacing"></div>
   <div class="g3" id="projPlatCards"></div>
   <div class="card"><h3>Cumulative GMV vs Target — All Platforms <span style="font-size:11px;font-weight:400;color:var(--muted)">(Regression + DRR projections)</span></h3><div class="ch400"><canvas id="projChart"></canvas></div></div>
+  <div id="forecastAccuracy" style="margin-top:18px"></div>
 </div>
 
 <!-- AVAILABILITY TAB (Stage 2) -->
@@ -4435,8 +4436,104 @@ function renderForecastAccuracy(){
   host.innerHTML=`<div class="card" style="margin-bottom:16px"><h3>🎯 Forecast Accuracy <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">Projected month-end vs actual · error within ±10% green</span></h3>${blocks.join('')}<div style="font-size:10px;color:var(--muted);margin-top:2px">Projection = (MTD GMV ÷ days elapsed) × days in month, frozen at the "as of" day. Error = (projected − actual) ÷ actual.</div></div>`;
 }
 
+// Per-day sum of a sku_code's GMV for a list of "current-month-relative" day
+// numbers. A day number <1 is a trailing window dipping into the prior month
+// (day priorDays+d there) — same crossing rule the SKU table's WoW column uses.
+function _sumSkuGmvForDays(curRows,priorRows,priorDays,dayList){
+  const out={};
+  dayList.forEach(d=>{
+    let srcRows,srcDay;
+    if(d>=1){srcRows=curRows;srcDay=d;}
+    else{srcRows=priorRows;srcDay=priorDays+d;}
+    if(srcDay<1)return;
+    srcRows.forEach(r=>{ if(r.day===srcDay) out[r.sku_code]=(out[r.sku_code]||0)+r.gmv; });
+  });
+  return out;
+}
+// SKU-level month-end pacing: projects each SKU's MTD run-rate to month-end and
+// compares it to the prior (closed) month's actual — same projection formula as
+// renderForecastAccuracy, one level more granular. Adds a trailing-7-vs-previous-7
+// WoW read for near-term momentum. Correctness-first: a SKU needs both a live-month
+// row and a prior-month row to appear at all; WoW quietly shows "—" rather than a
+// false number when a full prior week isn't available (mirrors the SKU table's own
+// WoW safety rule).
+function _skuPacingCompute(){
+  const mk=getViewingMonth(), ld=latestDay(), mdays=getMonthDays();
+  if(!ld||ld<3)return null;
+  const priorKey=priorMonthKey(mk);
+  const curData=_buildMonthData(mk), priorData=_buildMonthData(priorKey);
+  const priorDays=daysInMonth(priorKey);
+  const priorHasData=PN.some(p=>(priorData[p]&&priorData[p].sku&&priorData[p].sku.length>0));
+  const cur7Days=[]; for(let d=ld-6;d<=ld;d++)cur7Days.push(d);
+  const prev7Days=[]; for(let d=ld-13;d<=ld-7;d++)prev7Days.push(d);
+  const wowCrossesBoundary=cur7Days.some(d=>d<1)||prev7Days.some(d=>d<1);
+  const rows=[];
+  PN.forEach(p=>{
+    const curRows=(curData[p]&&curData[p].sku)||[], priorRows=(priorData[p]&&priorData[p].sku)||[];
+    const mtdBySkuCode={};
+    curRows.forEach(r=>{ if(r.day>=1&&r.day<=ld) mtdBySkuCode[r.sku_code]=(mtdBySkuCode[r.sku_code]||0)+r.gmv; });
+    const priorActualBySkuCode={};
+    priorRows.forEach(r=>{ priorActualBySkuCode[r.sku_code]=(priorActualBySkuCode[r.sku_code]||0)+r.gmv; });
+    let cur7BySkuCode={},prev7BySkuCode={};
+    if(!(wowCrossesBoundary&&!priorHasData)){
+      cur7BySkuCode=_sumSkuGmvForDays(curRows,priorRows,priorDays,cur7Days);
+      prev7BySkuCode=_sumSkuGmvForDays(curRows,priorRows,priorDays,prev7Days);
+    }
+    const allCodes=new Set([...Object.keys(mtdBySkuCode),...Object.keys(priorActualBySkuCode)]);
+    allCodes.forEach(code=>{
+      const mtd=mtdBySkuCode[code]||0, prior=priorActualBySkuCode[code]||0;
+      if(mtd<=0||prior<=0)return; // need both sides to say anything meaningful
+      const info=skuLookup(p,code); const name=info.name||code, cat=info.cat||'';
+      const proj=mtd/ld*mdays;
+      const delta=proj-prior;
+      const mom=(proj-prior)/prior*100;
+      const c7=cur7BySkuCode[code]||0, p7=prev7BySkuCode[code]||0;
+      const wow=(p7>0)?((c7-p7)/p7*100):null;
+      rows.push({plat:p,name,cat,mtd,proj,prior,delta,mom,small:prior<100000,wow});
+    });
+  });
+  rows.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));
+  return {rows,mk,ld,mdays,priorKey};
+}
+function renderSkuPacing(){
+  const host=document.getElementById('skuPacing'); if(!host)return;
+  const data=_skuPacingCompute();
+  if(!data||!data.rows.length){
+    host.innerHTML=`<div class="card" style="margin-bottom:16px"><h3>📈 SKU Month-End Pacing</h3><div style="font-size:12px;color:var(--muted);padding:6px 2px">Building — needs a few days into the live month, plus a closed prior month to compare against.</div></div>`;
+    return;
+  }
+  const top=data.rows.slice(0,12);
+  const ec=m=>m>=0?'#1E7A46':(m>=-20?'#7A4A0A':'#BD2635');
+  const td='padding:8px 10px;font-size:12px;text-align:right';
+  const th='padding:8px 10px;text-align:right;font-size:10px;text-transform:uppercase;color:var(--muted)';
+  const body=top.map(r=>{
+    const momDisp=r.small?'new · n/a':(r.mom>=0?'+':'')+r.mom.toFixed(1)+'%';
+    const momColor=r.small?'#8B97AD':ec(r.mom);
+    const wowDisp=r.wow==null?'—':((r.wow>=0?'▲ ':'▼ ')+Math.abs(r.wow).toFixed(1)+'%');
+    const wowColor=r.wow==null?'#8B97AD':(r.wow>=0?'#1E7A46':'#BD2635');
+    const deltaDisp=(r.delta>=0?'+':'')+fC(r.delta);
+    const deltaColor=r.delta>=0?'#1E7A46':'#BD2635';
+    return `<tr><td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:#8B97AD">${r.plat} · ${r.cat}</div></td>
+      <td style="${td}">${fC(r.mtd)}</td>
+      <td style="${td};font-weight:700">${fC(r.proj)}</td>
+      <td style="${td};color:#8B97AD">${fC(r.prior)}</td>
+      <td style="${td};color:${momColor};font-weight:800">${momDisp}</td>
+      <td style="${td};color:${wowColor};font-weight:700">${wowDisp}</td>
+      <td style="${td};color:${deltaColor};font-weight:700">${deltaDisp}</td></tr>`;
+  }).join('');
+  host.innerHTML=`<div class="card" style="margin-bottom:16px">
+    <h3>📈 SKU Month-End Pacing <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">Projected month-end GMV vs last month actual · sorted by ₹ swing</span></h3>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${data.mk} · projected as of day ${data.ld} · vs ${data.priorKey} actual</div>
+    <div class="scroll-table"><table style="width:100%;min-width:640px;border-collapse:collapse">
+      <thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="${th}">MTD</th><th style="${th}">Projected month-end</th><th style="${th}">${data.priorKey} actual</th><th style="${th}">Proj. MoM</th><th style="${th}" title="Last 7 days vs previous 7 days">WoW</th><th style="${th}">Δ (₹)</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">Projection = (MTD GMV ÷ days elapsed) × days in month. MoM = (projected − last month actual) ÷ last month actual. WoW = last 7 days vs the 7 days before that (— if a full prior week isn't available). Sorted by absolute ₹ swing, not %, since small-base SKUs can show extreme percentages ("new · n/a").</div>
+  </div>`;
+}
+
 function renderProjections(){
-  _projSnapshot(); renderForecastAccuracy();
+  _projSnapshot(); renderForecastAccuracy(); renderSkuPacing();
   // Use per-platform latest day for weighted combined DRR (avoids distortion when platforms differ)
   const td=latestDay();const dLeft=getMonthDays()-td;
   let totMtd=0,totTgt=0;
