@@ -711,10 +711,10 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 <!-- PROJECTIONS -->
 <div id="projections" class="content">
   <div id="projKpis" class="kpi-row"></div>
-  <div id="skuPacing"></div>
   <div class="g3" id="projPlatCards"></div>
   <div class="card"><h3>Cumulative GMV vs Target — All Platforms <span style="font-size:11px;font-weight:400;color:var(--muted)">(Regression + DRR projections)</span></h3><div class="ch400"><canvas id="projChart"></canvas></div></div>
-  <div id="forecastAccuracy" style="margin-top:18px"></div>
+  <div id="skuPacing" style="margin-top:18px"></div>
+  <div id="categoryPacing"></div>
 </div>
 
 <!-- AVAILABILITY TAB (Stage 2) -->
@@ -4377,64 +4377,10 @@ function exportSkuMasterCSV(){
 // ══════════════════════════════════════════════
 // RENDER PROJECTIONS
 // ══════════════════════════════════════════════
-// ---- Forecast accuracy: archive the live month's projection once (day ≥10), score vs actual when it completes ----
-function _projSnapshot(){
-  try{
-    const am=getActiveMonth(), vm=getViewingMonth();
-    if(am!==vm)return;                              // only archive the live month, from its own data
-    if(_delta.proj_hist && _delta.proj_hist[am])return; // freeze: capture once per month
-    const ld=latestDay(); if(!ld||ld<10)return;     // need ≥10 days of signal so the projection is meaningful
-    const mdays=getMonthDays(), byPlat={};
-    PN.forEach(p=>{ const m=getMTD(p); if(m.gmv<=0)return; byPlat[p]=Math.round((m.gmv/ld)*mdays); });
-    if(!Object.keys(byPlat).length)return;
-    _delta.proj_hist=_delta.proj_hist||{};
-    _delta.proj_hist[am]={asOfDay:ld,byPlat,ts:Date.now()};
-    const mks=Object.keys(_delta.proj_hist).sort(); while(mks.length>12){delete _delta.proj_hist[mks.shift()];}
-    saveDB();
-  }catch(e){console.warn('[projSnapshot]',e);}
-}
-// Actual full-month GMV per platform from frozen/months daily store.
-function _monthActualGmv(mk,plat){
-  const fr=_delta.frozen&&_delta.frozen[mk]&&_delta.frozen[mk][plat];
-  if(fr&&fr.daily){ let t=0;(fr.daily||[]).forEach(d=>{t+=(d.gmv||0);}); return t; }
-  const mo=_delta.months&&_delta.months[mk]&&_delta.months[mk][plat];
-  if(mo&&mo.daily){ let t=0;Object.values(mo.daily).forEach(d=>{t+=(d.gmv||0);}); return t; }
-  return null;
-}
-function renderForecastAccuracy(){
-  const host=document.getElementById('forecastAccuracy'); if(!host)return;
-  const am=getActiveMonth();
-  const hist=_delta.proj_hist||{};
-  // completed months = archived projection exists AND it's not the live month
-  const months=Object.keys(hist).filter(mk=>mk!==am).sort().reverse();
-  const blocks=[];
-  months.forEach(mk=>{
-    const rec=hist[mk]; const rows=[];
-    PN.forEach(p=>{
-      const proj=rec.byPlat&&rec.byPlat[p]; if(proj==null)return;
-      const act=_monthActualGmv(mk,p); if(act==null||act<=0)return;
-      const err=(proj-act)/act*100;
-      rows.push({p,proj,act,err});
-    });
-    if(!rows.length)return;
-    const tp=rows.reduce((a,r)=>a+r.proj,0), ta=rows.reduce((a,r)=>a+r.act,0);
-    const terr=ta>0?((tp-ta)/ta*100):0;
-    const ec=e=>Math.abs(e)<10?'#1E7A46':(Math.abs(e)<20?'#7A4A0A':'#BD2635');
-    const td='padding:8px 10px;font-size:12px';
-    const body=rows.map(r=>`<tr><td style="${td}"><b>${r.p}</b></td><td style="${td}">${fC(r.proj)}</td><td style="${td}">${fC(r.act)}</td><td style="${td};color:${ec(r.err)};font-weight:800">${r.err>=0?'+':''}${r.err.toFixed(1)}%</td></tr>`).join('');
-    blocks.push(`<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;color:#22304A;margin-bottom:6px">${mk} <span style="font-size:10px;font-weight:400;color:var(--muted)">· projected as of day ${rec.asOfDay}</span></div>
-      <div class="scroll-table"><table style="width:100%;min-width:480px;border-collapse:collapse">
-        <thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Platform</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Projected</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Actual</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Error</th></tr></thead>
-        <tbody>${body}</tbody>
-        <tfoot><tr style="background:#E6F2EA;font-weight:800"><td style="${td}">All</td><td style="${td}">${fC(tp)}</td><td style="${td}">${fC(ta)}</td><td style="${td};color:${ec(terr)}">${terr>=0?'+':''}${terr.toFixed(1)}%</td></tr></tfoot>
-      </table></div></div>`);
-  });
-  if(!blocks.length){
-    host.innerHTML=`<div class="card" style="margin-bottom:16px"><h3>🎯 Forecast Accuracy</h3><div style="font-size:12px;color:var(--muted);padding:6px 2px">Building — the live month's projection is archived once it has ≥10 days of data, then scored against actuals after the month closes. First result appears after the current month completes.</div></div>`;
-    return;
-  }
-  host.innerHTML=`<div class="card" style="margin-bottom:16px"><h3>🎯 Forecast Accuracy <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">Projected month-end vs actual · error within ±10% green</span></h3>${blocks.join('')}<div style="font-size:10px;color:var(--muted);margin-top:2px">Projection = (MTD GMV ÷ days elapsed) × days in month, frozen at the "as of" day. Error = (projected − actual) ÷ actual.</div></div>`;
-}
+// (Forecast Accuracy — historical projected-vs-actual scoring — removed. It only
+// spoke to whether the forecasting method itself was accurate, not to anything
+// actionable this month; SKU/Category Pacing below replaced it with a forward-
+// looking view of what's actually moving.)
 
 // Per-day sum of a sku_code's GMV for a list of "current-month-relative" day
 // numbers. A day number <1 is a trailing window dipping into the prior month
@@ -4451,8 +4397,7 @@ function _sumSkuGmvForDays(curRows,priorRows,priorDays,dayList){
   return out;
 }
 // SKU-level month-end pacing: projects each SKU's MTD run-rate to month-end and
-// compares it to the prior (closed) month's actual — same projection formula as
-// renderForecastAccuracy, one level more granular. Adds a trailing-7-vs-previous-7
+// compares it to the prior (closed) month's actual. Adds a trailing-7-vs-previous-7
 // WoW read for near-term momentum. Correctness-first: a SKU needs both a live-month
 // row and a prior-month row to appear at all; WoW quietly shows "—" rather than a
 // false number when a full prior week isn't available (mirrors the SKU table's own
@@ -4532,8 +4477,102 @@ function renderSkuPacing(){
   </div>`;
 }
 
+// Category-level month-end pacing — same method as SKU Pacing above, but summed
+// across ALL platforms into one row per category (Ice Cream Cups, Tubs, Jars, ...).
+// Deliberately shows every category (there are only ~8-10), not a top-N cut, as the
+// "nothing missing" complement to SKU Pacing's top-12 view.
+function _sumCatGmvForDays(curRows,priorRows,priorDays,dayList,plat){
+  const out={};
+  dayList.forEach(d=>{
+    let srcRows,srcDay;
+    if(d>=1){srcRows=curRows;srcDay=d;}
+    else{srcRows=priorRows;srcDay=priorDays+d;}
+    if(srcDay<1)return;
+    srcRows.forEach(r=>{ if(r.day===srcDay){ const cat=normCat(skuLookup(plat,r.sku_code).cat)||'Unknown'; out[cat]=(out[cat]||0)+r.gmv; } });
+  });
+  return out;
+}
+function _categoryPacingCompute(){
+  const mk=getViewingMonth(), ld=latestDay(), mdays=getMonthDays();
+  if(!ld||ld<3)return null;
+  const priorKey=priorMonthKey(mk);
+  const curData=_buildMonthData(mk), priorData=_buildMonthData(priorKey);
+  const priorDays=daysInMonth(priorKey);
+  const priorHasData=PN.some(p=>(priorData[p]&&priorData[p].sku&&priorData[p].sku.length>0));
+  const cur7Days=[]; for(let d=ld-6;d<=ld;d++)cur7Days.push(d);
+  const prev7Days=[]; for(let d=ld-13;d<=ld-7;d++)prev7Days.push(d);
+  const wowCrossesBoundary=cur7Days.some(d=>d<1)||prev7Days.some(d=>d<1);
+  const mtdByCat={}, priorByCat={}, cur7ByCat={}, prev7ByCat={};
+  PN.forEach(p=>{
+    const curRows=(curData[p]&&curData[p].sku)||[], priorRows=(priorData[p]&&priorData[p].sku)||[];
+    curRows.forEach(r=>{
+      if(r.day<1||r.day>ld)return;
+      const cat=normCat(skuLookup(p,r.sku_code).cat)||'Unknown';
+      mtdByCat[cat]=(mtdByCat[cat]||0)+r.gmv;
+    });
+    priorRows.forEach(r=>{
+      const cat=normCat(skuLookup(p,r.sku_code).cat)||'Unknown';
+      priorByCat[cat]=(priorByCat[cat]||0)+r.gmv;
+    });
+    if(!(wowCrossesBoundary&&!priorHasData)){
+      const c7=_sumCatGmvForDays(curRows,priorRows,priorDays,cur7Days,p);
+      const p7=_sumCatGmvForDays(curRows,priorRows,priorDays,prev7Days,p);
+      Object.keys(c7).forEach(cat=>{ cur7ByCat[cat]=(cur7ByCat[cat]||0)+c7[cat]; });
+      Object.keys(p7).forEach(cat=>{ prev7ByCat[cat]=(prev7ByCat[cat]||0)+p7[cat]; });
+    }
+  });
+  const cats=new Set([...Object.keys(mtdByCat),...Object.keys(priorByCat)]);
+  const rows=[];
+  cats.forEach(cat=>{
+    const mtd=mtdByCat[cat]||0, prior=priorByCat[cat]||0;
+    if(mtd<=0||prior<=0)return;
+    const proj=mtd/ld*mdays;
+    const delta=proj-prior;
+    const mom=(proj-prior)/prior*100;
+    const c7=cur7ByCat[cat]||0, p7=prev7ByCat[cat]||0;
+    const wow=(p7>0)?((c7-p7)/p7*100):null;
+    rows.push({cat,mtd,proj,prior,delta,mom,wow});
+  });
+  rows.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));
+  return {rows,mk,ld,mdays,priorKey};
+}
+function renderCategoryPacing(){
+  const host=document.getElementById('categoryPacing'); if(!host)return;
+  const data=_categoryPacingCompute();
+  if(!data||!data.rows.length){
+    host.innerHTML=`<div class="card" style="margin-bottom:16px"><h3>🗂 Category Month-End Pacing</h3><div style="font-size:12px;color:var(--muted);padding:6px 2px">Building — needs a few days into the live month, plus a closed prior month to compare against.</div></div>`;
+    return;
+  }
+  const ec=m=>m>=0?'#1E7A46':(m>=-20?'#7A4A0A':'#BD2635');
+  const td='padding:8px 10px;font-size:12px;text-align:right';
+  const th='padding:8px 10px;text-align:right;font-size:10px;text-transform:uppercase;color:var(--muted)';
+  const body=data.rows.map(r=>{
+    const momDisp=(r.mom>=0?'+':'')+r.mom.toFixed(1)+'%';
+    const wowDisp=r.wow==null?'—':((r.wow>=0?'▲ ':'▼ ')+Math.abs(r.wow).toFixed(1)+'%');
+    const wowColor=r.wow==null?'#8B97AD':(r.wow>=0?'#1E7A46':'#BD2635');
+    const deltaDisp=(r.delta>=0?'+':'')+fC(r.delta);
+    const deltaColor=r.delta>=0?'#1E7A46':'#BD2635';
+    return `<tr><td style="padding:8px 10px;font-size:12px"><b>${r.cat}</b></td>
+      <td style="${td}">${fC(r.mtd)}</td>
+      <td style="${td};font-weight:700">${fC(r.proj)}</td>
+      <td style="${td};color:#8B97AD">${fC(r.prior)}</td>
+      <td style="${td};color:${ec(r.mom)};font-weight:800">${momDisp}</td>
+      <td style="${td};color:${wowColor};font-weight:700">${wowDisp}</td>
+      <td style="${td};color:${deltaColor};font-weight:700">${deltaDisp}</td></tr>`;
+  }).join('');
+  host.innerHTML=`<div class="card" style="margin-bottom:16px">
+    <h3>🗂 Category Month-End Pacing <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">All platforms combined · every category shown</span></h3>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${data.mk} · projected as of day ${data.ld} · vs ${data.priorKey} actual</div>
+    <div class="scroll-table"><table style="width:100%;min-width:640px;border-collapse:collapse">
+      <thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Category</th><th style="${th}">MTD</th><th style="${th}">Projected month-end</th><th style="${th}">${data.priorKey} actual</th><th style="${th}">Proj. MoM</th><th style="${th}" title="Last 7 days vs previous 7 days">WoW</th><th style="${th}">Δ (₹)</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">Same method as SKU Pacing, summed across all 6 platforms per category.</div>
+  </div>`;
+}
+
 function renderProjections(){
-  _projSnapshot(); renderForecastAccuracy(); renderSkuPacing();
+  renderSkuPacing(); renderCategoryPacing();
   // Use per-platform latest day for weighted combined DRR (avoids distortion when platforms differ)
   const td=latestDay();const dLeft=getMonthDays()-td;
   let totMtd=0,totTgt=0;
@@ -8947,10 +8986,6 @@ function _applyGHPayload(payload,logFn,manual){
       const complete=fz && PN.every(p=>fz[p]&&Array.isArray(fz[p].daily)&&fz[p].daily.length>0);
       if(complete && merged.months && merged.months[mk]) delete merged.months[mk];
     });
-
-    // proj_hist: monthKey → {asOfDay,byPlat,ts}. Frozen once per month; union so a sync can't wipe the forecast archive.
-    merged.proj_hist=Object.assign({},merged.proj_hist||{},_delta.proj_hist||{});
-    { const mks=Object.keys(merged.proj_hist).sort(); while(mks.length>12){ delete merged.proj_hist[mks.shift()]; } }
 
     // soh_hist: platform → weekKey → total. Union weeks across cloud+local (local wins same-week) so neither clobbers the WoW archive.
     merged.soh_hist=merged.soh_hist||{};
