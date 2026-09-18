@@ -7732,56 +7732,106 @@ function _sohExportXlsx(){
   var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
   var styled=!!window.XLSXStyle;
   var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
-  var plats=Object.keys(window._availMTD||{}).filter(function(p){return window._availMTD[p]&&window._availMTD[p].skus&&Object.keys(window._availMTD[p].skus).length;});
-  if(!plats.length){alert('No SOH data loaded to export.');return;}
+  // Single-platform export: this button lives inside the SOH Explorer's per-platform
+  // view (availSohSkuView), so _availSohPlat is always the platform on screen — export
+  // that one instead of stacking all six into one workbook.
+  var plat=_availSohPlat;
+  if(!plat){alert('Open a platform\u2019s SOH Explorer first, then download.');return;}
+  var pd=(window._availMTD||{})[plat]||{skus:{}};
+  if(!pd.skus||!Object.keys(pd.skus).length){alert('No SOH data loaded for '+plat+'.');return;}
   var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
   var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
   var wb=X.utils.book_new();
-  plats.forEach(function(plat){
-    // Head is per-sheet: each sheet is one platform, and cover target is platform-specific.
-    var head=['SKU','Category','SOH (units)','Days to Stockout','Open PO (units)','FR% ('+(_availWindow==='mtd'?'MTD':'10d')+')','Reorder '+_sohCoverDays(plat)+'d (units)','DRR (u/day)','Cities'];
-    var pd=window._availMTD[plat]||{skus:{}};
-    var list=Object.keys(pd.skus).map(function(sku){
-      var info=skuLookup(plat,sku), k=pd.skus[sku], best=_sohBestDTS(plat,k), _opo=_sohOpenPO(plat,info.name,null), reorder=_sohReorderQty(k,plat,_opo);
-      var sohCities=k.soh_by_city||{}; var nCities=Object.keys(sohCities).filter(function(c){return (sohCities[c]||0)>0;}).length;
-      var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name,_availWindow==='mtd'):null; var _frv=_f?(_f.level==='sku'?Math.round(_f.fr)+'%':Math.round(_f.fr)+'% (plat)'):'';
-      return {name:info.name,cat:info.cat||'',soh:Math.round(k.soh||0),dts:best.days,drr:Math.round(k.drr||0),reorder:reorder,openpo:_opo,fr:_frv,nCities:nCities};
-    }).filter(function(r){return r.soh>0||r.drr>0;}).sort(function(a,b){return (a.dts==null?99999:a.dts)-(b.dts==null?99999:b.dts);});
-    var aoa=[['GAW \u00B7 '+plat+' \u00B7 SOH Explorer \u00B7 '+mk,'','','','','','','',''],head];
-    list.forEach(function(r){ aoa.push([r.name,r.cat,r.soh,(r.dts==null?'':Math.round(r.dts)),(r.openpo==null?'':r.openpo),r.fr,(r.reorder==null?'':r.reorder),r.drr,r.nCities]); });
-    var ws=X.utils.aoa_to_sheet(aoa);
-    ws['!cols']=[{wch:38},{wch:18},{wch:12},{wch:16},{wch:15},{wch:12},{wch:17},{wch:12},{wch:8}];
-    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:8}}];
-    if(styled){
-      var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
-      for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
-      var _num=function(v){ if(v==null||v==='')return null; var n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?null:n; };
-      var _rag=function(kind,v){ if(v==null)return null;
-        if(kind==='osa')return v>=90?'g':(v>=75?'a':'r');
-        if(kind==='fr') return v>=95?'g':(v>=85?'a':'r');
-        if(kind==='ds') return v>=90?'g':(v>=80?'a':'r');
-        if(kind==='doi')return v>=14?'g':(v>=7?'a':'r'); return null; };
-      // This block was copy-pasted from the OSA export and never adapted: it looped
-      // over `rows` (which does not exist here — the array is `list`) and read OSA
-      // fields (osaMtd/osaToday/ds) that a SOH row has never had. It threw
-      // "ReferenceError: rows is not defined" on every run where XLSXStyle was
-      // loaded — i.e. every real browser — so the SOH export produced no file at all.
-      // Columns here are: 0 SKU · 1 Category · 2 SOH · 3 DaysToStockout · 4 OpenPO
-      //                   5 FR% · 6 Reorder · 7 DRR · 8 Cities
-      // Only Days-to-Stockout and FR% carry a RAG meaning; the rest are plain counts.
-      var _RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, _RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'}, _colKind={3:'doi',5:'fr'};
-      for(var r2=0;r2<list.length;r2++){var R=list[r2];
-        var vmap={3:_num(R.dts),5:_num(R.fr)};
-        for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue;
-          var band=_colKind[c2]?_rag(_colKind[c2],vmap[c2]):null;
-          if(band){cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:_RAGT[band]}},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:_RAGF[band]}}};}
-          else{cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}
-        }}
-    }
-    var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
-    X.utils.book_append_sheet(wb,ws,safe);
+
+  var head=['SKU','Category','SOH (units)','Days to Stockout','Open PO (units)','FR% ('+(_availWindow==='mtd'?'MTD':'10d')+')','Reorder '+_sohCoverDays(plat)+'d (units)','DRR (u/day)','Cities'];
+  var list=Object.keys(pd.skus).map(function(sku){
+    var info=skuLookup(plat,sku), k=pd.skus[sku], best=_sohBestDTS(plat,k), _opo=_sohOpenPO(plat,info.name,null), reorder=_sohReorderQty(k,plat,_opo);
+    var sohCities=k.soh_by_city||{}; var nCities=Object.keys(sohCities).filter(function(c){return (sohCities[c]||0)>0;}).length;
+    var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name,_availWindow==='mtd'):null; var _frv=_f?(_f.level==='sku'?Math.round(_f.fr)+'%':Math.round(_f.fr)+'% (plat)'):'';
+    return {sku:sku,info:info,k:k,name:info.name,cat:info.cat||'',soh:Math.round(k.soh||0),dts:best.days,drr:Math.round(k.drr||0),reorder:reorder,openpo:_opo,fr:_frv,nCities:nCities};
+  }).filter(function(r){return r.soh>0||r.drr>0;}).sort(function(a,b){return (a.dts==null?99999:a.dts)-(b.dts==null?99999:b.dts);});
+
+  // ---- Sheet 1: SKU-level (this platform only) ----
+  var aoa=[['GAW \u00B7 '+plat+' \u00B7 SOH Explorer \u00B7 '+mk,'','','','','','','',''],head];
+  list.forEach(function(r){ aoa.push([r.name,r.cat,r.soh,(r.dts==null?'':Math.round(r.dts)),(r.openpo==null?'':r.openpo),r.fr,(r.reorder==null?'':r.reorder),r.drr,r.nCities]); });
+  var ws=X.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:38},{wch:18},{wch:12},{wch:16},{wch:15},{wch:12},{wch:17},{wch:12},{wch:8}];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:8}}];
+  if(styled){
+    var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
+    for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
+    var _num=function(v){ if(v==null||v==='')return null; var n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?null:n; };
+    var _rag=function(kind,v){ if(v==null)return null;
+      if(kind==='osa')return v>=90?'g':(v>=75?'a':'r');
+      if(kind==='fr') return v>=95?'g':(v>=85?'a':'r');
+      if(kind==='ds') return v>=90?'g':(v>=80?'a':'r');
+      if(kind==='doi')return v>=14?'g':(v>=7?'a':'r'); return null; };
+    // This block was copy-pasted from the OSA export and never adapted: it looped
+    // over `rows` (which does not exist here — the array is `list`) and read OSA
+    // fields (osaMtd/osaToday/ds) that a SOH row has never had. It threw
+    // "ReferenceError: rows is not defined" on every run where XLSXStyle was
+    // loaded — i.e. every real browser — so the SOH export produced no file at all.
+    // Columns here are: 0 SKU · 1 Category · 2 SOH · 3 DaysToStockout · 4 OpenPO
+    //                   5 FR% · 6 Reorder · 7 DRR · 8 Cities
+    // Only Days-to-Stockout and FR% carry a RAG meaning; the rest are plain counts.
+    var _RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, _RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'}, _colKind={3:'doi',5:'fr'};
+    for(var r2=0;r2<list.length;r2++){var R=list[r2];
+      var vmap={3:_num(R.dts),5:_num(R.fr)};
+      for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue;
+        var band=_colKind[c2]?_rag(_colKind[c2],vmap[c2]):null;
+        if(band){cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:_RAGT[band]}},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:_RAGF[band]}}};}
+        else{cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}
+      }}
+  }
+  var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
+  X.utils.book_append_sheet(wb,ws,safe);
+
+  // ---- Sheet 2: SKU x City matrix — SKU rows, city columns, SOH in cells ----
+  // Metro-rolled (same granularity as this platform's "Cities"/Spread count above) —
+  // the raw granular breakdown can run to 60-90 individual towns per platform, which
+  // would make an unreadable wall of columns. Filter dropdowns on SKU + Category only
+  // (Excel's autofilter still hides the full matching row across every city column).
+  var allCities={};
+  var perSkuCity={};
+  list.forEach(function(r){
+    var byCity=(typeof _metroRollupSoh==='function')?_metroRollupSoh(plat,r.k):(r.k.soh_by_city||{});
+    var nz={};
+    Object.keys(byCity).forEach(function(ct){ var v=byCity[ct]||0; if(v>0){nz[ct]=v; allCities[ct]=true;} });
+    perSkuCity[r.sku]=nz;
   });
-  X.writeFile(wb,'GAW_SOH_Explorer_'+(mk||'export')+'.xlsx');
+  var cityCols=Object.keys(allCities);
+  var cityTotals={};
+  cityCols.forEach(function(ct){ cityTotals[ct]=list.reduce(function(s,r){return s+(perSkuCity[r.sku][ct]||0);},0); });
+  cityCols.sort(function(a,b){return cityTotals[b]-cityTotals[a];});
+  var headM=['SKU','Category'].concat(cityCols,['Total']);
+  var aoaM=[['GAW \u00B7 '+plat+' \u00B7 SOH by SKU \u00D7 City \u00B7 '+mk].concat(Array(headM.length-1).fill('')),headM];
+  list.forEach(function(r){
+    var rowVals=cityCols.map(function(ct){return perSkuCity[r.sku][ct]||0;});
+    var rowTotal=rowVals.reduce(function(a,b){return a+b;},0);
+    aoaM.push([r.name,r.cat].concat(rowVals,[rowTotal]));
+  });
+  var colTotals=cityCols.map(function(ct){return cityTotals[ct];});
+  var grandTotal=colTotals.reduce(function(a,b){return a+b;},0);
+  aoaM.push(['TOTAL',''].concat(colTotals,[grandTotal]));
+  var wsM=X.utils.aoa_to_sheet(aoaM);
+  wsM['!cols']=[{wch:38},{wch:18}].concat(cityCols.map(function(){return {wch:11};}),[{wch:12}]);
+  wsM['!merges']=[{s:{r:0,c:0},e:{r:0,c:headM.length-1}}];
+  wsM['!autofilter']={ref:X.utils.encode_range({s:{r:1,c:0},e:{r:1,c:1}})};
+  if(styled){
+    var tM=wsM[X.utils.encode_cell({r:0,c:0})]; if(tM)tM.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
+    for(var cM=0;cM<headM.length;cM++){var hcM=wsM[X.utils.encode_cell({r:1,c:cM})]; if(hcM)hcM.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
+    for(var rM=0;rM<=list.length;rM++){ // last iteration (rM===list.length) is the TOTAL row
+      var isTotal=(rM===list.length);
+      for(var ccM=0;ccM<headM.length;ccM++){var cellM=wsM[X.utils.encode_cell({r:rM+2,c:ccM})]; if(!cellM)continue;
+        cellM.s=isTotal
+          ?{font:{name:'Calibri',sz:10,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'},border:bd,fill:{fgColor:{rgb:'EEF1F6'}}}
+          :{font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center'},border:bd,fill:{fgColor:{rgb:(rM%2?'F7F8FA':'FFFFFF')}}};
+      }
+    }
+  }
+  X.utils.book_append_sheet(wb,wsM,'SKU x City');
+
+  X.writeFile(wb,'GAW_SOH_Explorer_'+plat+'_'+(mk||'export')+'.xlsx');
 }
 
 // ══════════════════════════════════════════════
