@@ -8135,6 +8135,154 @@ function _sohOpenPOBreakdownXlsx(){
 }
 
 // OSA (Platforms view) SKU table export — mirrors _sohExportXlsx. Current platform; window-aware DS.
+// ══════════════════════════════════════════════
+// OSA EXPORT — city granularity tabs (per platform): SKU x City matrix (OSA + DS Listing pair per city),
+// flat City Detail (filterable, adds stores / FR% / SOH / Open PO / Gap type), and City Summary (city rank).
+// City keys = same metro buckets the on-screen SKU→City drilldown uses (by_city), SOH metro-rolled to match.
+// Blank cell = no data for that SKU in that city (never imputed as 0).
+// ══════════════════════════════════════════════
+function _osaCityTabs(X,wb,plat,styled,mk){
+  var pd=(window._availMTD||{})[plat]; if(!pd||!pd.skus)return;
+  var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
+  var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
+  var RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'};
+  var dsc=((typeof DB!=='undefined'&&DB.dark_store_counts)||{})[plat]||{};
+  var selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity;
+  var frMtd=(_availWindow==='mtd');
+  var rd1=function(v){return (v==null||isNaN(v))?'':Math.round(v*10)/10;};
+  var rag=function(kind,v){
+    if(v==null||v==='')return null;
+    if(kind==='osa')return v>=90?'g':(v>=75?'a':'r');
+    if(kind==='ds') return v>=90?'g':(v>=80?'a':'r');
+    if(kind==='fr') return v>=95?'g':(v>=85?'a':'r');
+    if(kind==='gap')return v==='OK'?'g':(v==='Listing + Stock'?'r':'a');
+    return null;
+  };
+  var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,18)||'Sheet';
+
+  // ---- collect SKU rows + city set ----
+  var rows=[], cityMap={};
+  Object.keys(pd.skus).forEach(function(sku){
+    var k=pd.skus[sku], info=skuLookup(plat,sku), bc=k.by_city||{}, has=false;
+    Object.keys(bc).forEach(function(c){var v=bc[c]; if(v&&(v.wt_osa_ls!=null||v.ds_listing!=null)){cityMap[c]=true;has=true;}});
+    if(!(has||k.wt_osa_ls!=null))return;
+    var poNone=(typeof _sohOpenPO==='function')?(_sohOpenPO(plat,info.name,null)===null):true;
+    var poRaw=(!poNone&&typeof _sohOpenPOCities==='function')?(_sohOpenPOCities(plat,info.name)||{}):{};
+    var poM={}; Object.keys(poRaw).forEach(function(c){var m=(typeof nCity==='function')?nCity(c):c; poM[m]=(poM[m]||0)+(poRaw[c]||0);});
+    rows.push({sku:sku,k:k,name:info.name,cat:info.cat||'',bc:bc,soh:_metroRollupSoh(plat,k),poM:poM,poNone:poNone});
+  });
+  rows.sort(function(a,b){return (a.k.wt_osa_ls==null?999:a.k.wt_osa_ls)-(b.k.wt_osa_ls==null?999:b.k.wt_osa_ls);});
+  var cities=Object.keys(cityMap).sort(function(a,b){
+    var da=(dsc[a]&&dsc[a].dark_stores)||0, dz=(dsc[b]&&dsc[b].dark_stores)||0; return (dz-da)||a.localeCompare(b);});
+  if(!rows.length||!cities.length)return;
+  var todayFor=function(k,c){
+    var dd=k.daily_city||{};
+    var ds=Object.keys(dd).map(Number).filter(function(d){return d<=selCap&&dd[d]&&dd[d][c]&&dd[d][c][0]!=null;}).sort(function(a,b){return b-a;});
+    return ds.length?dd[ds[0]][c][0]:null;
+  };
+  var mean=function(arr){var xs=arr.filter(function(v){return typeof v==='number';}); return xs.length?xs.reduce(function(s,x){return s+x;},0)/xs.length:null;};
+
+  // ---- shared sheet finisher: styles + number formats + optional filter ----
+  var finish=function(ws,ncols,titleRow,headerRows,dataFrom,dataTo,colKind,colFmt,totalFrom){
+    var ctr={horizontal:'center',vertical:'center',wrapText:true};
+    for(var r=dataFrom;r<=dataTo;r++){
+      var isTot=(totalFrom!=null&&r>=totalFrom), alt=(r-dataFrom)%2;
+      for(var c=0;c<ncols;c++){
+        var cell=ws[X.utils.encode_cell({r:r,c:c})]; if(!cell)continue;
+        var f=colFmt(c); if(f&&typeof cell.v==='number')cell.z=f;
+        if(!styled)continue;
+        var kind=colKind(c), band=kind?rag(kind,(kind==='gap'?cell.v:(typeof cell.v==='number'?cell.v:null))):null;
+        cell.s=band
+          ?{font:{name:'Calibri',sz:10,bold:true,color:{rgb:RAGT[band]}},alignment:ctr,border:bd,fill:{fgColor:{rgb:RAGF[band]}}}
+          :{font:{name:'Calibri',sz:10,bold:!!isTot,color:NAVY},alignment:ctr,border:bd,fill:{fgColor:{rgb:(isTot?'EEF1F6':(alt?'F7F8FA':'FFFFFF'))}}};
+      }
+    }
+    if(!styled)return;
+    var t=ws[X.utils.encode_cell({r:titleRow,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
+    headerRows.forEach(function(h){
+      for(var c=0;c<ncols;c++){var hc=ws[X.utils.encode_cell({r:h.r,c:c})]; if(!hc)continue;
+        hc.s=h.banner?{font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:NAVY},alignment:{horizontal:'center',vertical:'center'}}
+                     :{font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:ctr,border:bd};}
+    });
+  };
+  var PCT='0.0"%"', INT='#,##0';
+
+  // ═══ Sheet A: SKU x City matrix (OSA | DS Listing per city, All-India last) ═══
+  var groups=cities.concat(['All-India']), nA=2+groups.length*2;
+  var banner=new Array(nA).fill(''), sub=['SKU','Category'], mergesA=[{s:{r:0,c:0},e:{r:0,c:nA-1}}];
+  groups.forEach(function(g,gi){banner[2+gi*2]=g; sub.push('OSA','DS Listing'); mergesA.push({s:{r:1,c:2+gi*2},e:{r:1,c:3+gi*2}});});
+  var aoaA=[['GAW \u00B7 '+plat+' \u00B7 OSA & DS Listing by SKU \u00D7 City (MTD) \u00B7 '+mk].concat(new Array(nA-1).fill('')),banner,sub];
+  var colVals=[]; for(var i=0;i<groups.length*2;i++)colVals.push([]);
+  rows.forEach(function(r){
+    var line=[r.name,r.cat];
+    groups.forEach(function(g,gi){
+      var o,d;
+      if(g==='All-India'){o=rd1(r.k.wt_osa_ls);d=rd1(r.k.ds_listing);}
+      else{var v=r.bc[g]||{};o=rd1(v.wt_osa_ls);d=rd1(v.ds_listing);}
+      line.push(o,d);
+      // AVG row averages raw values (not the rounded display values) so it ties to City Summary
+      if(g==='All-India'){colVals[gi*2].push(r.k.wt_osa_ls);colVals[gi*2+1].push(r.k.ds_listing);}
+      else{var vv=r.bc[g]||{};colVals[gi*2].push(vv.wt_osa_ls);colVals[gi*2+1].push(vv.ds_listing);}
+    });
+    aoaA.push(line);
+  });
+  var avgLine=['AVG (simple)','']; colVals.forEach(function(cv){avgLine.push(rd1(mean(cv)));}); aoaA.push(avgLine);
+  var wsA=X.utils.aoa_to_sheet(aoaA);
+  wsA['!cols']=[{wch:38},{wch:18}].concat(groups.reduce(function(a){return a.concat([{wch:9},{wch:11}]);},[]));
+  wsA['!merges']=mergesA;
+  wsA['!autofilter']={ref:X.utils.encode_range({s:{r:2,c:0},e:{r:2+rows.length,c:nA-1}})};
+  finish(wsA,nA,0,[{r:1,banner:true},{r:2}],3,2+rows.length+1,
+    function(c){return c<2?null:((c-2)%2===0?'osa':'ds');},function(c){return c<2?null:PCT;},3+rows.length);
+  X.utils.book_append_sheet(wb,wsA,safe+' x City');
+
+  // ═══ Sheet B: City Detail (flat, filterable) ═══
+  var headB=['City','SKU','Category','OSA MTD','OSA Today','DS Listing','Listed Stores','Total Stores','FR% ('+(frMtd?'MTD':'10d')+')','SOH','Open PO','Gap (OSA<75 / DS<80)'];
+  var aoaB=[['GAW \u00B7 '+plat+' \u00B7 City Detail \u00B7 '+mk].concat(new Array(headB.length-1).fill('')),headB];
+  var sumRows=[];
+  cities.forEach(function(c){
+    var tot=(dsc[c]&&dsc[c].dark_stores)||null, list=[];
+    rows.forEach(function(r){
+      var v=r.bc[c]; if(!v||(v.wt_osa_ls==null&&v.ds_listing==null))return;
+      var fr=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,r.name,c,frMtd):null;
+      var sohV=_metroSohFor(r.soh,c);
+      var poV=r.poNone?null:(r.poM[c]||0);
+      var osa=v.wt_osa_ls, ds=v.ds_listing;
+      var lowO=(osa!=null&&osa<75), lowD=(ds!=null&&ds<80);
+      var gap=(osa==null&&ds==null)?'':(lowO&&lowD?'Listing + Stock':(lowD?'Listing':(lowO?'Stock-out':'OK')));
+      list.push({name:r.name,cat:r.cat,osa:osa,today:todayFor(r.k,c),ds:ds,
+        listed:(tot&&ds!=null)?Math.round(ds/100*tot):'',tot:tot||'',fr:(fr&&fr.fr!=null)?Math.round(fr.fr):'',
+        soh:(sohV==null)?'':Math.round(sohV),po:(poV==null)?'':Math.round(poV),gap:gap});
+    });
+    list.sort(function(a,b){return (a.osa==null?999:a.osa)-(b.osa==null?999:b.osa);});
+    list.forEach(function(x){aoaB.push([c,x.name,x.cat,rd1(x.osa),rd1(x.today),rd1(x.ds),x.listed,x.tot,x.fr,x.soh,x.po,x.gap]);});
+    var num=function(k){return list.map(function(x){return x[k];});};
+    sumRows.push({city:c,tot:tot,n:list.length,osa:mean(num('osa')),ds:mean(num('ds')),
+      lowO:list.filter(function(x){return x.osa!=null&&x.osa<75;}).length,lowD:list.filter(function(x){return x.ds!=null&&x.ds<80;}).length,
+      soh:(function(){var xs=num('soh').filter(function(v){return typeof v==='number';});return xs.length?xs.reduce(function(s,x){return s+x;},0):'';})(),
+      po:(function(){var xs=num('po').filter(function(v){return typeof v==='number';});return xs.length?xs.reduce(function(s,x){return s+x;},0):'';})()});
+  });
+  var wsB=X.utils.aoa_to_sheet(aoaB);
+  wsB['!cols']=[{wch:16},{wch:38},{wch:18},{wch:10},{wch:11},{wch:11},{wch:12},{wch:12},{wch:10},{wch:10},{wch:10},{wch:20}];
+  wsB['!merges']=[{s:{r:0,c:0},e:{r:0,c:headB.length-1}}];
+  wsB['!autofilter']={ref:X.utils.encode_range({s:{r:1,c:0},e:{r:aoaB.length-1,c:headB.length-1}})};
+  var kindB={3:'osa',4:'osa',5:'ds',8:'fr',11:'gap'}, fmtB={3:PCT,4:PCT,5:PCT,6:INT,7:INT,8:PCT,9:INT,10:INT};
+  finish(wsB,headB.length,0,[{r:1}],2,aoaB.length-1,function(c){return kindB[c]||null;},function(c){return fmtB[c]||null;},null);
+  X.utils.book_append_sheet(wb,wsB,safe+' City Detail');
+
+  // ═══ Sheet C: City Summary (worst OSA first) ═══
+  sumRows.sort(function(a,b){return (a.osa==null?999:a.osa)-(b.osa==null?999:b.osa);});
+  var headC=['City','Dark Stores','SKUs Tracked','Avg OSA','Avg DS Listing','SKUs OSA<75','SKUs DS<80','SOH','Open PO'];
+  var aoaC=[['GAW \u00B7 '+plat+' \u00B7 City Summary (MTD) \u00B7 '+mk].concat(new Array(headC.length-1).fill('')),headC];
+  sumRows.forEach(function(s){aoaC.push([s.city,s.tot==null?'':s.tot,s.n,rd1(s.osa),rd1(s.ds),s.lowO,s.lowD,s.soh,s.po]);});
+  var wsC=X.utils.aoa_to_sheet(aoaC);
+  wsC['!cols']=[{wch:18},{wch:12},{wch:13},{wch:10},{wch:14},{wch:13},{wch:12},{wch:11},{wch:11}];
+  wsC['!merges']=[{s:{r:0,c:0},e:{r:0,c:headC.length-1}}];
+  wsC['!autofilter']={ref:X.utils.encode_range({s:{r:1,c:0},e:{r:aoaC.length-1,c:headC.length-1}})};
+  var kindC={3:'osa',4:'ds'}, fmtC={1:INT,2:INT,3:PCT,4:PCT,5:INT,6:INT,7:INT,8:INT};
+  finish(wsC,headC.length,0,[{r:1}],2,aoaC.length-1,function(c){return kindC[c]||null;},function(c){return fmtC[c]||null;},null);
+  X.utils.book_append_sheet(wb,wsC,safe+' City Summary');
+}
+
 function _osaExportXlsx(){
   var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
   var styled=!!window.XLSXStyle;
@@ -8206,6 +8354,7 @@ function _osaExportXlsx(){
     }
     var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
     X.utils.book_append_sheet(wb,ws,safe);
+    try{ _osaCityTabs(X,wb,plat,styled,mk); }catch(e){ console.warn('[OSA export] city tabs failed for '+plat,e); }
   });
   X.writeFile(wb,'GAW_OSA_'+(plats.length===1?plats[0]+_cityTag+'_':'')+(mk||'export')+'.xlsx');
 }
