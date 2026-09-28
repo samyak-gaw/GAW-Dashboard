@@ -214,6 +214,18 @@ body{font-family:'Montserrat','Segoe UI',Arial,sans-serif;background:#F5F7FA;col
 .footer{text-align:center;padding:20px;color:var(--muted);font-size:10.5px;border-top:1px solid var(--border);margin-top:20px;background:#fff;letter-spacing:.4px}
 select{background:#fff;color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 9px;font-size:11.5px;outline:none;cursor:pointer;font-family:inherit;font-weight:600}
 .pill{background:var(--thead);color:var(--muted);font-size:9.5px;padding:2px 7px;border-radius:3px;font-weight:800;display:inline-block;letter-spacing:.4px}
+/* multi-select dropdown (SKU filters) */
+.msel{position:relative;display:inline-block;margin-left:6px;font-size:11px;font-weight:600;vertical-align:middle}
+.msel-btn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:6px;padding:3px 24px 3px 8px;font-size:11px;font-family:inherit;cursor:pointer;min-width:120px;max-width:230px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+.msel-btn:after{content:'\25BE';position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.msel-btn.on{border-color:#2E4162;background:#fffef0}
+.msel-panel{display:none;position:absolute;z-index:50;top:calc(100% + 3px);left:0;min-width:190px;max-height:280px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(26,26,46,.14);padding:4px 0}
+.msel.open .msel-panel{display:block}
+.msel-row{display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:11.5px;font-weight:600;color:var(--text);white-space:nowrap}
+.msel-row:hover{background:var(--thead)}
+.msel-row input{cursor:pointer;accent-color:#2E4162;margin:0}
+.msel-head{display:flex;justify-content:space-between;padding:5px 12px 6px;border-bottom:1px solid var(--border);margin-bottom:2px;font-size:10px;text-transform:uppercase;letter-spacing:.4px}
+.msel-head a{color:#2E4162;cursor:pointer;font-weight:800}
 .pill-g{background:var(--greenl);color:var(--goodtx);font-size:9.5px;padding:2px 7px;border-radius:3px;font-weight:800;display:inline-block;letter-spacing:.4px}
 .sbar-bg{width:80px;background:var(--thead);border-radius:2px;height:7px;overflow:hidden;display:inline-block;vertical-align:middle}
 .sbar-fill{height:100%;border-radius:2px;display:block}
@@ -660,18 +672,8 @@ body{padding-bottom:env(safe-area-inset-bottom)}
   <div class="g2" style="margin-bottom:0">
     <div class="card">
       <h3>Filter SKUs
-        <select id="skuPlatFilter" onchange="renderSkuAnalysis()" style="margin-left:8px;font-size:11px">
-          <option value="all">All Platforms</option>
-          <option value="Zepto">Zepto</option>
-          <option value="Blinkit">Blinkit</option>
-          <option value="Instamart">Instamart</option>
-          <option value="Amazon">Amazon</option>
-          <option value="Flipkart">Flipkart</option>
-          <option value="BigBasket">BigBasket</option>
-        </select>
-        <select id="skuCatFilter" onchange="renderSkuAnalysis()" style="margin-left:6px;font-size:11px">
-          <option value="all">All Categories</option>
-        </select>
+        <span class="msel" id="skuPlatMs"></span>
+        <span class="msel" id="skuCatMs"></span>
         <select id="skuDayFilter" onchange="_skuToggleCustom();renderSkuAnalysis()" style="margin-left:6px;font-size:11px">
           <option value="today">Today</option>
           <option value="yesterday">Yesterday</option>
@@ -699,6 +701,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 </div>
   <div class="card" style="margin-top:18px;margin-bottom:20px">
     <h3>Full SKU Table — <span id="skuTableLabel">Today · All Platforms</span></h3>
+    <div id="skuHistNote" style="display:none;margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#fffef0;border:1px solid #F9ED30;font-size:12px;color:var(--text)"></div>
     <div class="scroll-table"><table class="tbl">
       <thead><tr><th>#</th><th>SKU</th><th>Category</th><th>Platform(s)</th><th>GMV</th><th>Units</th><th id="skuDrrColHead">DRR /day</th><th>Discount</th><th>Disc%</th><th title="OSA (listed-store availability) 7d avg vs prior 7d · avail-GMV-weighted across platforms">OSA WoW</th><th title="GMV MoM — current period vs same day-range in prior month (MTD vs LM-MTD; single day vs same day LM)">MoM</th><th id="skuWowColHead" style="display:none">WoW</th><th>Share</th></tr></thead>
       <tbody id="skuFullBody"></tbody>
@@ -2863,9 +2866,15 @@ function _trimFrozenForStorage(frozen, recencyWindow){
     const inWindow = keepSet===null || keepSet.has(mk);
     Object.keys(frozen[mk]||{}).forEach(plat=>{
       const f=frozen[mk][plat]||{};
-      out[mk][plat] = inWindow
+      // _skuTrimmed marks a record whose SKU rows were dropped for local-storage space only.
+      // Such a record must NEVER be pushed to the cloud (it would overwrite the full copy) —
+      // see githubPush guard and _applyGHPayload merge. Absent flag = genuinely complete.
+      const _lost=(f.sku&&f.sku.length>0)||(f.citysku&&Object.keys(f.citysku).length>0)||(!inWindow&&f.daily&&f.daily.length>0);
+      const _rec = inWindow
         ? Object.assign({},f,{citysku:{},sku:[]})
         : {daily:[],city:[],sku:[],citysku:{}};
+      if(_lost)_rec._skuTrimmed=1;
+      out[mk][plat]=_rec;
     });
   });
   return out;
@@ -2946,11 +2955,70 @@ function _downloadDeltaBackup(tag){
     return true;
   }catch(e){console.error('[backup]',e);alert('\u274c Backup download failed: '+e.message+'\n\nCompaction aborted \u2014 nothing was deleted.');return false;}
 }
+// Frozen records that only exist as a space-trimmed local cache (SKU rows dropped). Never push these.
+function _frozenTrimmedList(){
+  const out=[];
+  Object.entries(_delta.frozen||{}).forEach(([mk,v])=>PN.forEach(p=>{ if(v&&v[p]&&v[p]._skuTrimmed)out.push(mk+'/'+p); }));
+  return out;
+}
+// ══════════════════════════════════════════════
+// FROZEN SKU HISTORY — gap detection + restore from a known-good GitHub commit
+// Prior-month SKU rows drive SKU MoM/WoW and Category Month-End Pacing. They were emptied on
+// 27-Sep-2026 (space-trimmed local cache got pushed over the cloud copy). Commit below is the
+// last push that still had them; each month/platform is only filled after its daily GMV is
+// verified identical to what is loaded now, and existing (non-empty) data is never overwritten.
+// ══════════════════════════════════════════════
+const _GAW_SKU_RESTORE_REF='03d5113018bc963af68d7c0b0182b03c1653b2e4';
+function _priorSkuGaps(){
+  const mk=priorMonthKey(getViewingMonth()); const fz=(_delta.frozen||{})[mk]; if(!fz)return [];
+  return PN.filter(p=>fz[p]&&fz[p].daily&&fz[p].daily.length>0&&!(fz[p].sku&&fz[p].sku.length));
+}
+async function gawRestoreFrozenSku(ref,silent){
+  ref=ref||_GAW_SKU_RESTORE_REF;
+  const user=getGHUser(),repo=getGHRepo(),path=getGHPath();
+  if(!user||!repo){alert('GitHub sync not configured.');return;}
+  if(!silent&&!confirm('Restore SKU history?\n\n1. Downloads a full backup of your current data (keep it)\n2. Pulls the latest cloud data so nothing newer is overwritten\n3. Fills ONLY months whose SKU rows are empty, from commit '+ref.slice(0,7)+' (26-Sep). Daily totals are checked first; nothing existing is overwritten.\n4. Saves and pushes to GitHub.'))return;
+  // Safety net 1: full local backup BEFORE anything is touched. If it fails, abort with no changes.
+  if(!_downloadDeltaBackup('pre-sku-restore'))return;
+  // Safety net 2: the push below sends this browser's whole state, so make sure it is current with the
+  // cloud first (same merge as page load: cloud base, local-only/dirty days kept). A stale long-open tab
+  // could otherwise overwrite newer uploads made elsewhere.
+  try{ await githubPull(false); }catch(_e){ console.warn('[restore] pre-pull failed, continuing with local state',_e); }
+  try{
+    const res=await fetch('https://raw.githubusercontent.com/'+user+'/'+repo+'/'+ref+'/'+path,{cache:'no-store'});
+    if(!res.ok)throw new Error('HTTP '+res.status+' fetching commit '+ref.slice(0,7));
+    const src=((await res.json())||{})._delta||{};
+    const gm=a=>(a||[]).reduce((t,d)=>t+(d.gmv||0),0);
+    let filledSku=0,filledCity=0,skipped=[];
+    Object.entries(src.frozen||{}).forEach(([mk,plats])=>{
+      PN.forEach(p=>{
+        const cur=(_delta.frozen||{})[mk]&&_delta.frozen[mk][p], old=plats&&plats[p];
+        if(!cur||!old)return;
+        const needSku=!(cur.sku&&cur.sku.length)&&old.sku&&old.sku.length;
+        const needCity=!(cur.citysku&&Object.keys(cur.citysku).length)&&old.citysku&&Object.keys(old.citysku).length;
+        if(!needSku&&!needCity)return;
+        if(Math.abs(gm(cur.daily)-gm(old.daily))>1){skipped.push(mk+'/'+p);return;}   // different snapshot — don't mix
+        if(needSku){cur.sku=old.sku;filledSku++;}
+        if(needCity){cur.citysku=old.citysku;filledCity++;}
+        if(cur.sku&&cur.sku.length)delete cur._skuTrimmed;
+      });
+    });
+    _pmBuiltCache={key:null,data:null};
+    saveDB(); _buildDB(); renderAll();
+    const left=_frozenTrimmedList();
+    console.log('[restore] SKU rows filled for '+filledSku+' month\u00D7platform, city\u00D7SKU for '+filledCity+', skipped '+skipped.length,skipped,'still flagged:',left);
+    if(!silent)alert('\u2705 SKU history restored\n\nSKU rows: '+filledSku+' month\u00D7platform\nCity\u00D7SKU: '+filledCity+(skipped.length?'\nSkipped (totals differ): '+skipped.join(', '):'')+(left.length?'\n\nStill flagged: '+left.join(', '):'\n\nPushing to GitHub now.'));
+    if(!left.length&&typeof getGHToken==='function'&&getGHToken())githubPush(false);
+  }catch(e){
+    console.error('[restore] failed',e);
+    if(!silent)alert('Restore failed: '+e.message);
+  }
+}
 function _purgeableMonths(){
   const am=getActiveMonth();
   return Object.keys(_delta.months||{}).filter(mk=>mk!==am
     && _delta.frozen && _delta.frozen[mk]
-    && PN.every(p=>_delta.frozen[mk][p]&&Array.isArray(_delta.frozen[mk][p].daily))
+    && PN.every(p=>_delta.frozen[mk][p]&&Array.isArray(_delta.frozen[mk][p].daily)&&!_delta.frozen[mk][p]._skuTrimmed)
     && Object.keys(_delta.months[mk]||{}).length>0);
 }
 function compactMonths(){
@@ -4053,10 +4121,9 @@ function renderCategory(){
   mkChart('catMtdChart','line',{labels:allDays.map(d=>`${MONTH_SHORT[MONTH_NUM_FROM_KEY(getViewingMonth())-1]} ${d}`),datasets:topCats.map(cat=>({label:cat,data:allDays.map(d=>Math.round((catMtd[cat]?.[d]||0)/1000)),borderColor:CAT_COLORS[cat]||'#999',tension:0.35,fill:false,pointRadius:4,borderWidth:2}))},{scales:{y:{ticks:{callback:v=>'₹'+v+'K'}}}});
 
   // Populate category filter dropdown
-  const catSel=document.getElementById('skuCatFilter');
-  if(catSel&&catSel.options.length<=1){
+  {
     const allCats=[...new Set(Object.values(DB.sku_master).flatMap(m=>Object.values(m).map(s=>normCat(s.cat)||'Unknown')))].sort();
-    allCats.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;catSel.appendChild(o);});
+    _msSetOptions('skuCatMs',allCats);
   }
   renderSkuAnalysis();
   renderNLCSection();
@@ -4066,14 +4133,68 @@ function renderCategory(){
 // ══════════════════════════════════════════════
 // RENDER SKU ANALYSIS
 // ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+// MULTI-SELECT DROPDOWN (SKU tab Platform / Category filters)
+// Empty selection = "All". Selecting every option also collapses back to All.
+// ══════════════════════════════════════════════
+const _MS={};
+function _msMount(id,opts,allLabel){
+  const el=document.getElementById(id); if(!el)return;
+  _MS[id]={sel:new Set(),opts:(opts||[]).slice(),all:allLabel};
+  _msDraw(id);
+}
+function _msSetOptions(id,opts){
+  if(!_MS[id]){_msMount(id,opts,id==='skuCatMs'?'All Categories':'All');return;}
+  const m=_MS[id];
+  if(m.opts.join('|')===opts.join('|'))return;
+  m.opts=opts.slice();
+  m.sel=new Set([...m.sel].filter(v=>m.opts.includes(v)));
+  _msDraw(id);
+}
+function _msGet(id){ return _MS[id]?[..._MS[id].sel]:[]; }
+function _msLabel(id){
+  const m=_MS[id]; const n=m.sel.size;
+  if(!n||n>=m.opts.length)return m.all;
+  return n<=2?[...m.sel].join(', '):n+' selected';
+}
+function _msDraw(id){
+  const el=document.getElementById(id), m=_MS[id]; if(!el||!m)return;
+  const open=el.classList.contains('open');
+  el.innerHTML=`<button type="button" class="msel-btn${m.sel.size?' on':''}" onclick="_msToggle('${id}',event)">${_msLabel(id)}</button>
+    <div class="msel-panel" onclick="event.stopPropagation()">
+      <div class="msel-head"><a onclick="_msAll('${id}')">Select all</a><a onclick="_msClear('${id}')" style="color:var(--muted)">Clear</a></div>
+      ${m.opts.map((o,i)=>`<label class="msel-row"><input type="checkbox" ${m.sel.has(o)?'checked':''} onchange="_msPick('${id}',${i},this.checked)">${o}</label>`).join('')}
+    </div>`;
+  if(open)el.classList.add('open');
+}
+function _msToggle(id,ev){
+  ev&&ev.stopPropagation();
+  const el=document.getElementById(id); const was=el.classList.contains('open');
+  document.querySelectorAll('.msel.open').forEach(x=>x.classList.remove('open'));
+  if(!was)el.classList.add('open');
+}
+function _msPick(id,i,on){
+  const m=_MS[id]; const v=m.opts[i];
+  if(on)m.sel.add(v); else m.sel.delete(v);
+  if(m.sel.size>=m.opts.length)m.sel.clear();   // everything ticked == All
+  _msDraw(id); renderSkuAnalysis();
+}
+function _msAll(id){ _MS[id].sel.clear(); _msDraw(id); renderSkuAnalysis(); }
+function _msClear(id){ _MS[id].sel.clear(); _msDraw(id); renderSkuAnalysis(); }
+document.addEventListener('click',function(){document.querySelectorAll('.msel.open').forEach(x=>x.classList.remove('open'));});
+document.addEventListener('DOMContentLoaded',function(){
+  if(!_MS.skuPlatMs)_msMount('skuPlatMs',PN,'All Platforms');
+  if(!_MS.skuCatMs)_msMount('skuCatMs',[],'All Categories');
+});
+
 function _skuToggleCustom(){
   const v=document.getElementById('skuDayFilter')?.value;
   const w=document.getElementById('skuCustomWrap');
   if(w)w.style.display=(v==='custom')?'inline-flex':'none';
 }
 function renderSkuAnalysis(){
-  const platFilter=document.getElementById('skuPlatFilter')?.value||'all';
-  const catFilter=document.getElementById('skuCatFilter')?.value||'all';
+  const platSel=_msGet('skuPlatMs');   // [] = all platforms
+  const catSel=_msGet('skuCatMs');     // [] = all categories
   const dayFilter=document.getElementById('skuDayFilter')?.value||'today';
   const showWow=document.getElementById('skuShowWow')?.checked||false;
   const td=SELECTED_DAY!==null?SELECTED_DAY:latestDay();
@@ -4106,7 +4227,7 @@ function renderSkuAnalysis(){
 
   // Build SKU map for selected period
   const skuMap={};
-  const plats=platFilter==='all'?PN:[platFilter];
+  const plats=platSel.length?PN.filter(p=>platSel.includes(p)):PN;
   plats.forEach(p=>{
     const rows=dayRange?(DB.april[p].sku||[]).filter(r=>dayRange.includes(r.day)):(DB.april[p].sku||[]);
     // Zepto disc is daily-only (separate promo file) — distribute each day's disc to SKUs by GMV share.
@@ -4129,7 +4250,7 @@ function renderSkuAnalysis(){
     rows.forEach(r=>{
       const info=skuLookup(p,r.sku_code);
       const cat=normCat(info.cat)||'Unknown';
-      if(catFilter!=='all'&&cat!==catFilter)return;
+      if(catSel.length&&!catSel.includes(cat))return;
       const key=info.name||r.sku_code;
       if(!skuMap[key])skuMap[key]={name:key,cat,gmv:0,units:0,disc:0,platforms:new Set()};
       const rowDisc=(p==='Zepto')?((window._zpIsNlc&&window._zpIsNlc(r))?0:((_zpDG[r.day]>0)?(_zpDD[r.day]*r.gmv/_zpDG[r.day]):0)):(r.disc||0);
@@ -4170,7 +4291,7 @@ function renderSkuAnalysis(){
           srcRows.filter(r=>r.day===srcDay).forEach(r=>{
             const info=skuLookup(p,r.sku_code);
             const cat=normCat(info.cat)||'Unknown';
-            if(catFilter!=='all'&&cat!==catFilter)return;
+            if(catSel.length&&!catSel.includes(cat))return;
             const key=info.name||r.sku_code;
             if(!wowMap[key])wowMap[key]={gmv:0};
             wowMap[key].gmv+=r.gmv;
@@ -4202,7 +4323,7 @@ function renderSkuAnalysis(){
           priorRows.filter(r=>r.day===d).forEach(r=>{
             const info=skuLookup(p,r.sku_code);
             const cat=normCat(info.cat)||'Unknown';
-            if(catFilter!=='all'&&cat!==catFilter)return;
+            if(catSel.length&&!catSel.includes(cat))return;
             const key=info.name||r.sku_code;
             if(!momMap[key])momMap[key]={gmv:0};
             momMap[key].gmv+=r.gmv;
@@ -4215,7 +4336,7 @@ function renderSkuAnalysis(){
   const skus=Object.values(skuMap).sort((a,b)=>b.gmv-a.gmv);
   const totalGmv=skus.reduce((s,r)=>s+r.gmv,0);
   const top15=skus.slice(0,15);
-  const platLabel=platFilter==='all'?'All Platforms':platFilter;
+  const platLabel=(platSel.length&&platSel.length<PN.length)?platSel.join(' + '):'All Platforms';
 
   // DRR denominator: count of distinct days with actual data in the selected window.
   // Single-day windows (Today/Yesterday) have no meaningful run-rate, so the column
@@ -4234,8 +4355,19 @@ function renderSkuAnalysis(){
   const wowHead=document.getElementById('skuWowColHead');
   if(wowHead)wowHead.style.display=showWow?'':'none';
 
+  // Admin-only notice when prior-month SKU history is missing (MoM/WoW would show —)
+  {
+    const _n=document.getElementById('skuHistNote');
+    if(_n){
+      const gaps=_priorSkuGaps();
+      if(gaps.length&&window._GAW_IS_ADMIN){
+        _n.style.display='block';
+        _n.innerHTML='\u26A0 Prior-month SKU history is missing for '+gaps.join(', ')+' \u2014 MoM / WoW and Category Pacing show \u2014. <button type="button" onclick="gawRestoreFrozenSku()" style="margin-left:8px;padding:3px 10px;border:1px solid #2E4162;background:#2E4162;color:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Restore SKU history</button>';
+      } else _n.style.display='none';
+    }
+  }
   // Update labels
-  const lbl=document.getElementById('skuTableLabel');if(lbl)lbl.textContent=`${periodLabel} · ${platLabel}${catFilter!=='all'?' · '+catFilter:''}`;
+  const lbl=document.getElementById('skuTableLabel');if(lbl)lbl.textContent=`${periodLabel} · ${platLabel}${catSel.length?' · '+catSel.join(', '):''}`;
   const pl2=document.getElementById('skuPieLabel');if(pl2)pl2.textContent=platLabel;
 
   // Bar chart — top 15
@@ -5233,6 +5365,68 @@ function colVal(row, ...keys){
   return undefined;
 }
 
+// ── Lean CSV path for very large availability exports ─────────────────────────────
+// SheetJS materialises every cell as a property on one sheet object; past roughly 8M cells
+// V8 throws "RangeError: Too many properties to enumerate" (seen on the 103 MB / 465K-row x
+// 21-col Flipkart Minutes export = 9.8M cells; the 77 MB / 8-col bulk export is only 2.6M and
+// works). For CSVs that big we parse ourselves: RFC-4180 quoting, and we keep ONLY the columns
+// the availability processors read (Date, Platform, Item/Product ID, City, any OSA / Listing /
+// bundle column) so memory stays flat. Values stay raw strings — identical to SheetJS raw:true.
+const _CSV_KEEP_RE=/^(date|platform|city|item ?id|product ?id)$|osa|listing|bundle/i;
+function _csvLooksHuge(buf){
+  try{
+    const head=new TextDecoder('utf-8').decode(new Uint8Array(buf,0,Math.min(65536,buf.byteLength)));
+    const lines=head.split('\n'); lines.pop(); // last line is cut off mid-row
+    if(lines.length<3)return false;
+    const cols=(lines[0].match(/,/g)||[]).length+1;
+    const avg=lines.reduce((t,l)=>t+l.length+1,0)/lines.length;
+    return (buf.byteLength/avg)*cols>5e6;
+  }catch(e){return false;}
+}
+function _parseCsvLean(buf){
+  let text=new TextDecoder('utf-8').decode(buf);
+  if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
+  const n=text.length; let i=0;
+  function rec(){
+    if(i>=n)return null;
+    const out=[];
+    for(;;){
+      if(text[i]==='"'){
+        let j=i+1,str='';
+        for(;;){
+          const q=text.indexOf('"',j);
+          if(q<0){str+=text.slice(j);i=n;break;}
+          if(text[q+1]==='"'){str+=text.slice(j,q+1);j=q+2;continue;}
+          str+=text.slice(j,q);i=q+1;break;
+        }
+        out.push(str);
+        while(i<n&&text[i]!==','&&text[i]!=='\n'&&text[i]!=='\r')i++; // junk after closing quote
+      }else{
+        const c=text.indexOf(',',i),nl=text.indexOf('\n',i);
+        const end=(c<0&&nl<0)?n:(c<0?nl:(nl<0?c:Math.min(c,nl)));
+        let f=text.slice(i,end); i=end;
+        if(f.charCodeAt(f.length-1)===13)f=f.slice(0,-1); // CRLF
+        out.push(f);
+      }
+      if(i>=n)break;
+      const ch=text[i];
+      if(ch===','){i++;continue;}
+      if(ch==='\r'){i++;if(text[i]==='\n')i++;break;}
+      if(ch==='\n'){i++;break;}
+    }
+    return out;
+  }
+  const head=rec(); if(!head)return [];
+  const keep=[]; head.forEach((h,ix)=>{const name=String(h).trim(); if(_CSV_KEEP_RE.test(name))keep.push([ix,name]);});
+  const rows=[]; let r;
+  while((r=rec())!==null){
+    if(r.length===1&&r[0]==='')continue; // blank line
+    const o={};
+    for(let k=0;k<keep.length;k++){const v=r[keep[k][0]]; o[keep[k][1]]=(v===undefined?'':v);}
+    rows.push(o);
+  }
+  return rows;
+}
 function processFile(file,type){
   console.log('[upload] processFile called: type=', type, 'file=', file?.name, 'size=', file?.size);
   console.log('[upload] active month=', getActiveMonth(), 'viewing month=', getViewingMonth(), 'admin=', !!window._GAW_IS_ADMIN);
@@ -5264,15 +5458,30 @@ function processFile(file,type){
       // parseDay() handle the format. XLSX keeps cellDates:true — its dates are unambiguous serials,
       // and this path also corrects the Zepto +1-day serial quirk (46114 vs 46113).
       const _isCsv=/\.csv$/i.test(file.name||'');
-      const wb=_isCsv
-        ? XLSX.read(e.target.result,{type:'array',raw:true})
-        : XLSX.read(e.target.result,{type:'array',cellDates:true,dateNF:'yyyy-mm-dd'});
-      console.log('[upload] XLSX read OK ('+(_isCsv?'csv-raw':'xlsx')+'), sheets=', wb.SheetNames);
-      const sn=type==='imS'?'Sales Report':type==='imD'?'Discounts Report':wb.SheetNames[0];
-      const ws=wb.Sheets[sn]||wb.Sheets[wb.SheetNames[0]];
-      const rows=_isCsv
-        ? XLSX.utils.sheet_to_json(ws,{raw:true,defval:''})
-        : XLSX.utils.sheet_to_json(ws,{raw:false,dateNF:'yyyy-mm-dd',defval:''});
+      let rows=null;
+      if(_isCsv&&_csvLooksHuge(e.target.result)){
+        rows=_parseCsvLean(e.target.result);
+        console.log('[upload] lean-csv parse (file too wide for SheetJS) rows=',rows.length);
+      }
+      if(!rows){
+        try{
+          const wb=_isCsv
+            ? XLSX.read(e.target.result,{type:'array',raw:true})
+            : XLSX.read(e.target.result,{type:'array',cellDates:true,dateNF:'yyyy-mm-dd'});
+          console.log('[upload] XLSX read OK ('+(_isCsv?'csv-raw':'xlsx')+'), sheets=', wb.SheetNames);
+          const sn=type==='imS'?'Sales Report':type==='imD'?'Discounts Report':wb.SheetNames[0];
+          const ws=wb.Sheets[sn]||wb.Sheets[wb.SheetNames[0]];
+          rows=_isCsv
+            ? XLSX.utils.sheet_to_json(ws,{raw:true,defval:''})
+            : XLSX.utils.sheet_to_json(ws,{raw:false,dateNF:'yyyy-mm-dd',defval:''});
+        }catch(xe){
+          // Safety net: a CSV our size estimate under-called can still blow SheetJS's cell limit.
+          if(_isCsv&&xe instanceof RangeError){
+            console.warn('[upload] SheetJS hit its cell limit — retrying with lean-csv parse');
+            rows=_parseCsvLean(e.target.result);
+          }else throw xe;
+        }
+      }
       console.log('[upload] Rows parsed:', rows.length, '· first row keys:', rows[0]?Object.keys(rows[0]).slice(0,8):'(none)');
       if(!rows.length){alert('No rows found in the file. Make sure you selected the correct sheet/file.');return;}
 
@@ -9293,8 +9502,18 @@ function _applyGHPayload(payload,logFn,manual){
 
     // Preserve local frozen months not yet pushed (rare but possible during rollover)
     Object.entries(_delta.frozen || {}).forEach(([k,v]) => {
-      if (!merged.frozen[k]) merged.frozen[k] = v;
+      if (!merged.frozen[k]) { merged.frozen[k] = v; return; }
+      // Month exists on both sides: cloud wins, but never let a cloud record that lost its SKU
+      // rows blank out a complete local one (local trimmed copies are flagged and skipped).
+      PN.forEach(p => {
+        const c = merged.frozen[k][p], l = v && v[p];
+        if (!c || !l || l._skuTrimmed) return;
+        if (!(c.sku && c.sku.length) && l.sku && l.sku.length) c.sku = l.sku;
+        if (!(c.citysku && Object.keys(c.citysku).length) && l.citysku && Object.keys(l.citysku).length) c.citysku = l.citysku;
+      });
     });
+    // A cloud record that carries its SKU rows is complete — clear any stale trimmed marker.
+    Object.values(merged.frozen).forEach(v => PN.forEach(p => { if (v && v[p] && v[p]._skuTrimmed && v[p].sku && v[p].sku.length) delete v[p]._skuTrimmed; }));
 
     // Preserve local target overrides
     Object.entries(_delta.targets_by_month||{}).forEach(([m,v])=>{
@@ -9367,7 +9586,7 @@ function _applyGHPayload(payload,logFn,manual){
     Object.keys(merged.frozen||{}).forEach(mk=>{
       if(mk===merged.active_month)return;
       const fz=merged.frozen[mk];
-      const complete=fz && PN.every(p=>fz[p]&&Array.isArray(fz[p].daily)&&fz[p].daily.length>0);
+      const complete=fz && PN.every(p=>fz[p]&&Array.isArray(fz[p].daily)&&fz[p].daily.length>0&&!fz[p]._skuTrimmed);
       if(complete && merged.months && merged.months[mk]) delete merged.months[mk];
     });
 
@@ -9552,6 +9771,18 @@ async function _ghEnsureDataBranch(token,user,repo){
 async function githubPush(manual=false){
   const token=getGHToken(),user=getGHUser(),repo=getGHRepo(),path=getGHPath();
   if(!token||!user||!repo){if(manual)alert('GitHub sync not configured. Fill in the fields above.');return;}
+  // Data-safety guard: a frozen month loaded from the space-trimmed local cache has no SKU rows.
+  // Pushing it would overwrite the cloud's full copy (this is how prior-month SKU history was lost
+  // on 27-Sep-2026). Hold the push until the full records are back (pull, or gawRestoreFrozenSku()).
+  {
+    const _tr=_frozenTrimmedList();
+    if(_tr.length&&!window._GAW_ALLOW_TRIMMED_PUSH){
+      logGH('Push HELD \u2014 '+_tr.length+' frozen month(s) are trimmed local copies: '+_tr.slice(0,4).join(', ')+(_tr.length>4?'\u2026':'')+'. Pull from cloud or run gawRestoreFrozenSku().');
+      setSyncStatus('err','Push held \u2014 SKU history not loaded');
+      if(manual)alert('\u26A0 Push held to protect cloud data.\n\nPrior-month SKU history is not loaded in this browser, so pushing now would overwrite the full copy on GitHub.\n\nFix: click "Restore SKU history" on the SKU tab (or run gawRestoreFrozenSku() in the console).');
+      return;
+    }
+  }
   // In-flight mutex: prevents concurrent pushes from racing on the same file SHA (→ 409 spam).
   // If a push is already running, mark that another is needed and return; the running push
   // triggers one more when it finishes, collapsing a burst of uploads into ≤2 commits.
