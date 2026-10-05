@@ -8558,7 +8558,7 @@ function _osaCityTabs(X,wb,plat,styled,mk){
   var pd=(window._availMTD||{})[plat]; if(!pd||!pd.skus)return;
   var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
   var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'};
+  var RAGF={g:'C6EFCE',a:'FFEB9C',r:'FFC7CE'}, RAGT={g:'006100',a:'9C5700',r:'9C0006'};
   var dsc=((typeof DB!=='undefined'&&DB.dark_store_counts)||{})[plat]||{};
   var selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity;
   var frMtd=(_availWindow==='mtd');
@@ -8641,11 +8641,22 @@ function _osaCityTabs(X,wb,plat,styled,mk){
   });
   var avgLine=['AVG (simple)','']; colVals.forEach(function(cv){avgLine.push(rd1(mean(cv)));}); aoaA.push(avgLine);
   var wsA=X.utils.aoa_to_sheet(aoaA);
+  (function(){ // live AVG row: average of the rows still in the list (delete / filter and it recalculates)
+    var first=4,last=3+rows.length,ar=3+rows.length;           // 0-based row index of the AVG line = 3+rows.length
+    for(var c=2;c<nA;c++){
+      var l=X.utils.encode_col(c), xs=[]; for(var q=3;q<3+rows.length;q++){var v=aoaA[q][c]; if(typeof v==='number')xs.push(v);}
+      var ad=X.utils.encode_cell({r:ar,c:c}), cell=wsA[ad]||(wsA[ad]={});
+      var cv=xs.length?rd1(xs.reduce(function(a,b){return a+b;},0)/xs.length):'';
+      cell.v=cv; cell.t=(typeof cv==='number')?'n':'s'; cell.f='IFERROR(ROUND(SUBTOTAL(101,'+l+first+':'+l+last+'),1),"")';
+    }
+    var lc=wsA[X.utils.encode_cell({r:ar,c:0})]; if(lc){lc.f='"AVG (simple) \u00B7 "&SUBTOTAL(103,$A$'+first+':$A$'+last+')&" SKUs"'; lc.v='AVG (simple) \u00B7 '+rows.length+' SKUs'; lc.t='s';}
+  })();
   wsA['!cols']=[{wch:38},{wch:18}].concat(groups.reduce(function(a){return a.concat([{wch:9},{wch:11}]);},[]));
   wsA['!merges']=mergesA;
   wsA['!autofilter']={ref:X.utils.encode_range({s:{r:2,c:0},e:{r:2+rows.length,c:nA-1}})};
   finish(wsA,nA,0,[{r:1,banner:true},{r:2}],3,2+rows.length+1,
     function(c){return c<2?null:((c-2)%2===0?'osa':'ds');},function(c){return c<2?null:PCT;},3+rows.length);
+  for(var cq=2;cq<nA;cq++){ var kq=((cq-2)%2===0)?'osa':'ds'; _osaCfAdd(wsA,X,cq,3,cq,2+rows.length,kq); _osaCfAdd(wsA,X,cq,3+rows.length,cq,3+rows.length,kq); }   // live RAG: SKU rows + AVG row
   X.utils.book_append_sheet(wb,wsA,safe+' x City');
 
   // ═══ Sheet B: City Detail (flat, filterable) ═══
@@ -8669,8 +8680,9 @@ function _osaCityTabs(X,wb,plat,styled,mk){
     list.sort(function(a,b){return (a.osa==null?999:a.osa)-(b.osa==null?999:b.osa);});
     list.forEach(function(x){aoaB.push([c,x.name,x.cat,rd1(x.osa),rd1(x.today),rd1(x.ds),x.listed,x.tot,x.fr,x.soh,x.po,x.gap]);});
     var num=function(k){return list.map(function(x){return x[k];});};
-    sumRows.push({city:c,tot:tot,n:list.length,osa:mean(num('osa')),ds:mean(num('ds')),
-      lowO:list.filter(function(x){return x.osa!=null&&x.osa<75;}).length,lowD:list.filter(function(x){return x.ds!=null&&x.ds<80;}).length,
+    var _r1=function(v){return (typeof v==='number')?Math.round(v*10)/10:null;};     // City Detail stores 1-dp values; the summary is built from exactly those
+    sumRows.push({city:c,tot:tot,n:list.length,osa:mean(list.map(function(x){return _r1(x.osa);})),ds:mean(list.map(function(x){return _r1(x.ds);})),
+      lowO:list.filter(function(x){var v=_r1(x.osa);return v!=null&&v<75;}).length,lowD:list.filter(function(x){var v=_r1(x.ds);return v!=null&&v<80;}).length,
       soh:(function(){var xs=num('soh').filter(function(v){return typeof v==='number';});return xs.length?xs.reduce(function(s,x){return s+x;},0):'';})(),
       po:(function(){var xs=num('po').filter(function(v){return typeof v==='number';});return xs.length?xs.reduce(function(s,x){return s+x;},0):'';})()});
   });
@@ -8680,6 +8692,7 @@ function _osaCityTabs(X,wb,plat,styled,mk){
   wsB['!autofilter']={ref:X.utils.encode_range({s:{r:1,c:0},e:{r:aoaB.length-1,c:headB.length-1}})};
   var kindB={3:'osa',4:'osa',5:'ds',8:'fr',11:'gap'}, fmtB={3:PCT,4:PCT,5:PCT,6:INT,7:INT,8:PCT,9:INT,10:INT};
   finish(wsB,headB.length,0,[{r:1}],2,aoaB.length-1,function(c){return kindB[c]||null;},function(c){return fmtB[c]||null;},null);
+  [[3,'osa'],[4,'osa'],[5,'ds'],[8,'fr']].forEach(function(q){ if(aoaB.length>2)_osaCfAdd(wsB,X,q[0],2,q[0],aoaB.length-1,q[1]); });   // live RAG
   X.utils.book_append_sheet(wb,wsB,safe+' City Detail');
 
   // ═══ Sheet C: City Summary (worst OSA first) ═══
@@ -8688,55 +8701,107 @@ function _osaCityTabs(X,wb,plat,styled,mk){
   var aoaC=[['GAW \u00B7 '+plat+' \u00B7 City Summary (MTD) \u00B7 '+mk].concat(new Array(headC.length-1).fill('')),headC];
   sumRows.forEach(function(s){aoaC.push([s.city,s.tot==null?'':s.tot,s.n,rd1(s.osa),rd1(s.ds),s.lowO,s.lowD,s.soh,s.po]);});
   var wsC=X.utils.aoa_to_sheet(aoaC);
+  (function(){ // live City Summary: every figure is a formula over the City Detail rows still in the workbook
+    var D="'"+safe+" City Detail'!", e=aoaB.length;                                     // detail data = sheet rows 3..e
+    var rg=function(l){return D+'$'+l+'$3:$'+l+'$'+e;}, A=rg('A');
+    sumRows.forEach(function(s,i){
+      var R=3+i, cy='$A'+R, put=function(c,f,v){ var a=X.utils.encode_cell({r:2+i,c:c}), cell=wsC[a]||(wsC[a]={}); cell.v=(v==null||v==='')?'':v; cell.t=(typeof cell.v==='number')?'n':'s'; cell.f=f; };
+      put(2,'COUNTIFS('+A+','+cy+')',s.n);
+      put(3,'IFERROR(ROUND(AVERAGEIFS('+rg('D')+','+A+','+cy+'),1),"")',rd1(s.osa));
+      put(4,'IFERROR(ROUND(AVERAGEIFS('+rg('F')+','+A+','+cy+'),1),"")',rd1(s.ds));
+      put(5,'COUNTIFS('+A+','+cy+','+rg('D')+',"<75")',s.lowO);
+      put(6,'COUNTIFS('+A+','+cy+','+rg('F')+',"<80")',s.lowD);
+      put(7,'IF(COUNTIFS('+A+','+cy+','+rg('J')+',">=0")=0,"",SUMIFS('+rg('J')+','+A+','+cy+'))',s.soh);
+      put(8,'IF(COUNTIFS('+A+','+cy+','+rg('K')+',">=0")=0,"",SUMIFS('+rg('K')+','+A+','+cy+'))',s.po);
+    });
+  })();
   wsC['!cols']=[{wch:18},{wch:12},{wch:13},{wch:10},{wch:14},{wch:13},{wch:12},{wch:11},{wch:11}];
   wsC['!merges']=[{s:{r:0,c:0},e:{r:0,c:headC.length-1}}];
   wsC['!autofilter']={ref:X.utils.encode_range({s:{r:1,c:0},e:{r:aoaC.length-1,c:headC.length-1}})};
   var kindC={3:'osa',4:'ds'}, fmtC={1:INT,2:INT,3:PCT,4:PCT,5:INT,6:INT,7:INT,8:INT};
   finish(wsC,headC.length,0,[{r:1}],2,aoaC.length-1,function(c){return kindC[c]||null;},function(c){return fmtC[c]||null;},null);
+  [[3,'osa'],[4,'ds']].forEach(function(q){ if(aoaC.length>2)_osaCfAdd(wsC,X,q[0],2,q[0],aoaC.length-1,q[1]); });   // live RAG
   X.utils.book_append_sheet(wb,wsC,safe+' City Summary');
 }
 
 // ══════════════════════════════════════════════
-// OSA EXPORT STYLE KIT — shared by the per-platform workbook and the all-aggregator combined workbook.
+// OSA EXPORT STYLE KIT — shared by the per-aggregator workbook and the all-aggregator combined workbook.
 // Layout: merged two-row title · navy header (key columns in yellow font) · every cell centered ·
-// light blue-grey subtotal rows · yellow-fill TOTAL rows · OSA below 75% = red highlight.
-// Numbers are written as real numbers with Excel number formats (never text like "36.1%"), so
-// sort / filter / formulas work. Blank cell = no data (never imputed as 0).
+// light blue-grey subtotal rows · yellow-fill TOTAL rows.
+// RAG (green / amber / red) sits on every metric that has a threshold: OSA 90 / 75 · DS Listing 90 / 80 · FR 95 / 85 ·
+// DOI 14 / 7 · WoW ±0.5pp · aggregators-below-75 (0 / 1 / 2+) · % SKUs below 75 (≤10 / ≤25 / >25).
+// RAG is written twice: as a static fill (correct at download, works in any viewer) AND as an Excel conditional-format rule,
+// so colours follow the numbers when you delete / filter rows or edit a value in Excel.
+// LIVE FORMULAS: every total / subtotal / blended / summary cell is an Excel formula over the rows above it
+// (SUBTOTAL / SUMPRODUCT based), so deleting a row — or filtering the list — re-computes totals and the summary.
+// Grey grouped columns at the right edge hold the calculation inputs (GMV weights, MTD OSA, visibility flag):
+// keep them; they are hidden by default (click the [+] outline button above the sheet to show them).
+// Values are real numbers with Excel number formats (never text like "36.1%"). Blank = no data (never imputed as 0).
 // ══════════════════════════════════════════════
 var _OSAX={
-  NAVY:'1B2B45', YEL:'FFD43B', SUB:'DDE5F0', TOT:'FFE699', ALT:'F7F8FA', WHITE:'FFFFFF', BORDER:'E4E4E4',
-  F:{g:'E8F5EE',a:'FBF0DD',r:'FFC7CE'}, T:{g:'1A7A3A',a:'B0700A',r:'9C0006'},
-  PCT:'0.0"%"', INT:'#,##0', INR:'"\u20B9"#,##0', PP:'+0.0;-0.0;0.0'
+  NAVY:'1B2B45', YEL:'FFD43B', SUB:'DDE5F0', TOT:'FFE699', ALT:'F7F8FA', WHITE:'FFFFFF', BORDER:'E4E4E4', HELP:'6B7A94',
+  F:{g:'C6EFCE',a:'FFEB9C',r:'FFC7CE'}, T:{g:'006100',a:'9C5700',r:'9C0006'},
+  PCT:'0.0"%"', INT:'#,##0', INR:'"\u20B9"#,##0', PP:'+0.0;-0.0;0.0',
+  RED:74.95   // OSA displays as 75.0% from 74.95 upward, so "below 75% as displayed" == stored value < 74.95 (values are stored to 4 dp)
 };
 function _osaR1(v){ return (v==null||isNaN(v))?null:Math.round(v*10)/10; }
-// Dashboard convention (see _availComputeMTD _wavg): weight = MTD GMV over entries that have the metric;
-// falls back to a simple mean only when no entry carries GMV.
-function _osaWavg(items,f){
+function _osaR4(v){ return (v==null||isNaN(v))?null:Math.round(v*10000)/10000; }   // stored precision: shows correct 1-dp (or whole-rupee) figures with no double rounding
+// Dashboard weighting (see _wavg in _availComputeMTD): weight = MTD GMV over entries that carry the metric;
+// simple mean of those entries only when none carries GMV. items = [{v,g}] -> {val,den}
+function _osaWv(items){
   var s=0,w=0,xs=[];
-  items.forEach(function(c){ var v=c[f]; if(v==null||isNaN(v))return; xs.push(v); if((c.g||0)>0){s+=v*c.g;w+=c.g;} });
-  if(w>0)return s/w;
-  return xs.length?xs.reduce(function(a,b){return a+b;},0)/xs.length:null;
+  items.forEach(function(c){ if(typeof c.v!=='number'||isNaN(c.v))return; xs.push(c.v); if(typeof c.g==='number'&&c.g>0){s+=c.v*c.g;w+=c.g;} });
+  return {val:(w>0)?(s/w):(xs.length?xs.reduce(function(a,b){return a+b;},0)/xs.length:null),den:w};
 }
-function _osaBandStd(kind){ // standard RAG used on the per-aggregator sheet
-  return function(v){ if(v==null||v==='')return null;
-    if(kind==='osa')return v>=90?'g':(v>=75?'a':'r');
-    if(kind==='fr') return v>=95?'g':(v>=85?'a':'r');
-    if(kind==='ds') return v>=90?'g':(v>=80?'a':'r');
-    if(kind==='doi')return v>=14?'g':(v>=7?'a':'r');
-    if(kind==='wow')return v>=0.5?'g':(v<=-0.5?'r':'a');
-    return null; };
+// Excel twin of _osaWv: v / g / s are range strings (s = visibility flags, 1 = row shown)
+function _osaFwavg(v,g,s){
+  var den='SUMPRODUCT('+s+',--ISNUMBER('+v+'),'+g+')';
+  return 'IFERROR(ROUND(IF('+den+'>0,SUMPRODUCT('+s+','+v+','+g+')/'+den+',SUMPRODUCT('+s+','+v+')/SUMPRODUCT('+s+',--ISNUMBER('+v+'))),4),"")';
 }
-function _osaBandBelow75(v){ return (typeof v==='number'&&v<75)?'r':null; }
-// spec: {title, sub, cols:[{h,w,fmt,key,band}], rows:[{t:'d'|'s'|'t', v:[...], fmt:{colIdx:fmtOverride}}]}
-// Data rows ('d') must come first; subtotal ('s') then TOTAL ('t') rows follow.
+// ---- RAG rules (one definition drives both the static fill and the Excel conditional format) ----
+// returns 'r' | 'a' | 'g' | null for a stored numeric value
+function _osaBandKind(kind){
+  return function(v){ if(typeof v!=='number'||isNaN(v))return null;
+    switch(kind){
+      case 'osa': return v<74.95?'r':(v<89.95?'a':'g');
+      case 'ds':  return v<79.95?'r':(v<89.95?'a':'g');
+      case 'fr':  return v<85?'r':(v<95?'a':'g');
+      case 'doi': return v<7?'r':(v<14?'a':'g');
+      case 'wow': return v<=-0.5?'r':(v<0.5?'a':'g');
+      case 'cnt': return v>=2?'r':(v>=1?'a':'g');
+      case 'pct': return v>25?'r':(v>10?'a':'g');
+    } return null; };
+}
+function _osaCfExpr(kind,c){ // c = top-left cell of the range (relative reference)
+  var N='ISNUMBER('+c+')', A=function(){return 'AND('+N+','+Array.prototype.join.call(arguments,',')+')';};
+  switch(kind){
+    case 'osa': return {r:A(c+'<74.95'),a:A(c+'>=74.95',c+'<89.95'),g:A(c+'>=89.95')};
+    case 'ds':  return {r:A(c+'<79.95'),a:A(c+'>=79.95',c+'<89.95'),g:A(c+'>=89.95')};
+    case 'fr':  return {r:A(c+'<85'),a:A(c+'>=85',c+'<95'),g:A(c+'>=95')};
+    case 'doi': return {r:A(c+'<7'),a:A(c+'>=7',c+'<14'),g:A(c+'>=14')};
+    case 'wow': return {r:A(c+'<=-0.5'),a:A(c+'>-0.5',c+'<0.5'),g:A(c+'>=0.5')};
+    case 'cnt': return {r:A(c+'>=2'),a:A(c+'=1'),g:A(c+'=0')};
+    case 'pct': return {r:A(c+'>25'),a:A(c+'>10',c+'<=25'),g:A(c+'<=10')};
+  } return {};
+}
+function _osaCfAdd(ws,X,c0,r0,c1,r1,kind){ // 0-based, inclusive; registers a live conditional-format block on the sheet
+  (ws['!cf']=ws['!cf']||[]).push({sq:X.utils.encode_range({s:{r:r0,c:c0},e:{r:r1,c:c1}}),tl:X.utils.encode_cell({r:r0,c:c0}),kind:kind});
+}
+// cell value: plain, or {f:'EXCEL FORMULA (no =)', v:cachedValue}
+function _osaIsF(e){ return e&&typeof e==='object'&&e.f!==undefined; }
+// spec: {title, sub, cols:[{h,w,fmt,key,rag,helper}], rows:[{t:'d'|'s'|'t', v:[...], fmt:{colIdx:fmtOverride}}]}
+// Data rows ('d') must come first; subtotal ('s') then TOTAL ('t') rows follow. Header sits on sheet row 3, data from row 4.
 function _osaXSheet(X,styled,spec){
   var K=_OSAX, n=spec.cols.length, ctr={horizontal:'center',vertical:'center',wrapText:true};
   var bd={top:{style:'thin',color:{rgb:K.BORDER}},bottom:{style:'thin',color:{rgb:K.BORDER}},left:{style:'thin',color:{rgb:K.BORDER}},right:{style:'thin',color:{rgb:K.BORDER}}};
   var blank=function(){return new Array(n-1).fill('');};
   var aoa=[[spec.title].concat(blank()),[spec.sub||''].concat(blank()),spec.cols.map(function(c){return c.h;})];
-  spec.rows.forEach(function(r){ aoa.push(r.v.map(function(x){return (x===undefined||x===null)?'':x;})); });
+  spec.rows.forEach(function(r){ aoa.push(r.v.map(function(x){ if(_osaIsF(x))x=x.v; return (x===undefined||x===null)?'':x; })); });
   var ws=X.utils.aoa_to_sheet(aoa);
-  ws['!cols']=spec.cols.map(function(c){return {wch:c.w||12};});
+  spec.rows.forEach(function(r,ri){ r.v.forEach(function(e,c){ if(!_osaIsF(e))return;
+    var a=X.utils.encode_cell({r:3+ri,c:c}), cell=ws[a]||(ws[a]={}), v=(e.v==null)?'':e.v;
+    cell.v=v; cell.t=(typeof v==='number')?'n':'s'; cell.f=e.f; }); });
+  ws['!cols']=spec.cols.map(function(c){ var o={wch:c.w||12}; if(c.helper){o.hidden=true;o.level=1;} return o; });
   ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:n-1}},{s:{r:1,c:0},e:{r:1,c:n-1}}];
   ws['!rows']=[{hpt:24},{hpt:18},{hpt:32}];
   var nD=0; spec.rows.forEach(function(r){if(r.t==='d')nD++;});
@@ -8753,28 +8818,62 @@ function _osaXSheet(X,styled,spec){
       if(!styled)continue;
       if(r===0){ cell.s={font:{name:'Calibri',sz:14,bold:true,color:{rgb:K.NAVY}},alignment:{horizontal:'center',vertical:'center'}}; }
       else if(r===1){ cell.s={font:{name:'Calibri',sz:9,italic:true,color:{rgb:'5A6A85'}},alignment:{horizontal:'center',vertical:'center'}}; }
-      else if(r===2){ var key=spec.cols[c].key;
-        cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:key?K.YEL:'FFFFFF'}},fill:{fgColor:{rgb:K.NAVY}},alignment:ctr,border:bd}; }
+      else if(r===2){ var cd=spec.cols[c];
+        cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:cd.key?K.YEL:'FFFFFF'}},fill:{fgColor:{rgb:cd.helper?K.HELP:K.NAVY}},alignment:ctr,border:bd}; }
       else{
         var rw=spec.rows[r-3], cl=spec.cols[c];
-        if(rw.t==='t') cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:K.NAVY}},fill:{fgColor:{rgb:K.TOT}},alignment:ctr,border:bd};
+        var band=(cl.rag&&rw.t!=='s')?_osaBandKind(cl.rag)(typeof cell.v==='number'?cell.v:null):null;
+        if(band) cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:K.T[band]}},fill:{fgColor:{rgb:K.F[band]}},alignment:ctr,border:bd};
+        else if(rw.t==='t') cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:K.NAVY}},fill:{fgColor:{rgb:K.TOT}},alignment:ctr,border:bd};
         else if(rw.t==='s') cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:K.NAVY}},fill:{fgColor:{rgb:K.SUB}},alignment:ctr,border:bd};
-        else{
-          var band=cl.band?cl.band(typeof cell.v==='number'?cell.v:null):null;
-          cell.s=band
-            ?{font:{name:'Calibri',sz:10,bold:true,color:{rgb:K.T[band]}},fill:{fgColor:{rgb:K.F[band]}},alignment:ctr,border:bd}
-            :{font:{name:'Calibri',sz:10,color:{rgb:K.NAVY}},fill:{fgColor:{rgb:((r-3)%2?K.ALT:K.WHITE)}},alignment:ctr,border:bd};
-        }
+        else cell.s={font:{name:'Calibri',sz:10,color:{rgb:K.NAVY}},fill:{fgColor:{rgb:((r-3)%2?K.ALT:K.WHITE)}},alignment:ctr,border:bd};
       }
     }
   }
+  // live RAG: one rule-set per RAG column over the data rows, and one over the TOTAL row
+  spec.cols.forEach(function(cd,c){ if(!cd.rag)return;
+    if(nD)_osaCfAdd(ws,X,c,3,c,2+nD,cd.rag);
+    spec.rows.forEach(function(r,ri){ if(r.t==='t')_osaCfAdd(ws,X,c,3+ri,c,3+ri,cd.rag); });
+  });
   return ws;
 }
 function _osaDayLabel(mk,d){ if(d==null)return ''; var m=String(mk||'').split('-')[0]||'', y=String(mk||'').split('-')[1]||''; return (d<10?'0':'')+d+'-'+m+'-'+y; }
 
+// ---- save: injects the conditional-format rules into the .xlsx (zip) when the library allows; otherwise saves static colours ----
+function _osaCfXml(blocks){
+  var esc=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}, pr=1, dx={r:0,a:1,g:2};
+  return blocks.map(function(b){ var ex=_osaCfExpr(b.kind,b.tl);
+    return '<conditionalFormatting sqref="'+b.sq+'">'+['r','a','g'].map(function(k){
+      return ex[k]?('<cfRule type="expression" dxfId="'+dx[k]+'" priority="'+(pr++)+'"><formula>'+esc(ex[k])+'</formula></cfRule>'):''; }).join('')+'</conditionalFormatting>'; }).join('');
+}
+function _osaSave(X,wb,fname){
+  var has=wb.SheetNames.some(function(n){var c=wb.Sheets[n]['!cf'];return c&&c.length;});
+  var C=X.CFB;
+  if(!has||!C||!C.read||!C.write||!C.find||!X.write||typeof Blob==='undefined'||typeof TextDecoder==='undefined'){ X.writeFile(wb,fname); return; }
+  try{
+    var cfb=C.read(new Uint8Array(X.write(wb,{bookType:'xlsx',type:'array'})),{type:'array'});
+    var dec=new TextDecoder('utf-8'), enc=new TextEncoder();
+    var put=function(entry,str){ var u=enc.encode(str); entry.content=u; entry.size=u.length; };
+    var st=C.find(cfb,'/xl/styles.xml'); var sx=dec.decode(st.content);
+    var dxf=function(font,fill){return '<dxf><font><b/><color rgb="FF'+font+'"/></font><fill><patternFill patternType="solid"><fgColor rgb="FF'+fill+'"/><bgColor rgb="FF'+fill+'"/></patternFill></fill></dxf>';};
+    var dxfs='<dxfs count="3">'+dxf(_OSAX.T.r,_OSAX.F.r)+dxf(_OSAX.T.a,_OSAX.F.a)+dxf(_OSAX.T.g,_OSAX.F.g)+'</dxfs>';
+    if(!/<dxfs count="0"\s*\/>/.test(sx))throw new Error('unexpected styles.xml');
+    put(st,sx.replace(/<dxfs count="0"\s*\/>/,dxfs));
+    wb.SheetNames.forEach(function(n,i){ var blocks=wb.Sheets[n]['!cf']; if(!blocks||!blocks.length)return;
+      var e=C.find(cfb,'/xl/worksheets/sheet'+(i+1)+'.xml'); var xml=dec.decode(e.content);
+      var m=/<(dataValidations|hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|tableParts|extLst)[\s>\/]|<\/worksheet>/.exec(xml);
+      if(!m)throw new Error('no insertion point');
+      put(e,xml.slice(0,m.index)+_osaCfXml(blocks)+xml.slice(m.index)); });
+    var out=C.write(cfb,{type:'array',fileType:'zip'});
+    var blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var url=URL.createObjectURL(blob), a=document.createElement('a'); a.href=url; a.download=fname; document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{document.body.removeChild(a);URL.revokeObjectURL(url);}catch(_e){} },1500);
+  }catch(err){ console.warn('[OSA export] live RAG rules unavailable, saving static colours instead',err); X.writeFile(wb,fname); }
+}
+
 // ══════════════════════════════════════════════
 // Per-aggregator workbook (current platform when a platform is open; every platform when called with forceAll).
-// Sheet 1 per platform = SKU table; city tabs follow. Numeric cells, Lost GMV, GMV-weighted TOTAL row.
+// Sheet 1 per platform = SKU table with live TOTAL row; city tabs follow (their summaries are live too).
 // ══════════════════════════════════════════════
 function _osaExportXlsx(forceAll){
   var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
@@ -8792,11 +8891,11 @@ function _osaExportXlsx(forceAll){
   var wb=X.utils.book_new(), _cityTag='';
   plats.forEach(function(plat){
     var rows,cityScope=null;
-    var mkRow=function(name,cat,k,o){ // o = precomputed window-aware extras
+    var mkRow=function(name,cat,k,o){
       var doiN=(k.doi==null)?null:Math.round(k.doi);
-      return {name:name,cat:((typeof normCat==='function'?normCat(cat):cat)||''),g:(k.mtd_gmv||0),osaMtd:k.wt_osa_ls,osaToday:k.day_osa_ls,wow:o.wow,fr:o.fr,frPlat:o.frPlat,ds:o.ds,dsWow:o.dsWow,
+      return {name:name,cat:((typeof normCat==='function'?normCat(cat):cat)||''),g:_osaR4(k.mtd_gmv||0),osaMtd:_osaR4(k.wt_osa_ls),osaToday:_osaR4(k.day_osa_ls),wow:o.wow,fr:o.fr,frPlat:o.frPlat,ds:_osaR4(o.ds),dsWow:o.dsWow,
         doi:doiN,doiTxt:(k.doi==null&&k.doi_flag==='no_velocity')?'no velocity':'',doiCap:(k.doi_flag==='capped'),
-        soh:(k.soh==null?null:Math.round(k.soh)),drr:Math.round(k.drr||0),lost:(k.lost_gmv||0),lostDay:(k.day_lost_gmv||0)};
+        soh:(k.soh==null?null:Math.round(k.soh)),drr:Math.round(k.drr||0)};
     };
     if(plat===_availCurrentPlat && forceAll!==true && typeof _osaScopedList==='function'){
       var sc=_osaScopedList(plat); cityScope=sc.cityScope; _cityTag=cityScope?('_'+cityScope):'';
@@ -8823,44 +8922,50 @@ function _osaExportXlsx(forceAll){
     }
     var cols=[
       {h:'SKU',w:40},{h:'Category',w:18},
-      {h:'OSA MTD',w:11,fmt:K.PCT,band:_osaBandStd('osa')},
-      {h:'OSA Today',w:11,fmt:K.PCT,band:_osaBandStd('osa'),key:true},
-      {h:'OSA WoW (pp)',w:13,fmt:K.PP,band:_osaBandStd('wow')},
-      {h:'FR% ('+frLbl+')',w:12,fmt:'0"%"',band:_osaBandStd('fr')},
-      {h:'DS Listing',w:12,fmt:K.PCT,band:_osaBandStd('ds')},
-      {h:'DS WoW (pp)',w:13,fmt:K.PP,band:_osaBandStd('wow')},
-      {h:'DOI',w:9,fmt:'0',band:_osaBandStd('doi')},
+      {h:'OSA MTD',w:11,fmt:K.PCT,rag:'osa'},
+      {h:'OSA Today',w:11,fmt:K.PCT,rag:'osa',key:true},
+      {h:'OSA WoW (pp)',w:13,fmt:K.PP,rag:'wow'},
+      {h:'FR% ('+frLbl+')',w:12,fmt:'0"%"',rag:'fr'},
+      {h:'DS Listing',w:12,fmt:K.PCT,rag:'ds'},
+      {h:'DS WoW (pp)',w:13,fmt:K.PP,rag:'wow'},
+      {h:'DOI',w:9,fmt:'0',rag:'doi'},
       {h:'SOH',w:10,fmt:K.INT},{h:'DRR (u/day)',w:12,fmt:K.INT},
-      {h:'Lost GMV MTD (\u20B9)',w:17,fmt:K.INR,key:true},{h:'Lost GMV Today (\u20B9)',w:17,fmt:K.INR}
+      {h:'MTD GMV (\u20B9)',w:16,fmt:K.INR},
+      {h:'Row shown (calc)',w:10,fmt:'0',helper:true}
     ];
-    var xrows=rows.map(function(r){
+    var F=4, nR=rows.length, Lr=3+nR, Rng=function(c){var l=X.utils.encode_col(c);return l+F+':'+l+Lr;};
+    var xrows=rows.map(function(r,i){
       var fmt={}; if(r.frPlat)fmt[5]='0"% (plat)"'; if(r.doiCap)fmt[8]='0"+"';
-      return {t:'d',fmt:fmt,v:[r.name,r.cat,_osaR1(r.osaMtd),_osaR1(r.osaToday),r.wow,r.fr,_osaR1(r.ds),r.dsWow,(r.doi!=null?r.doi:r.doiTxt),r.soh,r.drr,Math.round(r.lost),Math.round(r.lostDay)]};
+      return {t:'d',fmt:fmt,v:[r.name,r.cat,r.osaMtd,r.osaToday,r.wow,r.fr,r.ds,r.dsWow,(r.doi!=null?r.doi:r.doiTxt),r.soh,r.drr,r.g,{f:'SUBTOTAL(103,$A'+(F+i)+')',v:1}]};
     });
-    var sum=function(f){var s=0;rows.forEach(function(r){s+=(r[f]||0);});return s;};
-    xrows.push({t:'t',v:['TOTAL \u00B7 '+rows.length+' SKUs (GMV-wtd)','',_osaR1(_osaWavg(rows,'osaMtd')),_osaR1(_osaWavg(rows,'osaToday')),null,null,_osaR1(_osaWavg(rows,'ds')),null,null,Math.round(sum('soh')),Math.round(sum('drr')),Math.round(sum('lost')),Math.round(sum('lostDay'))]});
+    if(nR){
+      var wv=function(vk){return _osaWv(rows.map(function(r){return {v:r[vk],g:r.g};})).val;};
+      var sm=function(k){var s=0;rows.forEach(function(r){if(typeof r[k]==='number')s+=r[k];});return s;};
+      var W=function(c,vk){return {f:_osaFwavg(Rng(c),Rng(11),Rng(12)),v:_osaR4(wv(vk))};};
+      var S=function(c,k){return {f:'SUBTOTAL(109,'+Rng(c)+')',v:_osaR4(sm(k))};};
+      xrows.push({t:'t',v:[{f:'"TOTAL \u00B7 "&SUBTOTAL(103,$A$'+F+':$A$'+Lr+')&" SKUs (GMV-wtd)"',v:'TOTAL \u00B7 '+nR+' SKUs (GMV-wtd)'},'',
+        W(2,'osaMtd'),W(3,'osaToday'),null,null,W(6,'ds'),null,null,S(9,'soh'),S(10,'drr'),S(11,'g'),null]});
+    }
     var ws=_osaXSheet(X,styled,{
       title:'GAW \u00B7 '+plat+(cityScope?' \u00B7 '+cityScope:'')+' \u00B7 OSA / Availability \u00B7 '+mk,
-      sub:'OSA on listed stores \u00B7 Red = OSA below 75% \u00B7 Lost GMV = estimated sales lost to stock-outs',
+      sub:'RAG: OSA green \u226590 \u00B7 amber 75\u201390 \u00B7 red <75  |  DS green \u226590 \u00B7 amber 80\u201390 \u00B7 red <80  |  FR \u226595 / 85  |  DOI \u226514 / 7  |  TOTAL row is live: delete or filter rows and it recalculates',
       cols:cols, rows:xrows});
     var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
     X.utils.book_append_sheet(wb,ws,safe);
     try{ _osaCityTabs(X,wb,plat,styled,mk); }catch(e){ console.warn('[OSA export] city tabs failed for '+plat,e); }
   });
-  X.writeFile(wb,'GAW_OSA_'+(plats.length===1?plats[0]+_cityTag+'_':'')+(mk||'export')+'.xlsx');
+  _osaSave(X,wb,'GAW_OSA_'+(plats.length===1?plats[0]+_cityTag+'_':'')+(mk||'export')+'.xlsx');
 }
 
 // ══════════════════════════════════════════════
-// COMBINED OSA EXPORT — all aggregators, SKU-wise.
-//   Sheet 1 "Combined OSA Today": SKU rows x aggregator columns (OSA Today), Blended OSA, red where < 75%.
-//   Sheet 2 "Platform Summary":   one row per aggregator + overall (GMV-weighted).
-//   Sheet 3 "Low OSA Action List": every SKU x aggregator below 75% today, biggest Lost GMV first.
-// SKUs are matched across aggregators by SKU name. Blended = MTD-GMV-weighted across aggregators
-// (same weighting the dashboard uses for platform OSA). Recomputed fresh from _availComputeMTD
-// so it can never serve a stale cache. Blank = SKU not tracked on that aggregator.
+// COMBINED OSA EXPORT — all aggregators, SKU-wise, LIVE formulas + LIVE RAG.
+//   Sheet 1 "Combined OSA Today": SKU rows x aggregator columns (OSA Today), Blended OSA, RAG on every OSA figure.
+//   Sheet 2 "Platform Summary":   one row per aggregator + overall — formulas over sheet 1 (delete a SKU there, this follows).
+//   Sheet 3 "Low OSA Action List": every SKU x aggregator below 75% today, worst OSA first (own live TOTAL row).
+// SKUs are matched across aggregators by SKU name (+ alias for renamed SKUs). Blended = MTD-GMV-weighted across
+// aggregators (same weighting the dashboard uses for platform OSA). Recomputed fresh from _availComputeMTD.
 // ══════════════════════════════════════════════
-// Same product, different name per aggregator (Blinkit renamed Very Berry -> Keto Very Berry).
-var _OSA_SKU_ALIAS={'keto very berry ice cream cup 100ml':'very berry ice cream cup 100ml'};
+var _OSA_SKU_ALIAS={'keto very berry ice cream cup 100ml':'very berry ice cream cup 100ml'};   // Blinkit renamed Very Berry -> Keto Very Berry
 var _OSA_SKU_LABEL={'very berry ice cream cup 100ml':'Very Berry Ice Cream Cup 100ml'};
 function _osaSkuKey(n){ var k=String(n||'').toLowerCase().replace(/\s+/g,' ').trim(); return _OSA_SKU_ALIAS[k]||k; }
 function _osaCombinedBuild(){
@@ -8870,18 +8975,19 @@ function _osaCombinedBuild(){
   var bySku={}, pairs=[], merged=0, asOf={};
   plats.forEach(function(p){
     Object.keys(av[p].skus).forEach(function(code){
-      var k=av[p].skus[code]; if(k.day_osa_ls==null&&k.wt_osa_ls==null&&!((k.lost_gmv||0)>0||(k.day_lost_gmv||0)>0))return;
+      var k=av[p].skus[code];
+      if(k.day_osa_ls==null&&k.wt_osa_ls==null)return;     // no OSA reading -> nothing to show
       var info=skuLookup(p,code), key=_osaSkuKey(info.name);
       var lastDay=null; Object.keys(k.daily||{}).forEach(function(d){var dn=parseInt(d,10); if(dn<=cap&&k.daily[d]&&k.daily[d].wt_osa_ls!=null&&(lastDay==null||dn>lastDay))lastDay=dn;});
       var cell={plat:p,code:code,name:(_OSA_SKU_LABEL[key]||info.name),cat:(typeof normCat==='function'?normCat(info.cat):info.cat)||'',
-        today:k.day_osa_ls,mtd:k.wt_osa_ls,ds:k.day_ds_listing,g:(k.mtd_gmv||0),lost:(k.lost_gmv||0),lostDay:(k.day_lost_gmv||0),
+        today:_osaR4(k.day_osa_ls),mtd:_osaR4(k.wt_osa_ls),ds:_osaR4(k.day_ds_listing),g:_osaR4(k.mtd_gmv||0),
         soh:(k.soh||0),drr:(k.drr||0),doi:k.doi,doiFlag:k.doi_flag,lastDay:lastDay};
       if(lastDay!=null&&(asOf[p]==null||lastDay>asOf[p]))asOf[p]=lastDay;
-      var e=bySku[key]||(bySku[key]={name:(_OSA_SKU_LABEL[key]||info.name),cat:cell.cat,cells:{}});
+      var e=bySku[key]||(bySku[key]={name:cell.name,cat:cell.cat,cells:{}});
       if(e.cells[p]){ // two codes with one name on the same aggregator -> combine, never overwrite
         merged++; var a=e.cells[p];
-        a.today=_osaWavg([a,cell],'today'); a.mtd=_osaWavg([a,cell],'mtd'); a.ds=_osaWavg([a,cell],'ds');
-        a.g+=cell.g; a.lost+=cell.lost; a.lostDay+=cell.lostDay; a.soh+=cell.soh; a.drr+=cell.drr; a.pairs.push(cell);
+        a.today=_osaR4(_osaWv([{v:a.today,g:a.g},{v:cell.today,g:cell.g}]).val); a.mtd=_osaR4(_osaWv([{v:a.mtd,g:a.g},{v:cell.mtd,g:cell.g}]).val); a.ds=_osaR4(_osaWv([{v:a.ds,g:a.g},{v:cell.ds,g:cell.g}]).val);
+        a.g=_osaR4(a.g+cell.g); a.soh+=cell.soh; a.drr+=cell.drr; a.pairs.push(cell);
       }else{ cell.pairs=[cell]; e.cells[p]=cell; }
     });
   });
@@ -8892,82 +8998,150 @@ function _osaCombinedExportXlsx(){
   var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
   var styled=!!window.XLSXStyle, K=_OSAX, B;
   try{ B=_osaCombinedBuild(); }catch(e){ console.error('[OSA combined]',e); alert('Could not build the combined OSA view: '+e.message); return; }
-  var plats=B.plats, mk=B.mk;
-  if(!plats.length){alert('No OSA data loaded to export.');return;}
+  var plats=B.plats, mk=B.mk, n=plats.length;
+  if(!n){alert('No OSA data loaded to export.');return;}
   var wb=X.utils.book_new();
   var latest=null; plats.forEach(function(p){ if(B.asOf[p]!=null&&(latest==null||B.asOf[p]>latest))latest=B.asOf[p]; });
   var asOfTxt=latest!=null?(' \u00B7 latest data '+_osaDayLabel(mk,latest)):'';
+  var CT="'Combined OSA Today'!";
+  var L=function(c){return X.utils.encode_col(c);};
 
-  // ---- Sheet 1: SKU x aggregator ----
+  // ---- column map for sheet 1 ----
+  var cBT=2+n, cBM=3+n, cNB=4+n, cLP=5+n, H0=6+n, cSH=H0, cDT=H0+1, cDM=H0+2;
+  var gG=function(i){return H0+3+i;}, gM=function(i){return H0+3+n+i;}, NC=H0+3+2*n;
+  // ---- per SKU row model (stored values only; formulas below are the Excel twin of this arithmetic) ----
   var list=Object.keys(B.bySku).map(function(key){
-    var e=B.bySku[key], cs=plats.map(function(p){return e.cells[p]||null;}).filter(Boolean);
-    var tdy=plats.map(function(p){var c=e.cells[p]; return c?_osaR1(c.today):null;});
-    var low=null,lowP=''; plats.forEach(function(p,i){ if(tdy[i]!=null&&(low==null||tdy[i]<low)){low=tdy[i];lowP=p;} });
-    return {e:e,tdy:tdy,bT:_osaR1(_osaWavg(cs,'today')),bM:_osaR1(_osaWavg(cs,'mtd')),
-      nBelow:tdy.filter(function(v){return v!=null&&v<75;}).length,lowP:lowP,lost:cs.reduce(function(s,c){return s+c.lost;},0)};
+    var e=B.bySku[key], cells=plats.map(function(p){return e.cells[p]||null;});
+    var tdy=cells.map(function(c){return c?c.today:null;}), mtd=cells.map(function(c){return c?c.mtd:null;});
+    var gm=cells.map(function(c){return c?c.g:null;});
+    var tv=_osaWv(tdy.map(function(v,i){return {v:v,g:gm[i]};})), mv=_osaWv(mtd.map(function(v,i){return {v:v,g:gm[i]};}));
+    var low=null,lowP=''; tdy.forEach(function(v,i){ if(typeof v==='number'&&(low==null||v<low)){low=v;lowP=plats[i];} });
+    var gTot=0; gm.forEach(function(v){if(typeof v==='number')gTot+=v;});
+    return {e:e,tdy:tdy,mtd:mtd,gm:gm,bT:_osaR4(tv.val),bM:_osaR4(mv.val),dT:tv.den,dM:mv.den,gTot:gTot,
+      nBelow:tdy.filter(function(v){return typeof v==='number'&&v<K.RED;}).length,lowP:lowP};
   });
-  list.sort(function(a,b){ var x=a.bT==null?999:a.bT, y=b.bT==null?999:b.bT; return (x-y)||(b.lost-a.lost)||a.e.name.localeCompare(b.e.name); });
+  list.sort(function(a,b){ var x=a.bT==null?999:a.bT, y=b.bT==null?999:b.bT; return (x-y)||(b.gTot-a.gTot)||a.e.name.localeCompare(b.e.name); });
+  var N=list.length, F=4, Lr=3+N, TT=Lr+2;
+  var rc=function(c){return '$'+L(c)+'$'+F+':$'+L(c)+'$'+Lr;};                       // whole-column range over the SKU list
+  var rr=function(c0,c1,R){return '$'+L(c0)+R+':$'+L(c1)+R;};                         // one row across columns
+  var hdr='$'+L(2)+'$3:$'+L(1+n)+'$3', SH=rc(cSH);
+  var lowestF=function(r){ var m='INDEX('+hdr+',MATCH(MIN('+r+'),'+r+',0))'; return 'IF(COUNT('+r+')=0,"",LEFT('+m+',FIND(" OSA",'+m+')-1))'; };
+
   var cols1=[{h:'SKU',w:42},{h:'Category',w:18}];
-  plats.forEach(function(p){ cols1.push({h:p+' OSA Today',w:15,fmt:K.PCT,band:_osaBandBelow75}); });
-  cols1.push({h:'Blended OSA Today',w:14,fmt:K.PCT,band:_osaBandBelow75,key:true});
-  cols1.push({h:'Blended OSA MTD',w:14,fmt:K.PCT});
-  cols1.push({h:'Aggregators Below 75%',w:14,fmt:'0',key:true});
+  plats.forEach(function(p){ cols1.push({h:p+' OSA Today',w:15,fmt:K.PCT,rag:'osa'}); });
+  cols1.push({h:'Blended OSA Today',w:14,fmt:K.PCT,rag:'osa',key:true});
+  cols1.push({h:'Blended OSA MTD',w:14,fmt:K.PCT,rag:'osa'});
+  cols1.push({h:'Aggregators Below 75%',w:14,fmt:'0',rag:'cnt',key:true});
   cols1.push({h:'Lowest OSA Aggregator',w:16});
-  cols1.push({h:'Lost GMV MTD (\u20B9)',w:17,fmt:K.INR,key:true});
-  var rows1=list.map(function(r){ return {t:'d',v:[r.e.name,r.e.cat].concat(r.tdy).concat([r.bT,r.bM,r.nBelow,r.lowP,Math.round(r.lost)])}; });
-  var belowCnt=plats.map(function(p,i){ return list.filter(function(r){return r.tdy[i]!=null&&r.tdy[i]<75;}).length; });
-  var fmtCnt={}; for(var fi=2;fi<=2+plats.length;fi++)fmtCnt[fi]='0';
-  rows1.push({t:'s',fmt:fmtCnt,v:['SKUs below 75%','']. concat(belowCnt).concat([list.filter(function(r){return r.bT!=null&&r.bT<75;}).length,'','','',''])});
-  var allP=B.pairs, perPlat=plats.map(function(p){return allP.filter(function(c){return c.plat===p;});});
-  var totTdy=perPlat.map(function(cs){return _osaR1(_osaWavg(cs,'today'));});
-  var totNb=totTdy.filter(function(v){return v!=null&&v<75;}).length, totLow=null, totLowP='';
-  plats.forEach(function(p,i){ if(totTdy[i]!=null&&(totLow==null||totTdy[i]<totLow)){totLow=totTdy[i];totLowP=p;} });
-  rows1.push({t:'t',v:['ALL SKUs \u00B7 GMV-weighted','']. concat(totTdy).concat([_osaR1(_osaWavg(allP,'today')),_osaR1(_osaWavg(allP,'mtd')),totNb,totLowP,Math.round(allP.reduce(function(s,c){return s+c.lost;},0))])});
+  cols1.push({h:'Row shown (calc)',w:9,fmt:'0',helper:true});
+  cols1.push({h:'Weight: GMV with OSA Today (calc)',w:15,fmt:K.INR,helper:true});
+  cols1.push({h:'Weight: GMV with OSA MTD (calc)',w:15,fmt:K.INR,helper:true});
+  plats.forEach(function(p){ cols1.push({h:p+' MTD GMV (calc)',w:14,fmt:K.INR,helper:true}); });
+  plats.forEach(function(p){ cols1.push({h:p+' OSA MTD (calc)',w:13,fmt:K.PCT,helper:true}); });
+
+  var rows1=list.map(function(r,i){
+    var R=F+i, osaR=rr(2,1+n,R), gR=rr(gG(0),gG(n-1),R), mR=rr(gM(0),gM(n-1),R);
+    var dT='$'+L(cDT)+R, dM='$'+L(cDM)+R;
+    var v=[r.e.name,r.e.cat].concat(r.tdy);
+    v.push({f:'IFERROR(ROUND(IF('+dT+'>0,SUMPRODUCT('+osaR+','+gR+')/'+dT+',AVERAGE('+osaR+')),4),"")',v:r.bT});
+    v.push({f:'IFERROR(ROUND(IF('+dM+'>0,SUMPRODUCT('+mR+','+gR+')/'+dM+',AVERAGE('+mR+')),4),"")',v:r.bM});
+    v.push({f:'COUNTIF('+osaR+',"<'+K.RED+'")',v:r.nBelow});
+    v.push({f:lowestF(osaR),v:r.lowP});
+    v.push({f:'SUBTOTAL(103,$A'+R+')',v:1});
+    v.push({f:'SUMPRODUCT(--ISNUMBER('+osaR+'),'+gR+')',v:r.dT});
+    v.push({f:'SUMPRODUCT(--ISNUMBER('+mR+'),'+gR+')',v:r.dM});
+    return {t:'d',v:v.concat(r.gm).concat(r.mtd)};
+  });
+  // subtotal: SKUs below 75% (live, filter-aware)
+  var belowOf=function(c,vals){ return {f:'SUMPRODUCT('+SH+',--ISNUMBER('+rc(c)+'),--('+rc(c)+'<'+K.RED+'))',v:vals.filter(function(x){return typeof x==='number'&&x<K.RED;}).length}; };
+  var fmtCnt={}; for(var fi=2;fi<=cBT;fi++)fmtCnt[fi]='0';
+  var sv=['SKUs below 75%',''];
+  plats.forEach(function(p,i){ sv.push(belowOf(2+i,list.map(function(r){return r.tdy[i];}))); });
+  sv.push(belowOf(cBT,list.map(function(r){return r.bT;})));
+  while(sv.length<NC)sv.push(null);
+  var rows1s={t:'s',fmt:fmtCnt,v:sv};
+  // TOTAL: GMV-weighted
+  var totTdy=plats.map(function(p,i){ return _osaR4(_osaWv(list.map(function(r){return {v:r.tdy[i],g:r.gm[i]};})).val); });
+  var totBT=_osaR4(_osaWv(list.map(function(r){return {v:r.bT,g:r.dT};})).val), totBM=_osaR4(_osaWv(list.map(function(r){return {v:r.bM,g:r.dM};})).val);
+  var totRowR=rr(2,1+n,TT), totLow='', totLowV=null; totTdy.forEach(function(v,i){ if(typeof v==='number'&&(totLowV==null||v<totLowV)){totLowV=v;totLow=plats[i];} });
+  var tv=[{f:'"ALL "&SUBTOTAL(103,$A$'+F+':$A$'+Lr+')&" SKUs \u00B7 GMV-weighted"',v:'ALL '+N+' SKUs \u00B7 GMV-weighted'},''];
+  plats.forEach(function(p,i){ tv.push({f:_osaFwavg(rc(2+i),rc(gG(i)),SH),v:totTdy[i]}); });
+  var wBlend=function(cV,cD){ var den='SUMPRODUCT('+SH+','+rc(cD)+')';
+    return 'IFERROR(ROUND(IF('+den+'>0,SUMPRODUCT('+SH+','+rc(cV)+','+rc(cD)+')/'+den+',SUMPRODUCT('+SH+','+rc(cV)+')/SUMPRODUCT('+SH+',--ISNUMBER('+rc(cV)+'))),4),"")'; };
+  tv.push({f:wBlend(cBT,cDT),v:totBT}); tv.push({f:wBlend(cBM,cDM),v:totBM});
+  tv.push({f:'COUNTIF('+totRowR+',"<'+K.RED+'")',v:totTdy.filter(function(v){return typeof v==='number'&&v<K.RED;}).length});
+  tv.push({f:lowestF(totRowR),v:totLow});
+  while(tv.length<H0)tv.push(null);
+  tv.push(null,null,null);
+  plats.forEach(function(p,i){ tv.push({f:'SUBTOTAL(109,'+rc(gG(i))+')',v:_osaR4(list.reduce(function(s,r){return s+(r.gm[i]||0);},0))}); });
+  while(tv.length<NC)tv.push(null);
+  var rows1t={t:'t',v:tv};
   var ws1=_osaXSheet(X,styled,{
     title:'GAW \u00B7 All Aggregators \u00B7 SKU-wise OSA Today \u00B7 '+mk,
-    sub:'Red = OSA Today below 75% \u00B7 Blended = MTD-GMV-weighted across aggregators \u00B7 Blank = SKU not tracked'+asOfTxt,
-    cols:cols1, rows:rows1});
+    sub:'RAG on OSA: green \u226590% \u00B7 amber 75\u201390% \u00B7 red <75% (as displayed) \u00B7 Aggregators Below 75%: 0 green \u00B7 1 amber \u00B7 2+ red \u00B7 Blended = MTD-GMV-weighted \u00B7 Blank = SKU not tracked \u00B7 Totals, summary and colours are live: delete or filter rows and they follow'+asOfTxt,
+    cols:cols1, rows:rows1.concat([rows1s,rows1t])});
   X.utils.book_append_sheet(wb,ws1,'Combined OSA Today');
 
-  // ---- Sheet 2: Platform Summary ----
+  // ---- Sheet 2: Platform Summary (formulas over sheet 1) ----
   var srows=plats.map(function(p,i){
-    var cs=perPlat[i], nT=cs.filter(function(c){return c.today!=null;}).length;
-    var nLow=cs.filter(function(c){var v=_osaR1(c.today);return v!=null&&v<75;}).length;
-    return {p:p,asOf:B.asOf[p],n:cs.length,nT:nT,nLow:nLow,pct:nT?nLow/nT*100:null,tdy:_osaR1(_osaWavg(cs,'today')),mtd:_osaR1(_osaWavg(cs,'mtd')),ds:_osaR1(_osaWavg(cs,'ds')),
-      lost:cs.reduce(function(s,c){return s+c.lost;},0),lostDay:cs.reduce(function(s,c){return s+c.lostDay;},0),soh:cs.reduce(function(s,c){return s+c.soh;},0),drr:cs.reduce(function(s,c){return s+c.drr;},0)};
+    var cs=list.map(function(r){return {t:r.tdy[i],m:r.mtd[i],g:r.gm[i]};});
+    var nT=cs.filter(function(c){return typeof c.t==='number';}).length, nLow=cs.filter(function(c){return typeof c.t==='number'&&c.t<K.RED;}).length;
+    var gs=0; cs.forEach(function(c){ if(typeof c.g==='number')gs+=c.g; });
+    return {p:p,i:i,asOf:B.asOf[p],nT:nT,nLow:nLow,pct:nT?_osaR1(nLow/nT*100):null,
+      tdy:_osaR4(_osaWv(cs.map(function(c){return {v:c.t,g:c.g};})).val),mtd:_osaR4(_osaWv(cs.map(function(c){return {v:c.m,g:c.g};})).val),gmv:_osaR4(gs)};
   });
   srows.sort(function(a,b){return (a.tdy==null?999:a.tdy)-(b.tdy==null?999:b.tdy);});
-  var cols2=[{h:'Aggregator',w:16},{h:'Latest Data Day',w:15},{h:'SKUs Tracked',w:12,fmt:K.INT},{h:'SKUs With OSA Today',w:14,fmt:K.INT},
-    {h:'SKUs Below 75%',w:13,fmt:K.INT,key:true},{h:'% SKUs Below 75%',w:13,fmt:K.PCT},{h:'OSA Today (GMV-wtd)',w:14,fmt:K.PCT,band:_osaBandBelow75,key:true},
-    {h:'OSA MTD (GMV-wtd)',w:14,fmt:K.PCT},{h:'DS Listing Today (GMV-wtd)',w:15,fmt:K.PCT},{h:'Lost GMV MTD (\u20B9)',w:17,fmt:K.INR,key:true},
-    {h:'Lost GMV Today (\u20B9)',w:17,fmt:K.INR},{h:'Total SOH',w:11,fmt:K.INT},{h:'Total DRR (u/day)',w:13,fmt:K.INT}];
-  var rows2=srows.map(function(s){ return {t:'d',v:[s.p,_osaDayLabel(mk,s.asOf),s.n,s.nT,s.nLow,_osaR1(s.pct),s.tdy,s.mtd,s.ds,Math.round(s.lost),Math.round(s.lostDay),Math.round(s.soh),Math.round(s.drr)]}; });
-  var tN=allP.length, tNT=allP.filter(function(c){return c.today!=null;}).length, tLow=allP.filter(function(c){var v=_osaR1(c.today);return v!=null&&v<75;}).length;
-  rows2.push({t:'t',v:['ALL AGGREGATORS',_osaDayLabel(mk,latest),tN,tNT,tLow,_osaR1(tNT?tLow/tNT*100:null),_osaR1(_osaWavg(allP,'today')),_osaR1(_osaWavg(allP,'mtd')),_osaR1(_osaWavg(allP,'ds')),
-    Math.round(allP.reduce(function(s,c){return s+c.lost;},0)),Math.round(allP.reduce(function(s,c){return s+c.lostDay;},0)),Math.round(allP.reduce(function(s,c){return s+c.soh;},0)),Math.round(allP.reduce(function(s,c){return s+c.drr;},0))]});
+  var cols2=[{h:'Aggregator',w:16},{h:'Latest Data Day',w:15},{h:'SKUs With OSA Today',w:14,fmt:K.INT},
+    {h:'SKUs Below 75%',w:13,fmt:K.INT,key:true},{h:'% SKUs Below 75%',w:13,fmt:K.PCT,rag:'pct'},{h:'OSA Today (GMV-wtd)',w:14,fmt:K.PCT,rag:'osa',key:true},
+    {h:'OSA MTD (GMV-wtd)',w:14,fmt:K.PCT,rag:'osa'},{h:'MTD GMV (\u20B9)',w:16,fmt:K.INR}];
+  var S0=4, S1=3+srows.length, ST=S1+1;
+  var rows2=srows.map(function(s,k){
+    var R=S0+k, o=CT+rc(2+s.i), g=CT+rc(gG(s.i)), m=CT+rc(gM(s.i)), sh=CT+rc(cSH);
+    return {t:'d',v:[s.p,_osaDayLabel(mk,s.asOf),
+      {f:'SUMPRODUCT('+sh+',--ISNUMBER('+o+'))',v:s.nT},
+      {f:'SUMPRODUCT('+sh+',--ISNUMBER('+o+'),--('+o+'<'+K.RED+'))',v:s.nLow},
+      {f:'IFERROR(ROUND(D'+R+'/C'+R+'*100,1),"")',v:s.pct},
+      {f:_osaFwavg(o,g,sh),v:s.tdy},{f:_osaFwavg(m,g,sh),v:s.mtd},
+      {f:'SUMPRODUCT('+sh+','+g+')',v:s.gmv}]};
+  });
+  var sumN=function(k){return srows.reduce(function(a,s){return a+(s[k]||0);},0);};
+  var aN=sumN('nT'), aL=sumN('nLow');
+  rows2.push({t:'t',v:['ALL AGGREGATORS',_osaDayLabel(mk,latest),
+    {f:'SUM(C'+S0+':C'+S1+')',v:aN},{f:'SUM(D'+S0+':D'+S1+')',v:aL},
+    {f:'IFERROR(ROUND(D'+ST+'/C'+ST+'*100,1),"")',v:aN?_osaR1(aL/aN*100):null},
+    {f:CT+'$'+L(cBT)+'$'+TT,v:totBT},{f:CT+'$'+L(cBM)+'$'+TT,v:totBM},
+    {f:'SUM(H'+S0+':H'+S1+')',v:_osaR4(sumN('gmv'))}]});
   var ws2=_osaXSheet(X,styled,{title:'GAW \u00B7 Aggregator Summary \u00B7 OSA Today \u00B7 '+mk,
-    sub:'Worst OSA first \u00B7 Red = OSA Today below 75% \u00B7 One row per SKU\u00D7aggregator counted in SKU totals',cols:cols2,rows:rows2});
+    sub:'Worst OSA first \u00B7 RAG: OSA green \u226590 \u00B7 amber 75\u201390 \u00B7 red <75 \u00B7 % SKUs below 75: \u226410 green \u00B7 \u226425 amber \u00B7 >25 red \u00B7 Every figure is a live formula over the Combined OSA Today list',cols:cols2,rows:rows2});
   X.utils.book_append_sheet(wb,ws2,'Platform Summary');
 
-  // ---- Sheet 3: Low OSA Action List ----
-  var lowList=allP.filter(function(c){var v=_osaR1(c.today);return v!=null&&v<75;}).sort(function(a,b){return (b.lost-a.lost)||a.name.localeCompare(b.name);});
-  var cols3=[{h:'Aggregator',w:14},{h:'SKU',w:42},{h:'Category',w:18},{h:'OSA Today',w:11,fmt:K.PCT,band:_osaBandBelow75,key:true},{h:'OSA MTD',w:11,fmt:K.PCT},
-    {h:'OSA WoW (pp)',w:13,fmt:K.PP},{h:'DS Listing Today',w:13,fmt:K.PCT},{h:'DOI',w:9,fmt:'0'},{h:'SOH',w:10,fmt:K.INT},{h:'DRR (u/day)',w:12,fmt:K.INT},
-    {h:'Lost GMV MTD (\u20B9)',w:17,fmt:K.INR,key:true},{h:'Lost GMV Today (\u20B9)',w:17,fmt:K.INR}];
-  var rows3=lowList.map(function(c){
-    var ww=(c.pairs.length===1&&typeof _osaWoWForSku==='function')?_osaWoWForSku(c.plat,c.code):null;
-    var doiV=(c.doi==null)?(c.doiFlag==='no_velocity'?'no velocity':''):Math.round(c.doi);
-    var fmt={}; if(c.doiFlag==='capped')fmt[7]='0"+"';
-    return {t:'d',fmt:fmt,v:[c.plat,c.name,c.cat,_osaR1(c.today),_osaR1(c.mtd),(ww&&ww.delta!=null)?_osaR1(ww.delta):null,_osaR1(c.ds),doiV,Math.round(c.soh),Math.round(c.drr),Math.round(c.lost),Math.round(c.lostDay)]};
-  });
-  rows3.push({t:'t',v:['TOTAL \u00B7 '+lowList.length+' SKU\u00D7aggregator','','',_osaR1(_osaWavg(lowList,'today')),_osaR1(_osaWavg(lowList,'mtd')),null,null,null,
-    Math.round(lowList.reduce(function(s,c){return s+c.soh;},0)),Math.round(lowList.reduce(function(s,c){return s+c.drr;},0)),
-    Math.round(lowList.reduce(function(s,c){return s+c.lost;},0)),Math.round(lowList.reduce(function(s,c){return s+c.lostDay;},0))]});
+  // ---- Sheet 3: Low OSA Action List (own live TOTAL row) ----
+  var lowList=B.pairs.filter(function(c){return typeof c.today==='number'&&c.today<K.RED;}).sort(function(a,b){return (a.today-b.today)||(b.g-a.g)||a.name.localeCompare(b.name);});
+  var cols3=[{h:'Aggregator',w:14},{h:'SKU',w:42},{h:'Category',w:18},{h:'OSA Today',w:11,fmt:K.PCT,rag:'osa',key:true},{h:'OSA MTD',w:11,fmt:K.PCT,rag:'osa'},
+    {h:'OSA WoW (pp)',w:13,fmt:K.PP,rag:'wow'},{h:'DS Listing Today',w:13,fmt:K.PCT,rag:'ds'},{h:'DOI',w:9,fmt:'0',rag:'doi'},{h:'SOH',w:10,fmt:K.INT},{h:'DRR (u/day)',w:12,fmt:K.INT},
+    {h:'MTD GMV (\u20B9)',w:16,fmt:K.INR},{h:'Row shown (calc)',w:9,fmt:'0',helper:true}];
+  var rows3;
+  if(!lowList.length){
+    rows3=[{t:'d',v:['\u2014','No SKU\u00D7aggregator is below 75% today','','','','','','','','','','']}];
+  }else{
+    var M=lowList.length, L3=3+M, R3=function(c){var l=L(c);return l+'4:'+l+L3;};
+    rows3=lowList.map(function(c,i){
+      var ww=(c.pairs.length===1&&typeof _osaWoWForSku==='function')?_osaWoWForSku(c.plat,c.code):null;
+      var doiV=(c.doi==null)?(c.doiFlag==='no_velocity'?'no velocity':''):Math.round(c.doi);
+      var fmt={}; if(c.doiFlag==='capped')fmt[7]='0"+"';
+      return {t:'d',fmt:fmt,v:[c.plat,c.name,c.cat,c.today,c.mtd,(ww&&ww.delta!=null)?_osaR1(ww.delta):null,c.ds,doiV,Math.round(c.soh),Math.round(c.drr),c.g,{f:'SUBTOTAL(103,$B'+(4+i)+')',v:1}]};
+    });
+    var sumL=function(k,rnd){var s=0;lowList.forEach(function(c){s+=(rnd?Math.round(c[k]):c[k]);});return s;};
+    var sh3=R3(11), lw=function(c,k){ return {f:_osaFwavg(R3(c),R3(10),sh3),v:_osaR4(_osaWv(lowList.map(function(x){return {v:x[k],g:x.g};})).val)}; };
+    rows3.push({t:'t',v:[{f:'"TOTAL \u00B7 "&SUBTOTAL(103,$B$4:$B$'+L3+')&" SKU\u00D7aggregator"',v:'TOTAL \u00B7 '+M+' SKU\u00D7aggregator'},'','',
+      lw(3,'today'),lw(4,'mtd'),null,lw(6,'ds'),null,{f:'SUBTOTAL(109,'+R3(8)+')',v:sumL('soh',true)},{f:'SUBTOTAL(109,'+R3(9)+')',v:sumL('drr',true)},
+      {f:'SUBTOTAL(109,'+R3(10)+')',v:_osaR4(sumL('g'))},null]});
+  }
   var ws3=_osaXSheet(X,styled,{title:'GAW \u00B7 Low OSA Action List (OSA Today < 75%) \u00B7 '+mk,
-    sub:'Sorted by Lost GMV MTD, highest first \u00B7 Filter by aggregator to split the list per category manager',cols:cols3,rows:rows3});
+    sub:'Worst OSA first \u00B7 RAG: OSA \u226590 / 75 \u00B7 DS \u226590 / 80 \u00B7 DOI \u226514 / 7 \u00B7 WoW \u00B10.5pp \u00B7 TOTAL row is live: delete a line (or filter by aggregator) and it recalculates',cols:cols3,rows:rows3});
   X.utils.book_append_sheet(wb,ws3,'Low OSA Action List');
 
-  X.writeFile(wb,'GAW_OSA_AllAggregators_Combined_'+(mk||'export')+'.xlsx');
+  _osaSave(X,wb,'GAW_OSA_AllAggregators_Combined_'+(mk||'export')+'.xlsx');
 }
 
 // Replenishment plan: one urgency-ranked PO sheet, net of open PO, sized to each platform's cover target.
