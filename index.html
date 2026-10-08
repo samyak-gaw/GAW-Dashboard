@@ -8073,7 +8073,7 @@ function _sohReorderQty(k,plat,openPo){
   const drr=k.drr||0, soh=k.soh||0;
   if(!drr||drr<=0.05)return null;
   const inbound=(typeof openPo==='number'&&isFinite(openPo)&&openPo>0)?openPo:0;
-  return Math.max(0, Math.ceil(drr*_sohCoverDays(plat) - soh - inbound));
+  return Math.max(0, Math.ceil(Math.round((drr*_sohCoverDays(plat) - soh - inbound)*1e6)/1e6));   // round to 1e-6 first: float noise (e.g. 80966.00000000001) must not add a phantom unit
 }
 // Row background tint by stockout urgency (whole-row cue).
 function _sohRowTint(days){
@@ -8157,396 +8157,6 @@ function _cityOpenPOMap(plat,name){
   Object.keys(raw).forEach(function(c){ var m=(typeof nCity==='function')?nCity(c):c; out[m]=(out[m]||0)+(raw[c]||0); });
   return out;
 }
-// Reusable style/format finisher for a matrix / flat / summary sheet — styles data rows
-// (RAG bands or plain alternating fill), applies number formats, and styles title +
-// header row(s). Kept identical across the three export functions so every city tab
-// in the workbook looks and behaves the same way.
-function _cityTabFinish(X,ws,styled,ncols,headerRows,dataFrom,dataTo,colKind,colFmt,ragFn,NAVY,AMBER,bd,RAGF,RAGT,totalFrom){
-  var ctr={horizontal:'center',vertical:'center',wrapText:true};
-  for(var r=dataFrom;r<=dataTo;r++){
-    var isTot=(totalFrom!=null&&r>=totalFrom), alt=(r-dataFrom)%2;
-    for(var c=0;c<ncols;c++){
-      var cell=ws[X.utils.encode_cell({r:r,c:c})]; if(!cell)continue;
-      var f=colFmt(c); if(f&&typeof cell.v==='number')cell.z=f;
-      if(!styled)continue;
-      var kind=colKind(c), band=kind?ragFn(kind,cell.v):null;
-      cell.s=band
-        ?{font:{name:'Calibri',sz:10,bold:true,color:{rgb:RAGT[band]}},alignment:ctr,border:bd,fill:{fgColor:{rgb:RAGF[band]}}}
-        :{font:{name:'Calibri',sz:10,bold:!!isTot,color:NAVY},alignment:ctr,border:bd,fill:{fgColor:{rgb:(isTot?'EEF1F6':(alt?'F7F8FA':'FFFFFF'))}}};
-    }
-  }
-  if(!styled)return;
-  var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
-  headerRows.forEach(function(h){
-    for(var c=0;c<ncols;c++){var hc=ws[X.utils.encode_cell({r:h.r,c:c})]; if(!hc)continue;
-      hc.s=h.banner?{font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:NAVY},alignment:{horizontal:'center',vertical:'center'}}
-                   :{font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:ctr,border:bd};}
-  });
-}
-var _CITY_PCT='0.0"%"', _CITY_INT='#,##0';
-
-// ══════════════════════════════════════════════
-// SOH EXPLORER — city granularity: Matrix (SOH·OpenPO·DTS·Reorder·FR% per city),
-// City Detail (flat, filterable, Gap flag), City Summary (city rank by SKUs at risk).
-// ══════════════════════════════════════════════
-function _sohCityTabs(X,wb,plat,list,styled,mk){
-  if(!list||!list.length)return;
-  var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
-  var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'};
-  var selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity;
-  var cover=_sohCoverDays(plat), frMtd=(_availWindow==='mtd');
-  var rd1=function(v){return (v==null||isNaN(v))?'':Math.round(v*10)/10;};
-  var rag=function(kind,v){
-    if(v==null||v==='')return null;
-    if(kind==='dts')return v>=7?'g':(v>=3?'a':'r');
-    if(kind==='fr') return v>=95?'g':(v>=85?'a':'r');
-    if(kind==='net')return v>0?'r':'g';
-    if(kind==='gap')return v==='OK'?'g':(v==='Critical'?'r':'a');
-    return null;
-  };
-  var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,18)||'Sheet';
-
-  // per-row per-city breakdown, reusing the same k object (soh_by_city, by_city OSA aren't
-  // needed here — SOH/DTS/Reorder are computed fresh per city from citysku + open PO + soh)
-  var rows=[], cityMap={};
-  list.forEach(function(r){
-    var sohM=_metroRollupSoh(plat,r.k);
-    var poM=_cityOpenPOMap(plat,r.name);
-    var drrM=_cityDRRMap(plat,r.sku,selCap);
-    var cities={}; Object.keys(sohM).forEach(function(c){cities[c]=true;}); Object.keys(poM).forEach(function(c){cities[c]=true;}); Object.keys(drrM).forEach(function(c){cities[c]=true;});
-    var byCity={};
-    Object.keys(cities).forEach(function(c){
-      var soh=sohM[c]||0, po=poM[c]||0, drr=drrM[c]||0;
-      if(!(soh>0||po>0||drr>0.05))return;
-      var dts=(drr>0.05)?(soh<=0?0:soh/drr):null;
-      var target=Math.ceil(drr*cover);
-      var net=Math.max(0,target-soh-po);
-      var fr=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,r.name,c,frMtd):null;
-      cityMap[c]=true;
-      byCity[c]={soh:Math.round(soh),po:Math.round(po),drr:Math.round(drr*10)/10,dts:dts,net:Math.round(net),fr:(fr&&fr.fr!=null)?Math.round(fr.fr):null};
-    });
-    rows.push({name:r.name,cat:r.cat,soh:r.soh,openpo:r.openpo,dts:r.dts,reorder:r.reorder,fr:r.fr,byCity:byCity});
-  });
-  var cities=Object.keys(cityMap).sort();
-  if(!cities.length)return;
-
-  // ═══ Matrix: SKU rows, city groups of 5 (SOH, Open PO, DTS, Reorder, FR%), All-India last ═══
-  var groups=cities.concat(['All-India']); var perGroup=5; var nA=2+groups.length*perGroup;
-  var banner=new Array(nA).fill(''), sub=['SKU','Category'], mergesA=[{s:{r:0,c:0},e:{r:0,c:nA-1}}];
-  groups.forEach(function(g,gi){banner[2+gi*perGroup]=g; sub.push('SOH','Open PO','DTS','Reorder','FR%'); mergesA.push({s:{r:1,c:2+gi*perGroup},e:{r:1+0,c:2+gi*perGroup+perGroup-1}});});
-  var aoaA=[['GAW \u00B7 '+plat+' \u00B7 SOH Explorer by SKU \u00D7 City \u00B7 '+mk].concat(new Array(nA-1).fill('')),banner,sub];
-  rows.forEach(function(r){
-    var line=[r.name,r.cat];
-    groups.forEach(function(g){
-      var v=(g==='All-India')?{soh:r.soh,po:r.openpo,dts:r.dts,net:r.reorder,fr:(typeof r.fr==='string')?(parseFloat(r.fr)||null):null}:(r.byCity[g]||{});
-      line.push((v.soh==null?'':v.soh),(v.po==null?'':v.po),(v.dts==null?'':rd1(v.dts)),(v.net==null?'':v.net),(v.fr==null?'':v.fr));
-    });
-    aoaA.push(line);
-  });
-  var wsA=X.utils.aoa_to_sheet(aoaA);
-  wsA['!cols']=[{wch:38},{wch:18}].concat(groups.reduce(function(a){return a.concat([{wch:8},{wch:9},{wch:7},{wch:9},{wch:8}]);},[]));
-  wsA['!merges']=mergesA;
-  wsA['!autofilter']={ref:X.utils.encode_range({s:{r:2,c:0},e:{r:2+rows.length,c:nA-1}})};
-  _cityTabFinish(X,wsA,styled,nA,[{r:1,banner:true},{r:2}],3,2+rows.length,
-    function(c){if(c<2)return null; var m=(c-2)%perGroup; return m===2?'dts':(m===3?'net':(m===4?'fr':null));},
-    function(c){if(c<2)return null; var m=(c-2)%perGroup; return (m===0||m===1||m===3)?_CITY_INT:(m===4?_CITY_PCT:null);},
-    rag,NAVY,AMBER,bd,RAGF,RAGT,null);
-  X.utils.book_append_sheet(wb,wsA,safe+' x City');
-
-  // ═══ City Detail: flat, filterable, one row per City x SKU ═══
-  var headB=['City','SKU','Category','SOH','Open PO','Days to Stockout','Reorder ('+cover+'d)','FR% ('+(frMtd?'MTD':'10d')+')','Gap'];
-  var aoaB=[['GAW \u00B7 '+plat+' \u00B7 SOH City Detail \u00B7 '+mk].concat(new Array(headB.length-1).fill('')),headB];
-  var sumRows=[];
-  cities.forEach(function(c){
-    var list2=[];
-    rows.forEach(function(r){ var v=r.byCity[c]; if(!v)return;
-      var gap=(v.dts==null)?'':(v.dts<3?'Critical':(v.dts<7?'Watch':'OK'));
-      list2.push({name:r.name,cat:r.cat,soh:v.soh,po:v.po,dts:v.dts,net:v.net,fr:v.fr,gap:gap});
-    });
-    list2.sort(function(a,b){return (a.dts==null?99999:a.dts)-(b.dts==null?99999:b.dts);});
-    list2.forEach(function(x){aoaB.push([c,x.name,x.cat,x.soh,x.po,(x.dts==null?'':rd1(x.dts)),x.net,(x.fr==null?'':x.fr),x.gap]);});
-    sumRows.push({city:c,n:list2.length,soh:list2.reduce(function(s,x){return s+(x.soh||0);},0),po:list2.reduce(function(s,x){return s+(x.po||0);},0),
-      net:list2.reduce(function(s,x){return s+(x.net||0);},0),crit:list2.filter(function(x){return x.gap==='Critical';}).length,
-      watch:list2.filter(function(x){return x.gap==='Watch';}).length,
-      frAvg:(function(){var xs=list2.map(function(x){return x.fr;}).filter(function(v){return typeof v==='number';});return xs.length?(xs.reduce(function(s,x){return s+x;},0)/xs.length):null;})()});
-  });
-  var wsB=X.utils.aoa_to_sheet(aoaB);
-  wsB['!cols']=[{wch:16},{wch:38},{wch:18},{wch:9},{wch:10},{wch:15},{wch:14},{wch:12},{wch:10}];
-  wsB['!merges']=[{s:{r:0,c:0},e:{r:0,c:headB.length-1}}];
-  wsB['!autofilter']={ref:X.utils.encode_range({s:{r:1,c:0},e:{r:aoaB.length-1,c:headB.length-1}})};
-  var kindB={5:'dts',6:'net',7:'fr',8:'gap'}, fmtB={3:_CITY_INT,4:_CITY_INT,5:_CITY_PCT,6:_CITY_INT,7:_CITY_PCT};
-  _cityTabFinish(X,wsB,styled,headB.length,[{r:1}],2,aoaB.length-1,function(c){return kindB[c]||null;},function(c){return fmtB[c]||null;},rag,NAVY,AMBER,bd,RAGF,RAGT,null);
-  X.utils.book_append_sheet(wb,wsB,safe+' City Detail');
-
-  // ═══ City Summary: worst-first by Critical SKU count ═══
-  sumRows.sort(function(a,b){return (b.crit-a.crit)||(b.watch-a.watch);});
-  var headC=['City','SKUs Tracked','Critical (<3d)','Watch (<7d)','SOH','Reorder Need','Avg FR%'];
-  var aoaC=[['GAW \u00B7 '+plat+' \u00B7 SOH City Summary \u00B7 '+mk].concat(new Array(headC.length-1).fill('')),headC];
-  sumRows.forEach(function(s){aoaC.push([s.city,s.n,s.crit,s.watch,s.soh,s.net,(s.frAvg==null?'':rd1(s.frAvg))]);});
-  var wsC=X.utils.aoa_to_sheet(aoaC);
-  wsC['!cols']=[{wch:18},{wch:13},{wch:13},{wch:11},{wch:11},{wch:13},{wch:10}];
-  wsC['!merges']=[{s:{r:0,c:0},e:{r:0,c:headC.length-1}}];
-  wsC['!autofilter']={ref:X.utils.encode_range({s:{r:1,c:0},e:{r:aoaC.length-1,c:headC.length-1}})};
-  var fmtC={4:_CITY_INT,5:_CITY_INT,6:_CITY_PCT};
-  _cityTabFinish(X,wsC,styled,headC.length,[{r:1}],2,aoaC.length-1,function(){return null;},function(c){return fmtC[c]||null;},rag,NAVY,AMBER,bd,RAGF,RAGT,null);
-  X.utils.book_append_sheet(wb,wsC,safe+' City Summary');
-}
-
-// ══════════════════════════════════════════════
-// REPLENISHMENT PLAN — city granularity: per-platform matrix tabs (SOH·OpenPO·DRR·Net·Urgency
-// per city) PLUS one combined City Detail (all platforms, Platform column) and City Summary.
-// Scoped to the same SKUs already flagged on the main sheet (net>0 or urgency>0) — a city
-// breakdown of SKUs that aren't reorder candidates would just be noise.
-// ══════════════════════════════════════════════
-function _replenCityTabs(X,wb,rowsAll,styled,mk){
-  if(!rowsAll||!rowsAll.length)return;
-  var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
-  var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'};
-  var selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity;
-  var rd1=function(v){return (v==null||isNaN(v))?'':Math.round(v*10)/10;};
-  var rag=function(kind,v){ if(v==null||v==='')return null; if(kind==='net')return v>0?'r':'g'; return null; };
-
-  // per-row per-city breakdown (each row already carries r.k, r.sku, r.mrp, r.plat from the main loop)
-  rowsAll.forEach(function(r){
-    var cover=_sohCoverDays(r.plat);
-    var sohM=_metroRollupSoh(r.plat,r.k);
-    var poM=_cityOpenPOMap(r.plat,r.name);
-    var drrM=_cityDRRMap(r.plat,r.sku,selCap);
-    var byCityOsa=r.k.by_city||{};
-    var cities={}; Object.keys(sohM).forEach(function(c){cities[c]=true;}); Object.keys(poM).forEach(function(c){cities[c]=true;}); Object.keys(drrM).forEach(function(c){cities[c]=true;});
-    var byCity={};
-    Object.keys(cities).forEach(function(c){
-      var soh=sohM[c]||0, po=poM[c]||0, drr=drrM[c]||0;
-      if(!(soh>0||po>0||drr>0.05))return;
-      var osa=(byCityOsa[c]&&byCityOsa[c].wt_osa_ls!=null)?byCityOsa[c].wt_osa_ls:null;
-      var target=Math.ceil(drr*cover), net=Math.max(0,target-soh-po);
-      var urg=(osa==null?0:Math.max(0,100-osa))*drr*(r.mrp||0);
-      byCity[c]={soh:Math.round(soh),po:Math.round(po),drr:Math.round(drr*10)/10,net:Math.round(net),urg:Math.round(urg)};
-    });
-    r._byCity=byCity;
-  });
-
-  var byPlat={}; rowsAll.forEach(function(r){(byPlat[r.plat]=byPlat[r.plat]||[]).push(r);});
-
-  // ═══ Per-platform matrix tabs: SKU rows, city groups of 5 (SOH, Open PO, DRR, Net, Urgency) ═══
-  Object.keys(byPlat).forEach(function(plat){
-    var rows=byPlat[plat]; var cityMap={};
-    rows.forEach(function(r){Object.keys(r._byCity).forEach(function(c){cityMap[c]=true;});});
-    var cities=Object.keys(cityMap); if(!cities.length)return;
-    var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,18)||'Sheet';
-    var groups=cities.concat(['All-India']); var perGroup=5; var nA=2+groups.length*perGroup;
-    var banner=new Array(nA).fill(''), sub=['SKU','Category'], mergesA=[{s:{r:0,c:0},e:{r:0,c:nA-1}}];
-    groups.forEach(function(g,gi){banner[2+gi*perGroup]=g; sub.push('SOH','Open PO','DRR','Net Reorder','Urgency'); mergesA.push({s:{r:1,c:2+gi*perGroup},e:{r:1,c:2+gi*perGroup+perGroup-1}});});
-    var aoaA=[['GAW \u00B7 '+plat+' \u00B7 Replenishment by SKU \u00D7 City \u00B7 '+mk].concat(new Array(nA-1).fill('')),banner,sub];
-    rows.forEach(function(r){
-      var line=[r.name,r.cat];
-      groups.forEach(function(g){
-        var v=(g==='All-India')?{soh:r.soh,po:r.openPo,drr:r.drr,net:r.net,urg:r.urg}:(r._byCity[g]||{});
-        line.push((v.soh==null?'':v.soh),(v.po==null?'':v.po),(v.drr==null?'':v.drr),(v.net==null?'':v.net),(v.urg==null?'':v.urg));
-      });
-      aoaA.push(line);
-    });
-    var wsA=X.utils.aoa_to_sheet(aoaA);
-    wsA['!cols']=[{wch:38},{wch:18}].concat(groups.reduce(function(a){return a.concat([{wch:8},{wch:9},{wch:8},{wch:11},{wch:11}]);},[]));
-    wsA['!merges']=mergesA;
-    wsA['!autofilter']={ref:X.utils.encode_range({s:{r:2,c:0},e:{r:2+rows.length,c:nA-1}})};
-    _cityTabFinish(X,wsA,styled,nA,[{r:1,banner:true},{r:2}],3,2+rows.length,
-      function(c){if(c<2)return null; var m=(c-2)%perGroup; return m===3?'net':null;},
-      function(c){if(c<2)return null; var m=(c-2)%perGroup; return (m<=1||m===3)?_CITY_INT:(m===2?'0.0':_CITY_INT);},
-      rag,NAVY,AMBER,bd,RAGF,RAGT,null);
-    X.utils.book_append_sheet(wb,wsA,safe+' x City');
-  });
-
-  // ═══ Combined City Detail: all platforms, flat, Platform column ═══
-  var flat=[];
-  rowsAll.forEach(function(r){ Object.keys(r._byCity).forEach(function(c){ var v=r._byCity[c]; flat.push({city:c,plat:r.plat,name:r.name,cat:r.cat,soh:v.soh,po:v.po,drr:v.drr,net:v.net,urg:v.urg}); }); });
-  if(flat.length){
-    flat.sort(function(a,b){return b.urg-a.urg;});
-    var headB=['City','Platform','SKU','Category','SOH','Open PO','DRR','Net Reorder','Urgency'];
-    var aoaB=[['GAW \u00B7 Replenishment \u00B7 City Detail (all platforms) \u00B7 '+mk].concat(new Array(headB.length-1).fill('')),headB];
-    flat.forEach(function(x){aoaB.push([x.city,x.plat,x.name,x.cat,x.soh,x.po,x.drr,x.net,x.urg]);});
-    var wsB=X.utils.aoa_to_sheet(aoaB);
-    wsB['!cols']=[{wch:16},{wch:11},{wch:38},{wch:18},{wch:9},{wch:10},{wch:9},{wch:12},{wch:12}];
-    wsB['!merges']=[{s:{r:0,c:0},e:{r:0,c:headB.length-1}}];
-    wsB['!autofilter']={ref:X.utils.encode_range({s:{r:1,c:0},e:{r:aoaB.length-1,c:headB.length-1}})};
-    var kindB={7:'net'}, fmtB={4:_CITY_INT,5:_CITY_INT,6:'0.0',7:_CITY_INT,8:_CITY_INT};
-    _cityTabFinish(X,wsB,styled,headB.length,[{r:1}],2,aoaB.length-1,function(c){return kindB[c]||null;},function(c){return fmtB[c]||null;},rag,NAVY,AMBER,bd,RAGF,RAGT,null);
-    X.utils.book_append_sheet(wb,wsB,'City Detail');
-
-    // ═══ Combined City Summary ═══
-    var byCityAgg={};
-    flat.forEach(function(x){ var a=byCityAgg[x.city]=byCityAgg[x.city]||{plats:{},n:0,soh:0,po:0,net:0,urg:0}; a.plats[x.plat]=true; a.n++; a.soh+=x.soh||0; a.po+=x.po||0; a.net+=x.net||0; a.urg+=x.urg||0; });
-    var sumRows=Object.keys(byCityAgg).map(function(c){var a=byCityAgg[c]; return {city:c,plats:Object.keys(a.plats).length,n:a.n,soh:a.soh,po:a.po,net:a.net,urg:Math.round(a.urg)};});
-    sumRows.sort(function(a,b){return b.urg-a.urg;});
-    var headC=['City','Platforms','SKUs Flagged','Total SOH','Total Open PO','Total Net Reorder','Total Urgency'];
-    var aoaC=[['GAW \u00B7 Replenishment \u00B7 City Summary (all platforms) \u00B7 '+mk].concat(new Array(headC.length-1).fill('')),headC];
-    sumRows.forEach(function(s){aoaC.push([s.city,s.plats,s.n,s.soh,s.po,s.net,s.urg]);});
-    var wsC=X.utils.aoa_to_sheet(aoaC);
-    wsC['!cols']=[{wch:18},{wch:11},{wch:13},{wch:11},{wch:13},{wch:16},{wch:14}];
-    wsC['!merges']=[{s:{r:0,c:0},e:{r:0,c:headC.length-1}}];
-    wsC['!autofilter']={ref:X.utils.encode_range({s:{r:1,c:0},e:{r:aoaC.length-1,c:headC.length-1}})};
-    var fmtC={3:_CITY_INT,4:_CITY_INT,5:_CITY_INT,6:_CITY_INT};
-    _cityTabFinish(X,wsC,styled,headC.length,[{r:1}],2,aoaC.length-1,function(){return null;},function(c){return fmtC[c]||null;},rag,NAVY,AMBER,bd,RAGF,RAGT,null);
-    X.utils.book_append_sheet(wb,wsC,'City Summary');
-  }
-}
-
-function _sohExportXlsx(){
-  var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
-  var styled=!!window.XLSXStyle;
-  var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
-  // Single-platform export: this button lives inside the SOH Explorer's per-platform
-  // view (availSohSkuView), so _availSohPlat is always the platform on screen — export
-  // that one instead of stacking all six into one workbook.
-  var plat=_availSohPlat;
-  if(!plat){alert('Open a platform\u2019s SOH Explorer first, then download.');return;}
-  var pd=(window._availMTD||{})[plat]||{skus:{}};
-  if(!pd.skus||!Object.keys(pd.skus).length){alert('No SOH data loaded for '+plat+'.');return;}
-  var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
-  var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var wb=X.utils.book_new();
-
-  var head=['SKU','Category','SOH (units)','Days to Stockout','Open PO (units)','FR% ('+(_availWindow==='mtd'?'MTD':'10d')+')','Reorder '+_sohCoverDays(plat)+'d (units)','DRR (u/day)','Cities'];
-  var list=Object.keys(pd.skus).map(function(sku){
-    var info=skuLookup(plat,sku), k=pd.skus[sku], best=_sohBestDTS(plat,k), _opo=_sohOpenPO(plat,info.name,null), reorder=_sohReorderQty(k,plat,_opo);
-    var sohCities=k.soh_by_city||{}; var nCities=Object.keys(sohCities).filter(function(c){return (sohCities[c]||0)>0;}).length;
-    var _f=(typeof _frForSku==='function')?_frForSku(plat,info.name,_availWindow==='mtd'):null; var _frv=_f?(_f.level==='sku'?Math.round(_f.fr)+'%':Math.round(_f.fr)+'% (plat)'):'';
-    return {sku:sku,info:info,k:k,name:info.name,cat:info.cat||'',soh:Math.round(k.soh||0),dts:best.days,drr:Math.round(k.drr||0),reorder:reorder,openpo:_opo,fr:_frv,nCities:nCities};
-  }).filter(function(r){return r.soh>0||r.drr>0;}).sort(function(a,b){return (a.dts==null?99999:a.dts)-(b.dts==null?99999:b.dts);});
-
-  // ---- Sheet 1: SKU-level (this platform only) ----
-  var aoa=[['GAW \u00B7 '+plat+' \u00B7 SOH Explorer \u00B7 '+mk,'','','','','','','',''],head];
-  list.forEach(function(r){ aoa.push([r.name,r.cat,r.soh,(r.dts==null?'':Math.round(r.dts)),(r.openpo==null?'':r.openpo),r.fr,(r.reorder==null?'':r.reorder),r.drr,r.nCities]); });
-  var ws=X.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:38},{wch:18},{wch:12},{wch:16},{wch:15},{wch:12},{wch:17},{wch:12},{wch:8}];
-  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:8}}];
-  if(styled){
-    var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
-    for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
-    var _num=function(v){ if(v==null||v==='')return null; var n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?null:n; };
-    var _rag=function(kind,v){ if(v==null)return null;
-      if(kind==='osa')return v>=90?'g':(v>=75?'a':'r');
-      if(kind==='fr') return v>=95?'g':(v>=85?'a':'r');
-      if(kind==='ds') return v>=90?'g':(v>=80?'a':'r');
-      if(kind==='doi')return v>=14?'g':(v>=7?'a':'r'); return null; };
-    // This block was copy-pasted from the OSA export and never adapted: it looped
-    // over `rows` (which does not exist here — the array is `list`) and read OSA
-    // fields (osaMtd/osaToday/ds) that a SOH row has never had. It threw
-    // "ReferenceError: rows is not defined" on every run where XLSXStyle was
-    // loaded — i.e. every real browser — so the SOH export produced no file at all.
-    // Columns here are: 0 SKU · 1 Category · 2 SOH · 3 DaysToStockout · 4 OpenPO
-    //                   5 FR% · 6 Reorder · 7 DRR · 8 Cities
-    // Only Days-to-Stockout and FR% carry a RAG meaning; the rest are plain counts.
-    var _RAGF={g:'E8F5EE',a:'FBF0DD',r:'F9E4E0'}, _RAGT={g:'1A7A3A',a:'B0700A',r:'C0392B'}, _colKind={3:'doi',5:'fr'};
-    for(var r2=0;r2<list.length;r2++){var R=list[r2];
-      var vmap={3:_num(R.dts),5:_num(R.fr)};
-      for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue;
-        var band=_colKind[c2]?_rag(_colKind[c2],vmap[c2]):null;
-        if(band){cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:_RAGT[band]}},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:_RAGF[band]}}};}
-        else{cell.s={font:{name:'Calibri',sz:10,color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}
-      }}
-  }
-  var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,28)||'Sheet';
-  X.utils.book_append_sheet(wb,ws,safe);
-
-  try{ _sohCityTabs(X,wb,plat,list,styled,mk); }catch(e){ console.warn('[SOH export] city tabs failed for '+plat,e); }
-
-  X.writeFile(wb,'GAW_SOH_Explorer_'+plat+'_'+(mk||'export')+'.xlsx');
-}
-
-// ══════════════════════════════════════════════
-// OPEN PO BREAKDOWN EXPORT — item-wise, single sheet, all platforms
-// stacked, raw (unrolled) city/facility columns. One row per Platform×SKU
-// that carries open PO qty > 0 in at least one city. Amazon is national in
-// the tracker join (see _sohOpenPO) but its raw city keys, whatever they
-// are, still pass through here — no synthetic rollup.
-// ══════════════════════════════════════════════
-// Category/MRP for a canonical SKU name: prefer the row's own platform's master
-// entry (exact name match); fall back to any platform that has a real (non-Unknown,
-// non-zero) value. SEED/DB carry per-platform mrp/cat that occasionally disagree
-// (e.g. a placeholder 0) — this picks the best available rather than the first.
-function _skuInfoByName(plat,name){
-  var all=(typeof DB!=='undefined'&&DB.sku_master)?DB.sku_master:(typeof SEED!=='undefined'?SEED.sku_master:{});
-  var own=all&&all[plat];
-  if(own){
-    var hit=Object.values(own).find(function(i){return i&&i.name===name;});
-    if(hit&&hit.cat&&hit.cat!=='Unknown'&&hit.mrp)return {cat:hit.cat,mrp:hit.mrp};
-  }
-  var best=null;
-  Object.keys(all||{}).forEach(function(p){
-    Object.values(all[p]||{}).forEach(function(i){
-      if(!i||i.name!==name)return;
-      if(!best)best={cat:i.cat||'',mrp:i.mrp||0};
-      if(i.cat&&i.cat!=='Unknown'&&i.mrp)best={cat:i.cat,mrp:i.mrp};
-    });
-  });
-  return best||{cat:'',mrp:0};
-}
-function _sohOpenPOBreakdownXlsx(){
-  var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
-  var styled=!!window.XLSXStyle;
-  try{ if(typeof cmBuildOpenPO==='function' && (typeof _cmOpenPO==='undefined'||!_cmOpenPO) && typeof _cmTracker!=='undefined' && _cmTracker && typeof _cmSN!=='undefined' && _cmSN){ cmBuildOpenPO(); } }catch(e){}
-  var liveAll=(typeof _cmOpenPO!=='undefined'&&_cmOpenPO&&_cmOpenPO.po)?_cmOpenPO.po:null;
-  var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
-  var vm=(typeof getViewingMonth==='function')?getViewingMonth():null;
-  var syncedAll=(typeof DB!=='undefined'&&DB.open_po&&DB.open_po.po&&(!vm||DB.open_po.month===vm))?DB.open_po.po:null;
-  var all=liveAll||syncedAll;
-  if(!all||!Object.keys(all).length){alert('No Open PO data loaded — sync Q Comm Tracker + SN report first.');return;}
-
-  // Collect rows keyed by Platform|SKU, and the full set of raw city columns.
-  var rowMap={}, citySet=new Set();
-  Object.keys(all).forEach(function(plat){
-    var byCity=all[plat]||{};
-    Object.keys(byCity).forEach(function(city){
-      var bySku=byCity[city]||{};
-      Object.keys(bySku).forEach(function(canon){
-        var q=bySku[canon]||0; if(q<=0)return;
-        if(CM_DISCONTINUED.has(cmKey(canon)))return; // residual-only SKUs excluded from open-PO views
-        citySet.add(city);
-        var key=plat+'\u0001'+canon;
-        if(!rowMap[key])rowMap[key]={plat:plat,sku:canon,cities:{},total:0};
-        rowMap[key].cities[city]=(rowMap[key].cities[city]||0)+q;
-        rowMap[key].total+=q;
-      });
-    });
-  });
-  var rows=Object.values(rowMap).filter(function(r){return r.total>0;});
-  if(!rows.length){alert('No open PO quantity > 0 found across any platform/city.');return;}
-  rows.forEach(function(r){ var info=_skuInfoByName(r.plat,r.sku); r.cat=info.cat; r.mrp=info.mrp; r.poValue=Math.round((info.mrp||0)*r.total); });
-  rows.sort(function(a,b){ return a.plat<b.plat?-1:(a.plat>b.plat?1:b.total-a.total); });
-  var cities=[...citySet].sort();
-
-  var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
-  var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var head=['Platform','SKU','Category','MRP'].concat(cities,['Total Open PO','PO Value (MRP \u00D7 Qty)']);
-  var totalIdx=head.length-2, valueIdx=head.length-1;
-  var aoa=[['GAW \u00B7 Open PO by Item \u00B7 Aggregator & City Breakdown \u00B7 '+mk].concat(new Array(head.length-1).fill('')),head];
-  rows.forEach(function(r){
-    var line=[r.plat,r.sku,r.cat||'',r.mrp||''];
-    cities.forEach(function(c){ var v=r.cities[c]; line.push(v?v:''); });
-    line.push(r.total,r.poValue);
-    aoa.push(line);
-  });
-  var ws=X.utils.aoa_to_sheet(aoa);
-  var cols=[{wch:12},{wch:34},{wch:18},{wch:9}]; cities.forEach(function(){cols.push({wch:12});}); cols.push({wch:13},{wch:16});
-  ws['!cols']=cols;
-  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:head.length-1}}];
-  if(styled){
-    var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
-    for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
-    for(var r2=0;r2<rows.length;r2++){
-      for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue;
-        cell.s={font:{name:'Calibri',sz:10,bold:(c2===totalIdx||c2===valueIdx),color:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};
-      }
-    }
-  }
-  var wb=X.utils.book_new();
-  X.utils.book_append_sheet(wb,ws,'Open PO');
-  X.writeFile(wb,'GAW_OpenPO_Breakdown_'+(mk||'export')+'.xlsx');
-}
-
 // OSA (Platforms view) SKU table export — mirrors _sohExportXlsx. Current platform; window-aware DS.
 // ══════════════════════════════════════════════
 // OSA EXPORT — city granularity tabs (per platform): SKU x City matrix (OSA + DS Listing pair per city),
@@ -8562,7 +8172,7 @@ function _osaCityTabs(X,wb,plat,styled,mk){
   var dsc=((typeof DB!=='undefined'&&DB.dark_store_counts)||{})[plat]||{};
   var selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity;
   var frMtd=(_availWindow==='mtd');
-  var rd1=function(v){return (v==null||isNaN(v))?'':Math.round(v*10)/10;};
+  var rd1=function(v){return (v==null||isNaN(v))?'':Math.round(Math.round(v*1e9)/1e8)/10;};
   var rag=function(kind,v){
     if(v==null||v==='')return null;
     if(kind==='osa')return v>=90?'g':(v>=75?'a':'r');
@@ -8577,6 +8187,7 @@ function _osaCityTabs(X,wb,plat,styled,mk){
   var rows=[], cityMap={};
   Object.keys(pd.skus).forEach(function(sku){
     var k=pd.skus[sku], info=skuLookup(plat,sku), bc=k.by_city||{}, has=false;
+    if(_sohIsDisc(info.name,plat))return;                   // discontinued -> not in the export
     Object.keys(bc).forEach(function(c){var v=bc[c]; if(v&&(v.wt_osa_ls!=null||v.ds_listing!=null)){cityMap[c]=true;has=true;}});
     if(!(has||k.wt_osa_ls!=null))return;
     var poNone=(typeof _sohOpenPO==='function')?(_sohOpenPO(plat,info.name,null)===null):true;
@@ -8660,7 +8271,7 @@ function _osaCityTabs(X,wb,plat,styled,mk){
   X.utils.book_append_sheet(wb,wsA,safe+' x City');
 
   // ═══ Sheet B: City Detail (flat, filterable) ═══
-  var headB=['City','SKU','Category','OSA MTD','OSA Today','DS Listing','Listed Stores','Total Stores','FR% ('+(frMtd?'MTD':'10d')+')','SOH','Open PO','Gap (OSA<75 / DS<80)'];
+  var headB=['City','SKU','Category','OSA MTD','OSA Today','DS Listing (MTD)','Listed Stores','Total Stores','FR% ('+(frMtd?'MTD':'10d')+')','SOH','Open PO','Gap (OSA<75 / DS<80)'];
   var aoaB=[['GAW \u00B7 '+plat+' \u00B7 City Detail \u00B7 '+mk].concat(new Array(headB.length-1).fill('')),headB];
   var sumRows=[];
   cities.forEach(function(c){
@@ -8761,8 +8372,12 @@ function _osaFwavg(v,g,s){
 // ---- RAG rules (one definition drives both the static fill and the Excel conditional format) ----
 // returns 'r' | 'a' | 'g' | null for a stored numeric value
 function _osaBandKind(kind){
-  return function(v){ if(typeof v!=='number'||isNaN(v))return null;
+  return function(v){
+    if(kind==='gap'){ return (v==='Out'||v==='Critical')?'r':(v==='Watch'?'a':(v==='OK'?'g':null)); }   // SOH status text
+    if(typeof v!=='number'||isNaN(v))return null;
     switch(kind){
+      case 'dts': return v<3?'r':(v<7?'a':'g');          // SOH Explorer days-to-stockout: <3 red, <7 amber (same as the on-screen tint)
+      case 'net': return v>0?'r':'g';                    // reorder qty: any shortfall is red, covered is green
       case 'osa': return v<74.95?'r':(v<89.95?'a':'g');
       case 'ds':  return v<79.95?'r':(v<89.95?'a':'g');
       case 'fr':  return v<85?'r':(v<95?'a':'g');
@@ -8782,6 +8397,9 @@ function _osaCfExpr(kind,c){ // c = top-left cell of the range (relative referen
     case 'wow': return {r:A(c+'<=-0.5'),a:A(c+'>-0.5',c+'<0.5'),g:A(c+'>=0.5')};
     case 'cnt': return {r:A(c+'>=2'),a:A(c+'=1'),g:A(c+'=0')};
     case 'pct': return {r:A(c+'>25'),a:A(c+'>10',c+'<=25'),g:A(c+'<=10')};
+    case 'dts': return {r:A(c+'<3'),a:A(c+'>=3',c+'<7'),g:A(c+'>=7')};
+    case 'net': return {r:A(c+'>0'),a:'FALSE',g:A(c+'<=0')};
+    case 'gap': return {r:'OR('+c+'="Out",'+c+'="Critical")',a:c+'="Watch"',g:c+'="OK"'};
   } return {};
 }
 function _osaCfAdd(ws,X,c0,r0,c1,r1,kind){ // 0-based, inclusive; registers a live conditional-format block on the sheet
@@ -8804,6 +8422,7 @@ function _osaXSheet(X,styled,spec){
   ws['!cols']=spec.cols.map(function(c){ var o={wch:c.w||12}; if(c.helper){o.hidden=true;o.level=1;} return o; });
   ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:n-1}},{s:{r:1,c:0},e:{r:1,c:n-1}}];
   ws['!rows']=[{hpt:24},{hpt:18},{hpt:32}];
+  ws['!fz']=spec.freeze||{x:1,y:3};   // frozen header rows + first column(s); injected into the sheet XML by _osaSave
   var nD=0; spec.rows.forEach(function(r){if(r.t==='d')nD++;});
   if(nD) ws['!autofilter']={ref:X.utils.encode_range({s:{r:2,c:0},e:{r:2+nD,c:n-1}})};
   var lastR=2+spec.rows.length;
@@ -8813,7 +8432,7 @@ function _osaXSheet(X,styled,spec){
       if(!cell){ if(r<2&&c>0)continue; cell=ws[addr]={t:'s',v:''}; }
       if(r>=3){
         var row=spec.rows[r-3], col=spec.cols[c], fm=(row.fmt&&row.fmt[c])||col.fmt;
-        if(fm&&typeof cell.v==='number')cell.z=fm;
+        if(fm&&(typeof cell.v==='number'||cell.f))cell.z=fm;
       }
       if(!styled)continue;
       if(r===0){ cell.s={font:{name:'Calibri',sz:14,bold:true,color:{rgb:K.NAVY}},alignment:{horizontal:'center',vertical:'center'}}; }
@@ -8822,7 +8441,7 @@ function _osaXSheet(X,styled,spec){
         cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:cd.key?K.YEL:'FFFFFF'}},fill:{fgColor:{rgb:cd.helper?K.HELP:K.NAVY}},alignment:ctr,border:bd}; }
       else{
         var rw=spec.rows[r-3], cl=spec.cols[c];
-        var band=(cl.rag&&rw.t!=='s')?_osaBandKind(cl.rag)(typeof cell.v==='number'?cell.v:null):null;
+        var band=(cl.rag&&rw.t!=='s')?_osaBandKind(cl.rag)(cl.rag==='gap'?(typeof cell.v==='string'?cell.v:null):(typeof cell.v==='number'?cell.v:null)):null;
         if(band) cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:K.T[band]}},fill:{fgColor:{rgb:K.F[band]}},alignment:ctr,border:bd};
         else if(rw.t==='t') cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:K.NAVY}},fill:{fgColor:{rgb:K.TOT}},alignment:ctr,border:bd};
         else if(rw.t==='s') cell.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:K.NAVY}},fill:{fgColor:{rgb:K.SUB}},alignment:ctr,border:bd};
@@ -8847,28 +8466,722 @@ function _osaCfXml(blocks){
       return ex[k]?('<cfRule type="expression" dxfId="'+dx[k]+'" priority="'+(pr++)+'"><formula>'+esc(ex[k])+'</formula></cfRule>'):''; }).join('')+'</conditionalFormatting>'; }).join('');
 }
 function _osaSave(X,wb,fname){
-  var has=wb.SheetNames.some(function(n){var c=wb.Sheets[n]['!cf'];return c&&c.length;});
+  var hasCf=wb.SheetNames.some(function(n){var c=wb.Sheets[n]['!cf'];return c&&c.length;});
+  var hasFz=wb.SheetNames.some(function(n){return !!wb.Sheets[n]['!fz'];});
   var C=X.CFB;
-  if(!has||!C||!C.read||!C.write||!C.find||!X.write||typeof Blob==='undefined'||typeof TextDecoder==='undefined'){ X.writeFile(wb,fname); return; }
+  if(!(hasCf||hasFz)||!C||!C.read||!C.write||!C.find||!X.write||typeof Blob==='undefined'||typeof TextDecoder==='undefined'){ X.writeFile(wb,fname); return; }
   try{
     var cfb=C.read(new Uint8Array(X.write(wb,{bookType:'xlsx',type:'array'})),{type:'array'});
     var dec=new TextDecoder('utf-8'), enc=new TextEncoder();
     var put=function(entry,str){ var u=enc.encode(str); entry.content=u; entry.size=u.length; };
-    var st=C.find(cfb,'/xl/styles.xml'); var sx=dec.decode(st.content);
-    var dxf=function(font,fill){return '<dxf><font><b/><color rgb="FF'+font+'"/></font><fill><patternFill patternType="solid"><fgColor rgb="FF'+fill+'"/><bgColor rgb="FF'+fill+'"/></patternFill></fill></dxf>';};
-    var dxfs='<dxfs count="3">'+dxf(_OSAX.T.r,_OSAX.F.r)+dxf(_OSAX.T.a,_OSAX.F.a)+dxf(_OSAX.T.g,_OSAX.F.g)+'</dxfs>';
-    if(!/<dxfs count="0"\s*\/>/.test(sx))throw new Error('unexpected styles.xml');
-    put(st,sx.replace(/<dxfs count="0"\s*\/>/,dxfs));
-    wb.SheetNames.forEach(function(n,i){ var blocks=wb.Sheets[n]['!cf']; if(!blocks||!blocks.length)return;
+    if(hasCf){
+      var st=C.find(cfb,'/xl/styles.xml'); var sx=dec.decode(st.content);
+      var dxf=function(font,fill){return '<dxf><font><b/><color rgb="FF'+font+'"/></font><fill><patternFill patternType="solid"><fgColor rgb="FF'+fill+'"/><bgColor rgb="FF'+fill+'"/></patternFill></fill></dxf>';};
+      var dxfs='<dxfs count="3">'+dxf(_OSAX.T.r,_OSAX.F.r)+dxf(_OSAX.T.a,_OSAX.F.a)+dxf(_OSAX.T.g,_OSAX.F.g)+'</dxfs>';
+      if(!/<dxfs count="0"\s*\/>/.test(sx))throw new Error('unexpected styles.xml');
+      put(st,sx.replace(/<dxfs count="0"\s*\/>/,dxfs));
+    }
+    wb.SheetNames.forEach(function(n,i){
+      var blocks=wb.Sheets[n]['!cf'], fz=wb.Sheets[n]['!fz'];
       var e=C.find(cfb,'/xl/worksheets/sheet'+(i+1)+'.xml'); var xml=dec.decode(e.content);
-      var m=/<(dataValidations|hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|tableParts|extLst)[\s>\/]|<\/worksheet>/.exec(xml);
-      if(!m)throw new Error('no insertion point');
-      put(e,xml.slice(0,m.index)+_osaCfXml(blocks)+xml.slice(m.index)); });
+      // grouped helper columns: SheetJS writes a non-schema level="n" next to the valid outlineLevel="n" -> drop it (Excel can flag unknown attributes)
+      xml=xml.replace(/(<col [^>]*?) level="\d+"/g,'$1');
+      // frozen header rows + first column(s)
+      if(fz&&(fz.x||fz.y)){
+        var tl=X.utils.encode_cell({r:fz.y||0,c:fz.x||0}), pane='<pane'+(fz.x?' xSplit="'+fz.x+'"':'')+(fz.y?' ySplit="'+fz.y+'"':'')+' topLeftCell="'+tl+'" activePane="'+(fz.x&&fz.y?'bottomRight':(fz.y?'bottomLeft':'topRight'))+'" state="frozen"/>';
+        xml=xml.replace(/<sheetView workbookViewId="0"\s*\/>/,'<sheetView workbookViewId="0">'+pane+'</sheetView>');
+      }
+      if(blocks&&blocks.length){
+        var m=/<(dataValidations|hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|tableParts|extLst)[\s>\/]|<\/worksheet>/.exec(xml);
+        if(!m)throw new Error('no insertion point');
+        xml=xml.slice(0,m.index)+_osaCfXml(blocks)+xml.slice(m.index);
+      }
+      put(e,xml); });
     var out=C.write(cfb,{type:'array',fileType:'zip'});
     var blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     var url=URL.createObjectURL(blob), a=document.createElement('a'); a.href=url; a.download=fname; document.body.appendChild(a); a.click();
     setTimeout(function(){ try{document.body.removeChild(a);URL.revokeObjectURL(url);}catch(_e){} },1500);
-  }catch(err){ console.warn('[OSA export] live RAG rules unavailable, saving static colours instead',err); X.writeFile(wb,fname); }
+  }catch(err){ console.warn('[export] live RAG rules / frozen panes unavailable, saving plain workbook instead',err); X.writeFile(wb,fname); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SOH EXPLORER · OPEN PO · REPLENISHMENT — rebuilt on the shared style kit (_osaXSheet / _osaSave)
+// Same layout contract as the OSA workbooks: merged two-row title · navy header (key columns in yellow font) ·
+// every cell centered · light blue-grey subtotal rows · yellow TOTAL row · RAG as static fill AND live conditional format ·
+// frozen header · values are real numbers with Excel number formats (never text like "36.1%").
+// LIVE FORMULAS: derived columns (Days to Stockout, Status, Reorder, Target, Urgency, PO Value, Rank) are in-row
+// formulas over the row's own inputs; TOTAL / subtotal rows are SUBTOTAL / SUMPRODUCT over the rows still in the sheet;
+// summary tabs are SUMIFS / COUNTIFS over their detail tab. Delete or filter a row and every aggregate follows.
+// Grey grouped columns at the right edge hold calculation inputs (cover days, row-shown flag) — keep them.
+// Blank = no data (never imputed as 0). Excel twins of the engine maths live in _XF (formula text + JS value side by side).
+// ══════════════════════════════════════════════════════════════════════════
+var _SX={
+  INT:'#,##0', DEC1:'#,##0.0', PCT0:'0', INR:'"₹"#,##0',
+  DTS:'[=0]"OUT";[>=90]"90+";0.0',            // days to stockout: 0 -> OUT, capped 90 -> 90+ (same wording as the screen)
+  D3:'0',
+  DAYS_CRIT:3, DAYS_WATCH:7, MINV:0.05         // RAG breakpoints and the "no velocity" floor — identical to the screen engine
+};
+function _sxR8(v){ return (v==null||isNaN(v))?null:Math.round(v*1e8)/1e8; }     // DRR stored to 8 dp: reorder maths then ties to the engine to the unit
+function _sxR1(v){ return (v==null||isNaN(v))?null:Math.round(v*10)/10; }
+function _sxCol(X,c){ return X.utils.encode_col(c); }
+function _sxPad(a,n){ while(a.length<n)a.push(null); return a; }
+// Excel formula text + the JS value it must equal. d = DRR, s = SOH, p = open PO, cv = cover days
+var _XF={
+  dts:function(s,d){ return 'IF('+d+'<='+_SX.MINV+',"",IF('+s+'<=0,0,ROUND(MIN(90,'+s+'/'+d+'),1)))'; },
+  dtsJS:function(s,d){ if(!(d>_SX.MINV))return ''; if(!(s>0))return 0; return _sxR1(Math.min(90,s/d)); },
+  status:function(e){ return 'IF('+e+'="","No velocity",IF('+e+'<=0,"Out",IF('+e+'<'+_SX.DAYS_CRIT+',"Critical",IF('+e+'<'+_SX.DAYS_WATCH+',"Watch","OK"))))'; },
+  statusJS:function(e){ if(e===''||e==null)return 'No velocity'; return e<=0?'Out':(e<_SX.DAYS_CRIT?'Critical':(e<_SX.DAYS_WATCH?'Watch':'OK')); },
+  net:function(s,p,d,cv){ return 'IF('+d+'<='+_SX.MINV+',"",MAX(0,ROUNDUP(ROUND('+d+'*'+cv+'-N('+s+')-N('+p+'),6),0)))'; },
+  netJS:function(s,p,d,cv){ if(!(d>_SX.MINV))return ''; var inb=(typeof p==='number'&&p>0)?p:0; return Math.max(0,Math.ceil(Math.round((d*cv-(s||0)-inb)*1e6)/1e6)); },
+  tgt:function(d,cv){ return 'IF('+d+'<='+_SX.MINV+',"",ROUNDUP(ROUND('+d+'*'+cv+',6),0))'; },
+  tgtJS:function(d,cv){ if(!(d>_SX.MINV))return ''; return Math.ceil(Math.round(d*cv*1e6)/1e6); }
+};
+
+// ── shared SKU list: ONE pipeline for the on-screen SOH table and the Excel download ──
+// Discontinued: global list (CM_DISCONTINUED: Very Berry, Biscrunch, Red Velvet ...) + platform-specific delistings (same SKU still live elsewhere).
+// SOH / Open PO / Replenishment (screen + Excel) exclude them entirely - no stock, PO or reorder shown.
+var _SOH_DISC_PLAT={Instamart:['blueberrycassata','mangoicecreamtub500ml'],Flipkart:['raspberryduetstick']};
+function _sohIsDisc(name,plat){ try{ var k=cmKey(name); if(CM_DISCONTINUED.has(k))return true; return !!(plat&&_SOH_DISC_PLAT[plat]&&_SOH_DISC_PLAT[plat].indexOf(k)>=0); }catch(e){ return false; } }
+function _sohFiltersActive(){
+  var s=((document.getElementById('availSohSearch')||{}).value||'').trim(); if(s)return true;
+  var st=(typeof _filtState==='function')?_filtState('soh'):null; if(!st)return false;
+  return Object.keys(st).some(function(k){ return k==='skus'?!!(st.skus&&st.skus.size):!!st[k]; });
+}
+function _sohSortList(list,sortBy){
+  list.sort(function(a,b){
+    if(sortBy==='dts_asc')return (a.dts==null?99999:a.dts)-(b.dts==null?99999:b.dts);
+    if(sortBy==='soh_desc')return b.soh-a.soh;
+    if(sortBy==='soh_asc')return a.soh-b.soh;
+    if(sortBy==='doi_asc')return (a.dts==null?99999:a.dts)-(b.dts==null?99999:b.dts);
+    if(sortBy==='reorder_desc')return (b.reorder==null?-1:b.reorder)-(a.reorder==null?-1:a.reorder);
+    if(sortBy==='name')return a.name.localeCompare(b.name);
+    return 0;
+  });
+  return list;
+}
+// Discontinued SKUs (global + platform-specific, see _sohIsDisc) are excluded entirely.
+function _sohScopedList(plat){
+  var pd=(window._availMTD||{})[plat]||{skus:{}};
+  var search=((document.getElementById('availSohSearch')||{}).value||'').toLowerCase().trim();
+  var sortBy=(document.getElementById('availSohSort')||{}).value||'dts_asc';
+  var list=Object.keys(pd.skus).map(function(sku){
+    var info=skuLookup(plat,sku), k=pd.skus[sku], best=_sohBestDTS(plat,k), opo=_sohOpenPO(plat,info.name,null), reorder=_sohReorderQty(k,plat,opo);
+    var sohCities=k.soh_by_city||{}; var nCities=Object.keys(sohCities).filter(function(c){return (sohCities[c]||0)>0;}).length;
+    return {sku:sku,name:info.name,cat:info.cat,mrp:info.mrp||0,soh:k.soh||0,dts:best.days,dts_flag:best.flag,drr:k.drr||0,reorder:reorder,nCities:nCities,openpo:opo,k:k};
+  }).filter(function(r){ return !_sohIsDisc(r.name,plat)&&(r.soh>0||r.drr>0); });
+  if(search)list=list.filter(function(r){return (r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search);});
+  list=_applyAvailFilters(list,plat,'soh');
+  return _sohSortList(list,sortBy);
+}
+// Stock that sits in the SOH snapshot under a code with NO availability (OSA) row never reaches _availMTD, so the SOH Explorer
+// (screen and Excel) silently under-counts it. Excel only: fold it into the same-named row (second FSN / code of one SKU) or
+// add it as its own row flagged "Stock not in OSA feed". Never invents velocity: DRR comes from that code's own sales, else 0.
+function _sohOrphans(plat){
+  var mk=getViewingMonth(), recs=((((DB.soh||{})[mk]||{})[plat])||{}).data||{};
+  var pd=(window._availMTD||{})[plat]||{skus:{}};
+  var sales=(DB.april[plat]&&DB.april[plat].sku)||[];
+  var latest=(SELECTED_DAY!==null?SELECTED_DAY:latestDay())||getMonthDays();
+  var dset={}; sales.forEach(function(r){ if(r.day>=1&&r.day<=latest)dset[r.day]=1; });
+  var nd=Object.keys(dset).length||1, out=[];
+  Object.keys(recs).forEach(function(code){
+    if(pd.skus[code])return;
+    var sr=recs[code]||{}, tot=sr.total||0, info=skuLookup(plat,code);
+    if(_sohIsDisc(info.name,plat))return;                    // discontinued -> not added
+    var opo=_sohOpenPO(plat,info.name,null);
+    if(!(tot>0))return;                                       // no stock -> nothing to add
+    var units=0, cs=String(code).trim(); sales.forEach(function(r){ if(String(r.sku_code).trim()===cs&&r.day>=1&&r.day<=latest)units+=r.units; });
+    var drr=units/nd, doi=null, flag=null;
+    if(plat==='Instamart'&&sr.native_doh!=null){ doi=sr.native_doh; }
+    else if(drr>_SX.MINV){ doi=tot/drr; } else { flag='no_velocity'; }
+    if(doi!=null&&doi>90){ doi=90; flag='capped'; }
+    var rec2={soh:tot,by_facility:sr.by_facility,soh_by_city:sr.by_city};
+    var k={soh:tot,drr:drr,mtd_units:units,doi:doi,doi_flag:flag,soh_by_city:_metroRollupSoh(plat,rec2),soh_by_city_raw:sr.by_city||{},by_facility:sr.by_facility||{},by_city:{},daily_city:{},wt_osa_ls:null};
+    var best=_sohBestDTS(plat,k);
+    out.push({sku:code,name:info.name,cat:info.cat,mrp:info.mrp||0,soh:tot,dts:best.days,dts_flag:best.flag,drr:drr,reorder:_sohReorderQty(k,plat,opo),
+      nCities:Object.keys(k.soh_by_city).filter(function(c){return (k.soh_by_city[c]||0)>0;}).length,openpo:opo,k:k,sohM:k.soh_by_city});
+  });
+  return out;
+}
+function _sohAppendOrphans(plat,list){
+  var info={merged:[],added:[],units:0}, orph=_sohOrphans(plat); if(!orph.length)return info;
+  var byName={}; list.forEach(function(r){ byName[cmKey(r.name)]=r; });
+  orph.forEach(function(o){
+    var hit=byName[cmKey(o.name)];
+    if(hit){                                                    // same SKU under a 2nd code: add its stock to the existing row
+      var m=Object.assign({},hit.sohM||_metroRollupSoh(plat,hit.k));
+      Object.keys(o.sohM).forEach(function(c){ m[c]=(m[c]||0)+o.sohM[c]; });
+      hit.sohM=m; hit.soh+=o.soh; hit.nCities=Object.keys(m).filter(function(c){return (m[c]||0)>0;}).length;
+      if(!(plat==='Instamart'&&hit.k.doi!=null)){ var b=_sohBestDTS(plat,{soh:hit.soh,drr:hit.drr,doi:null}); hit.dts=b.days; hit.dts_flag=b.flag; }
+      hit.reorder=_sohReorderQty({soh:hit.soh,drr:hit.drr},plat,hit.openpo);
+      hit.note='Incl. '+o.soh.toLocaleString('en-IN')+' units under a 2nd code (not in OSA feed)';
+      info.merged.push(o.name); info.units+=o.soh;
+    }else{ o.note='Stock not in OSA feed'; list.push(o); byName[cmKey(o.name)]=o; info.added.push(o.name); info.units+=o.soh; }
+  });
+  return info;
+}
+
+// ══════════════════════════════════════════════
+// SOH EXPLORER workbook — current platform. Tabs: <P> SOH · <P> x City · <P> City Detail · <P> City Summary
+// ══════════════════════════════════════════════
+function _sohExportXlsx(){
+  var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
+  var styled=!!window.XLSXStyle, K=_OSAX;
+  var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
+  var plat=_availSohPlat;                        // this button lives inside the SOH Explorer's per-platform view
+  if(!plat){alert('Open a platform’s SOH Explorer first, then download.');return;}
+  var pd=(window._availMTD||{})[plat]||{skus:{}};
+  if(!pd.skus||!Object.keys(pd.skus).length){alert('No SOH data loaded for '+plat+'.');return;}
+  var cover=_sohCoverDays(plat), frMtd=(_availWindow==='mtd'), frLbl=frMtd?'MTD':'10d';
+  var list=_sohScopedList(plat), filtered=_sohFiltersActive(), orph={merged:[],added:[],units:0};
+  if(!filtered)orph=_sohAppendOrphans(plat,list);
+  if(!list.length){alert('No SKUs match the search / filters on screen. Clear them to download the full platform.');return;}
+  if(!filtered)_sohSortList(list,(document.getElementById('availSohSort')||{}).value||'dts_asc');
+  var safe=plat.replace(/[^A-Za-z0-9]/g,'').slice(0,18)||'Sheet';
+  var wb=X.utils.book_new();
+
+  // ---- row model (stored inputs only; every derived column is rebuilt from these in Excel) ----
+  var rows=list.map(function(r){
+    var k=r.k, soh=Math.round(r.soh), drr=_sxR8(r.drr);
+    var native=(plat==='Instamart'&&k.doi!=null&&!(r.note&&r.note.indexOf('2nd code')>=0));   // Instamart's own DaysOnHand — not derivable from SOH ÷ DRR
+    var dts=native?((r.dts==null)?'':_sxR1(r.dts)):_XF.dtsJS(soh,drr);
+    var f=(typeof _frForSku==='function')?_frForSku(plat,r.name,frMtd):null;
+    var po=(r.openpo==null)?'':r.openpo;
+    var note=r.note||'';
+    return {r:r,name:r.name,cat:(typeof normCat==='function'?normCat(r.cat):r.cat)||'',soh:soh,drr:drr,native:native,dts:dts,po:po,
+      fr:f?Math.round(f.fr):'',frPlat:!!(f&&f.level!=='sku'),
+      reorder:_XF.netJS(soh,po,drr,cover),nCities:r.nCities,note:note};
+  });
+
+  // ═══ Sheet 1: SKU table ═══
+  var F=4, N=rows.length, Lr=3+N;
+  var cols=[
+    {h:'SKU',w:40},{h:'Category',w:18},
+    {h:'SOH (units)',w:12,fmt:_SX.INT},
+    {h:'DRR (u/day)',w:12,fmt:_SX.DEC1},
+    {h:'Days to Stockout',w:14,fmt:_SX.DTS,rag:'dts',key:true},
+    {h:'Status',w:13,rag:'gap'},
+    {h:'Open PO (units)',w:14,fmt:_SX.INT},
+    {h:'FR% ('+frLbl+')',w:11,fmt:_SX.PCT0,rag:'fr'},
+    {h:'Reorder '+cover+'d (units, India net)',w:17,fmt:_SX.INT,rag:'net',key:true},
+    {h:'Cities',w:8,fmt:'0'},
+    {h:'Note',w:30},
+    {h:'Cover days (calc)',w:9,fmt:'0',helper:true},
+    {h:'Row shown (calc)',w:9,fmt:'0',helper:true}
+  ];
+  var rng=function(c){var l=_sxCol(X,c);return '$'+l+'$'+F+':$'+l+'$'+Lr;};
+  var xrows=rows.map(function(r,i){
+    var R=F+i, fmt={}; if(r.frPlat)fmt[7]='0" (plat)"';
+    var dtsCell=r.native?r.dts:{f:_XF.dts('C'+R,'D'+R),v:r.dts};
+    return {t:'d',fmt:fmt,v:[r.name,r.cat,r.soh,r.drr,dtsCell,
+      {f:_XF.status('E'+R),v:_XF.statusJS(r.dts)},r.po,r.fr,
+      {f:_XF.net('C'+R,'G'+R,'D'+R,'L'+R),v:r.reorder},r.nCities,r.note,cover,{f:'SUBTOTAL(103,$A'+R+')',v:1}]};
+  });
+  var sumK=function(k){var s=0;rows.forEach(function(r){if(typeof r[k]==='number')s+=r[k];});return s;};
+  var vel=rows.filter(function(r){return r.drr>_SX.MINV;});
+  var blendJS=(function(){var a=0,b=0;vel.forEach(function(r){a+=r.soh;b+=r.drr;});return b>0?_sxR1(Math.min(90,a/b)):'';})();
+  var blendF='IFERROR(ROUND(MIN(90,SUMPRODUCT('+rng(12)+',--('+rng(3)+'>'+_SX.MINV+'),'+rng(2)+')/SUMPRODUCT('+rng(12)+',--('+rng(3)+'>'+_SX.MINV+'),'+rng(3)+')),1),"")';
+  var cntBand=function(lo,hi){ // rows shown with 0 <= days < hi (and >= lo)
+    var pr=lo==null?'':',--('+rng(4)+'>='+lo+')';
+    return 'SUMPRODUCT('+rng(12)+',--ISNUMBER('+rng(4)+')'+pr+',--('+rng(4)+'<'+hi+'))';
+  };
+  var nCrit=rows.filter(function(r){return typeof r.dts==='number'&&r.dts<_SX.DAYS_CRIT;}).length;
+  var nWatch=rows.filter(function(r){return typeof r.dts==='number'&&r.dts>=_SX.DAYS_CRIT&&r.dts<_SX.DAYS_WATCH;}).length;
+  var nReo=rows.filter(function(r){return typeof r.reorder==='number'&&r.reorder>0;}).length;
+  var blank12=function(a){return _sxPad(a,13);};
+  var s1=blank12(['SKUs out / critical (<'+_SX.DAYS_CRIT+'d)','',null,null,{f:cntBand(null,_SX.DAYS_CRIT),v:nCrit}]);
+  var s2=blank12(['SKUs on watch ('+_SX.DAYS_CRIT+'–'+_SX.DAYS_WATCH+'d)','',null,null,{f:cntBand(_SX.DAYS_CRIT,_SX.DAYS_WATCH),v:nWatch}]);
+  var s3=blank12(['SKUs needing reorder','',null,null,null,null,null,null,{f:'SUMPRODUCT('+rng(12)+',--ISNUMBER('+rng(8)+'),--('+rng(8)+'>0))',v:nReo}]);
+  var tot=blank12([{f:'"TOTAL · "&SUBTOTAL(103,$A$'+F+':$A$'+Lr+')&" SKUs"',v:'TOTAL · '+N+' SKUs'},'',
+    {f:'SUBTOTAL(109,'+rng(2)+')',v:sumK('soh')},{f:'SUBTOTAL(109,'+rng(3)+')',v:_sxR8(sumK('drr'))},
+    {f:blendF,v:blendJS},{f:_XF.status('E'+(Lr+4)),v:_XF.statusJS(blendJS)},
+    {f:'SUBTOTAL(109,'+rng(6)+')',v:sumK('po')},null,{f:'SUBTOTAL(109,'+rng(8)+')',v:sumK('reorder')}]);
+  var fmtCnt={4:'0',8:'0'};
+  var notes=[];
+  if(filtered)notes.push('Filtered view — matches the table on screen');
+  if(orph.merged.length||orph.added.length)notes.push(orph.units.toLocaleString('en-IN')+' units held under codes with no OSA row are included (not shown on screen): '+orph.merged.concat(orph.added).join(', '));
+  var sub='Days to Stockout = '+(plat==='Instamart'?'Instamart native DaysOnHand (SOH ÷ DRR where no native value)':'SOH ÷ DRR')+', capped 90 · Reorder = DRR × '+cover+'d cover − SOH − open PO, netted India-wide · RAG: <3d red · <7d amber · FR ≥95 / 85 · Totals, counts and colours are live: delete or filter rows and they recalculate'+(notes.length?' · '+notes.join(' · '):'');
+  var ws1=_osaXSheet(X,styled,{title:'GAW · '+plat+' · SOH Explorer · '+mk,sub:sub,cols:cols,
+    rows:xrows.concat([{t:'s',fmt:fmtCnt,v:s1},{t:'s',fmt:fmtCnt,v:s2},{t:'s',fmt:fmtCnt,v:s3},{t:'t',v:tot}]),freeze:{x:1,y:3}});
+  X.utils.book_append_sheet(wb,ws1,safe+' SOH');
+
+  try{ _sohCityTabs(X,wb,plat,rows,styled,mk,safe,cover,frMtd,frLbl); }catch(e){ console.warn('[SOH export] city tabs failed for '+plat,e); }
+  _osaSave(X,wb,'GAW_SOH_Explorer_'+plat+(filtered?'_filtered':'')+'_'+(mk||'export')+'.xlsx');
+}
+
+// ── city granularity: per-row per-metro breakdown, reused by the matrix, detail and summary ──
+function _sohCityData(plat,rows,cover,frMtd){
+  var selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity, cityMap={};
+  rows.forEach(function(row){
+    var r=row.r, sohM=r.sohM||_metroRollupSoh(plat,r.k), poM=_cityOpenPOMap(plat,r.name), drrM=_cityDRRMap(plat,r.sku,selCap);
+    var cs={}; Object.keys(sohM).forEach(function(c){cs[c]=1;}); Object.keys(poM).forEach(function(c){cs[c]=1;}); Object.keys(drrM).forEach(function(c){cs[c]=1;});
+    row.byCity={}; row.poNone=(row.po==='');
+    Object.keys(cs).forEach(function(c){
+      var soh=Math.round(sohM[c]||0), po=Math.round(poM[c]||0), drr=_sxR8(drrM[c]||0);
+      if(!(soh>0||po>0||drr>_SX.MINV))return;
+      var fr=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,r.name,c,frMtd):null;
+      var dts=_XF.dtsJS(soh,drr), poV=row.poNone?'':po;
+      cityMap[c]=true;
+      row.byCity[c]={soh:soh,po:poV,drr:drr,dts:dts,status:_XF.statusJS(dts),net:_XF.netJS(soh,poV,drr,cover),fr:(fr&&fr.fr!=null)?Math.round(fr.fr):''};
+    });
+  });
+  return Object.keys(cityMap).sort();
+}
+function _sohCityTabs(X,wb,plat,rows,styled,mk,safe,cover,frMtd,frLbl){
+  var K=_OSAX, cities=_sohCityData(plat,rows,cover,frMtd);
+  if(!cities.length)return;
+  var n=rows.length, SK="'"+safe+" SOH'!", Lk=3+n, nR=rows.length;
+  var DT="'"+safe+" City Detail'!";
+
+  // ═══ City Detail: flat City × SKU (source for the City Summary) ═══
+  var det=[];
+  cities.forEach(function(c){
+    var part=[]; rows.forEach(function(r){ var v=r.byCity[c]; if(v)part.push({city:c,name:r.name,cat:r.cat,v:v}); });
+    part.sort(function(a,b){return (a.v.dts===''?99999:a.v.dts)-(b.v.dts===''?99999:b.v.dts);});
+    det=det.concat(part);
+  });
+  var nD=det.length, DL=3+nD;
+  var colsD=[{h:'City',w:16},{h:'SKU',w:40},{h:'Category',w:18},{h:'SOH',w:10,fmt:_SX.INT},{h:'DRR (u/day)',w:11,fmt:_SX.DEC1},
+    {h:'Days to Stockout',w:14,fmt:_SX.DTS,rag:'dts',key:true},{h:'Status',w:12,rag:'gap'},{h:'Open PO',w:11,fmt:_SX.INT},{h:'FR% ('+frLbl+')',w:10,fmt:_SX.PCT0,rag:'fr'},
+    {h:'Reorder '+cover+'d (units, local)',w:16,fmt:_SX.INT,rag:'net',key:true},{h:'Cover days (calc)',w:9,fmt:'0',helper:true},{h:'Row shown (calc)',w:9,fmt:'0',helper:true}];
+  var dr=function(c){var l=_sxCol(X,c);return '$'+l+'$4:$'+l+'$'+DL;};
+  var xd=det.map(function(x,i){ var R=4+i, v=x.v;
+    return {t:'d',v:[x.city,x.name,x.cat,v.soh,v.drr,{f:_XF.dts('D'+R,'E'+R),v:v.dts},{f:_XF.status('F'+R),v:v.status},v.po,v.fr,
+      {f:_XF.net('D'+R,'H'+R,'E'+R,'K'+R),v:v.net},cover,{f:'SUBTOTAL(103,$A'+R+')',v:1}]}; });
+  var dSum=function(k){var s=0;det.forEach(function(x){if(typeof x.v[k]==='number')s+=x.v[k];});return s;};
+  var dVel=det.filter(function(x){return x.v.drr>_SX.MINV;});
+  var dBlend=(function(){var a=0,b=0;dVel.forEach(function(x){a+=x.v.soh;b+=x.v.drr;});return b>0?_sxR1(Math.min(90,a/b)):'';})();
+  var dBlendF='IFERROR(ROUND(MIN(90,SUMPRODUCT('+dr(11)+',--('+dr(4)+'>'+_SX.MINV+'),'+dr(3)+')/SUMPRODUCT('+dr(11)+',--('+dr(4)+'>'+_SX.MINV+'),'+dr(4)+')),1),"")';
+  var pad12=function(a){return _sxPad(a,12);};
+  var dNC=det.filter(function(x){return x.v.status==='Out'||x.v.status==='Critical';}).length, dNW=det.filter(function(x){return x.v.status==='Watch';}).length;
+  var dd1=pad12(['SKU×city lines out / critical (<'+_SX.DAYS_CRIT+'d)','','',null,null,{f:'SUMPRODUCT('+dr(11)+',--ISNUMBER('+dr(5)+'),--('+dr(5)+'<'+_SX.DAYS_CRIT+'))',v:dNC}]);
+  var dd2=pad12(['SKU×city lines on watch ('+_SX.DAYS_CRIT+'–'+_SX.DAYS_WATCH+'d)','','',null,null,{f:'SUMPRODUCT('+dr(11)+',--ISNUMBER('+dr(5)+'),--('+dr(5)+'>='+_SX.DAYS_CRIT+'),--('+dr(5)+'<'+_SX.DAYS_WATCH+'))',v:dNW}]);
+  var dtot=pad12([{f:'"TOTAL · "&SUBTOTAL(103,$B$4:$B$'+DL+')&" SKU×city lines"',v:'TOTAL · '+nD+' SKU×city lines'},'','',
+    {f:'SUBTOTAL(109,'+dr(3)+')',v:dSum('soh')},{f:'SUBTOTAL(109,'+dr(4)+')',v:_sxR8(dSum('drr'))},{f:dBlendF,v:dBlend},{f:_XF.status('F'+(DL+3)),v:_XF.statusJS(dBlend)},
+    {f:'SUBTOTAL(109,'+dr(7)+')',v:dSum('po')},null,{f:'SUBTOTAL(109,'+dr(9)+')',v:dSum('net')}]);
+  var wsD=_osaXSheet(X,styled,{title:'GAW · '+plat+' · SOH City Detail · '+mk,
+    sub:'One line per City × SKU · Days to Stockout = city SOH ÷ city DRR, capped 90 · Reorder = LOCAL gap (DRR × '+cover+'d − city SOH − city open PO) — stock in one city does not offset another, so city gaps add up to more than the India net on the SKU tab · Blank = no data'+(plat==='Amazon'?' · Amazon sales carry no city tag, so city velocity is unavailable':'')+' · Totals live',
+    cols:colsD,rows:xd.concat([{t:'s',fmt:{5:'0'},v:dd1},{t:'s',fmt:{5:'0'},v:dd2},{t:'t',v:dtot}]),freeze:{x:2,y:3}});
+
+  // ═══ x City matrix: All-India (from the SKU tab) + one group per city ═══
+  var M=['SOH','Open PO','DRR','Days to Stockout','Reorder','FR%'], perG=M.length;
+  var groups=['All-India'].concat(cities), base=2, NA=base+groups.length*perG, cCov=NA, cSh=NA+1;
+  var colsA=[{h:'SKU',w:38},{h:'Category',w:18}];
+  groups.forEach(function(g,gi){
+    colsA.push({h:g+'\nSOH',w:9,fmt:_SX.INT},{h:g+'\nOpen PO',w:9,fmt:_SX.INT},{h:g+'\nDRR',w:8,fmt:_SX.DEC1},
+      {h:g+'\nDays',w:8,fmt:_SX.DTS,rag:'dts',key:gi===0},{h:g+'\n'+(gi===0?'Reorder (India net)':'Reorder (local)'),w:11,fmt:_SX.INT,rag:'net',key:gi===0},
+      {h:g+'\nFR% ('+frLbl+')',w:9,fmt:_SX.PCT0,rag:'fr'});
+  });
+  colsA.push({h:'Cover days (calc)',w:9,fmt:'0',helper:true},{h:'Row shown (calc)',w:9,fmt:'0',helper:true});
+  var LA=3+nR, lk=function(srcCol){var l=_sxCol(X,srcCol);return 'IFERROR(INDEX('+SK+'$'+l+'$4:$'+l+'$'+Lk+',MATCH($A{R},'+SK+'$A$4:$A$'+Lk+',0)),"")';};
+  var srcMap=[2,6,3,4,8,7];                       // SKU-tab columns feeding the All-India group: SOH, Open PO, DRR, Days, Reorder
+  var xa=rows.map(function(r,i){
+    var R=4+i, v=[r.name,r.cat];
+    groups.forEach(function(g,gi){
+      var c0=base+gi*perG, L=function(m){return _sxCol(X,c0+m)+R;};
+      if(gi===0){
+        var nat=[r.soh,r.po,r.drr,r.dts,r.reorder,r.fr];
+        for(var m=0;m<perG;m++)v.push({f:lk(srcMap[m]).replace('{R}',R),v:nat[m]});
+      }else{
+        var q=r.byCity[g];
+        if(!q){ v.push('','','','','',''); return; }
+        v.push(q.soh,q.po,q.drr,{f:_XF.dts(L(0),L(2)),v:q.dts},{f:_XF.net(L(0),L(1),L(2),_sxCol(X,cCov)+R),v:q.net},q.fr);
+      }
+    });
+    v.push(cover,{f:'SUBTOTAL(103,$A'+R+')',v:1});
+    return {t:'d',v:v};
+  });
+  var ra=function(c){var l=_sxCol(X,c);return '$'+l+'$4:$'+l+'$'+LA;};
+  var taRow=['',''], tpad=[];
+  var tv=[{f:'"TOTAL · "&SUBTOTAL(103,$A$4:$A$'+LA+')&" SKUs"',v:'TOTAL · '+nR+' SKUs'},''];
+  groups.forEach(function(g,gi){
+    var c0=base+gi*perG, sv=[0,0,0,0,0], vS=0, vD=0;
+    rows.forEach(function(r){ var q=(gi===0)?{soh:r.soh,po:r.po,drr:r.drr,net:r.reorder}:r.byCity[g]; if(!q)return;
+      ['soh','po','drr','net'].forEach(function(k,ix){ var t=[0,1,2,4][ix]; if(typeof q[k]==='number')sv[t]+=q[k]; });
+      if(q.drr>_SX.MINV){ vS+=q.soh; vD+=q.drr; } });
+    var blend=vD>0?_sxR1(Math.min(90,vS/vD)):'';
+    var blF='IFERROR(ROUND(MIN(90,SUMPRODUCT('+ra(cSh)+',--('+ra(c0+2)+'>'+_SX.MINV+'),'+ra(c0)+')/SUMPRODUCT('+ra(cSh)+',--('+ra(c0+2)+'>'+_SX.MINV+'),'+ra(c0+2)+')),1),"")';
+    tv.push({f:'SUBTOTAL(109,'+ra(c0)+')',v:sv[0]},{f:'SUBTOTAL(109,'+ra(c0+1)+')',v:sv[1]},{f:'SUBTOTAL(109,'+ra(c0+2)+')',v:_sxR8(sv[2])},{f:blF,v:blend},{f:'SUBTOTAL(109,'+ra(c0+4)+')',v:sv[4]},null);
+  });
+  tv.push(null,null);
+  var wsA=_osaXSheet(X,styled,{title:'GAW · '+plat+' · SOH Explorer by SKU × City · '+mk,
+    sub:'All-India group is looked up from the SKU tab (India-net reorder; FR% falls back to the aggregator figure where a SKU has none) · City groups use city stock, city open PO and city velocity (local reorder) · Days and Reorder recalculate if you edit SOH / PO / DRR · TOTAL row is live · Blank = SKU not present in that city',
+    cols:colsA,rows:xa.concat([{t:'t',v:tv}]),freeze:{x:2,y:3}});
+
+  // ═══ City Summary: formulas over City Detail ═══
+  var sumRows=cities.map(function(c){
+    var xs=det.filter(function(x){return x.city===c;}), s=function(k){var t=0;xs.forEach(function(x){if(typeof x.v[k]==='number')t+=x.v[k];});return t;};
+    var vSoh=0,vDrr=0; xs.forEach(function(x){ if(x.v.drr>_SX.MINV){vSoh+=x.v.soh;vDrr+=x.v.drr;} });
+    var frs=xs.map(function(x){return x.v.fr;}).filter(function(v){return typeof v==='number';});
+    var poAny=xs.some(function(x){return typeof x.v.po==='number';});
+    return {city:c,n:xs.length,crit:xs.filter(function(x){return x.v.status==='Out'||x.v.status==='Critical';}).length,watch:xs.filter(function(x){return x.v.status==='Watch';}).length,
+      soh:s('soh'),drr:_sxR8(s('drr')),vSoh:vSoh,vDrr:_sxR8(vDrr),cov:vDrr>0?_sxR1(Math.min(90,vSoh/vDrr)):'',po:poAny?s('po'):'',net:s('net'),
+      fr:frs.length?_sxR1(frs.reduce(function(a,b){return a+b;},0)/frs.length):''};
+  });
+  sumRows.sort(function(a,b){return (b.crit-a.crit)||(b.watch-a.watch)||(b.net-a.net);});
+  var colsS=[{h:'City',w:18},{h:'SKUs Tracked',w:11,fmt:_SX.INT},{h:'Out / Critical (<'+_SX.DAYS_CRIT+'d)',w:14,fmt:'0',key:true},{h:'Watch ('+_SX.DAYS_CRIT+'–'+_SX.DAYS_WATCH+'d)',w:12,fmt:'0'},
+    {h:'SOH',w:11,fmt:_SX.INT},{h:'DRR (u/day)',w:12,fmt:_SX.INT},{h:'Stock Cover (days)',w:13,fmt:_SX.DTS,rag:'dts',key:true},{h:'Open PO',w:11,fmt:_SX.INT},
+    {h:'Reorder '+cover+'d (units, local)',w:16,fmt:_SX.INT,rag:'net'},{h:'Avg FR% ('+frLbl+', simple)',w:14,fmt:_SX.PCT0,rag:'fr'},
+    {h:'SOH of SKUs with sales (calc)',w:12,fmt:_SX.INT,helper:true},{h:'DRR of SKUs with sales (calc)',w:12,fmt:_SX.DEC1,helper:true}];
+  var S1=4, S2=3+sumRows.length, ST=S2+1;
+  var xs2=sumRows.map(function(s,i){
+    var R=4+i, cy='$A'+R, A=DT+dr(0), g=function(c){return DT+dr(c);};
+    return {t:'d',v:[s.city,
+      {f:'COUNTIFS('+A+','+cy+')',v:s.n},
+      {f:'COUNTIFS('+A+','+cy+','+g(6)+',"Out")+COUNTIFS('+A+','+cy+','+g(6)+',"Critical")',v:s.crit},
+      {f:'COUNTIFS('+A+','+cy+','+g(6)+',"Watch")',v:s.watch},
+      {f:'SUMIFS('+g(3)+','+A+','+cy+')',v:s.soh},
+      {f:'SUMIFS('+g(4)+','+A+','+cy+')',v:s.drr},
+      {f:'IFERROR(ROUND(MIN(90,K'+R+'/L'+R+'),1),"")',v:s.cov},
+      {f:'IF(COUNTIFS('+A+','+cy+','+g(7)+',">=0")=0,"",SUMIFS('+g(7)+','+A+','+cy+'))',v:s.po},
+      {f:'SUMIFS('+g(9)+','+A+','+cy+')',v:s.net},
+      {f:'IFERROR(ROUND(AVERAGEIFS('+g(8)+','+A+','+cy+'),1),"")',v:s.fr},
+      {f:'SUMIFS('+g(3)+','+A+','+cy+','+g(4)+',">'+_SX.MINV+'")',v:s.vSoh},
+      {f:'SUMIFS('+g(4)+','+A+','+cy+','+g(4)+',">'+_SX.MINV+'")',v:s.vDrr}]};
+  });
+  var sT=function(k){return sumRows.reduce(function(a,s){return a+(typeof s[k]==='number'?s[k]:0);},0);};
+  var tSoh=sT('vSoh'), tDrr=sT('vDrr');
+  xs2.push({t:'t',v:[{f:'"ALL "&COUNTA(A'+S1+':A'+S2+')&" CITIES"',v:'ALL '+sumRows.length+' CITIES'},
+    {f:'SUM(B'+S1+':B'+S2+')',v:sT('n')},{f:'SUM(C'+S1+':C'+S2+')',v:sT('crit')},{f:'SUM(D'+S1+':D'+S2+')',v:sT('watch')},
+    {f:'SUM(E'+S1+':E'+S2+')',v:sT('soh')},{f:'SUM(F'+S1+':F'+S2+')',v:_sxR8(sT('drr'))},
+    {f:'IFERROR(ROUND(MIN(90,K'+ST+'/L'+ST+'),1),"")',v:tDrr>0?_sxR1(Math.min(90,tSoh/tDrr)):''},
+    {f:'SUM(H'+S1+':H'+S2+')',v:sT('po')},{f:'SUM(I'+S1+':I'+S2+')',v:sT('net')},null,
+    {f:'SUM(K'+S1+':K'+S2+')',v:tSoh},{f:'SUM(L'+S1+':L'+S2+')',v:_sxR8(tDrr)}]});
+  var wsS=_osaXSheet(X,styled,{title:'GAW · '+plat+' · SOH City Summary · '+mk,
+    sub:'Worst first (most out / critical lines) · Every figure is a live formula over the City Detail tab · Stock Cover = city SOH ÷ city DRR over lines with sales, capped 90 · Reorder is the LOCAL gap total · Avg FR is a simple average of the lines shown',
+    cols:colsS,rows:xs2,freeze:{x:1,y:3}});
+
+  X.utils.book_append_sheet(wb,wsA,safe+' x City');
+  X.utils.book_append_sheet(wb,wsD,safe+' City Detail');
+  X.utils.book_append_sheet(wb,wsS,safe+' City Summary');
+}
+
+
+// ══════════════════════════════════════════════
+// OPEN PO BREAKDOWN — item-wise, all platforms stacked, raw (unrolled) city columns. One line per Platform×SKU with open PO > 0.
+// Tabs: Open PO (detail, live totals) · Platform x City (SUMIFS over detail) · SKU Summary (SUMIFS over detail, SKU × platform)
+// PO value is MRP × qty (a reference value, not the invoice value). Discontinued SKUs excluded; Amazon city keys pass through as the tracker has them.
+// ══════════════════════════════════════════════
+// Category/MRP for a canonical SKU name: prefer the row's own platform's master
+// entry (exact name match); fall back to any platform that has a real (non-Unknown,
+// non-zero) value. SEED/DB carry per-platform mrp/cat that occasionally disagree
+// (e.g. a placeholder 0) — this picks the best available rather than the first.
+function _skuInfoByName(plat,name){
+  var all=(typeof DB!=='undefined'&&DB.sku_master)?DB.sku_master:(typeof SEED!=='undefined'?SEED.sku_master:{});
+  var own=all&&all[plat];
+  if(own){
+    var hit=Object.values(own).find(function(i){return i&&i.name===name;});
+    if(hit&&hit.cat&&hit.cat!=='Unknown'&&hit.mrp)return {cat:hit.cat,mrp:hit.mrp};
+  }
+  var best=null;
+  Object.keys(all||{}).forEach(function(p){
+    Object.values(all[p]||{}).forEach(function(i){
+      if(!i||i.name!==name)return;
+      if(!best)best={cat:i.cat||'',mrp:i.mrp||0};
+      if(i.cat&&i.cat!=='Unknown'&&i.mrp)best={cat:i.cat,mrp:i.mrp};
+    });
+  });
+  return best||{cat:'',mrp:0};
+}
+function _sohOpenPOBreakdownXlsx(){
+  var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
+  var styled=!!window.XLSXStyle;
+  try{ if(typeof cmBuildOpenPO==='function' && (typeof _cmOpenPO==='undefined'||!_cmOpenPO) && typeof _cmTracker!=='undefined' && _cmTracker && typeof _cmSN!=='undefined' && _cmSN){ cmBuildOpenPO(); } }catch(e){}
+  var liveAll=(typeof _cmOpenPO!=='undefined'&&_cmOpenPO&&_cmOpenPO.po)?_cmOpenPO.po:null;
+  var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
+  var vm=(typeof getViewingMonth==='function')?getViewingMonth():null;
+  var syncedAll=(typeof DB!=='undefined'&&DB.open_po&&DB.open_po.po&&(!vm||DB.open_po.month===vm))?DB.open_po.po:null;
+  var all=liveAll||syncedAll;
+  if(!all||!Object.keys(all).length){alert('No Open PO data loaded — sync Q Comm Tracker + SN report first.');return;}
+
+  var rowMap={}, citySet=new Set();
+  Object.keys(all).forEach(function(plat){
+    var byCity=all[plat]||{};
+    Object.keys(byCity).forEach(function(city){
+      var bySku=byCity[city]||{};
+      Object.keys(bySku).forEach(function(canon){
+        var q=bySku[canon]||0; if(q<=0)return;
+        if(_sohIsDisc(canon,plat))return;                            // discontinued SKUs excluded from open-PO views
+        citySet.add(city);
+        var key=plat+'\u0001'+canon;
+        if(!rowMap[key])rowMap[key]={plat:plat,sku:canon,cities:{},total:0};
+        rowMap[key].cities[city]=(rowMap[key].cities[city]||0)+q;
+        rowMap[key].total+=q;
+      });
+    });
+  });
+  var rows=Object.values(rowMap).filter(function(r){return r.total>0;});
+  if(!rows.length){alert('No open PO quantity > 0 found across any platform/city.');return;}
+  rows.forEach(function(r){ var info=_skuInfoByName(r.plat,r.sku); r.cat=(typeof normCat==='function'?normCat(info.cat):info.cat)||''; r.mrp=info.mrp||0; });
+  var pOrder=['Zepto','Blinkit','Instamart','Amazon','Flipkart','BigBasket'];
+  rows.sort(function(a,b){ var pa=pOrder.indexOf(a.plat), pb=pOrder.indexOf(b.plat); return (pa-pb)||(b.total-a.total)||a.sku.localeCompare(b.sku); });
+  var cities=[...citySet].sort();
+  var plats=pOrder.filter(function(p){return rows.some(function(r){return r.plat===p;});});
+  var wb=X.utils.book_new();
+
+  // ═══ Sheet 1: Open PO (detail) ═══
+  var N=rows.length, F=4, Lr=3+N, nC=cities.length, c0=4, cTot=c0+nC, cVal=cTot+1, cSh=cVal+1;
+  var cols=[{h:'Platform',w:12},{h:'SKU',w:36},{h:'Category',w:18},{h:'MRP (₹)',w:10,fmt:_OSAX.INR}];
+  cities.forEach(function(c){cols.push({h:c,w:12,fmt:_SX.INT});});
+  cols.push({h:'Total Open PO',w:13,fmt:_SX.INT,key:true},{h:'PO Value @MRP (₹)',w:17,fmt:_OSAX.INR,key:true},{h:'Row shown (calc)',w:9,fmt:'0',helper:true});
+  var rg=function(c){var l=_sxCol(X,c);return '$'+l+'$'+F+':$'+l+'$'+Lr;};
+  var cL0=_sxCol(X,c0), cL1=_sxCol(X,c0+nC-1);
+  var xr=rows.map(function(r,i){
+    var R=F+i, v=[r.plat,r.sku,r.cat,r.mrp||''];
+    cities.forEach(function(c){ v.push(r.cities[c]?r.cities[c]:''); });
+    v.push({f:'SUM('+cL0+R+':'+cL1+R+')',v:r.total},{f:'IF(ISNUMBER($D'+R+'),$D'+R+'*'+_sxCol(X,cTot)+R+',"")',v:r.mrp?r.mrp*r.total:''},{f:'SUBTOTAL(103,$A'+R+')',v:1});
+    return {t:'d',v:v};
+  });
+  var tv=[{f:'"TOTAL · "&SUBTOTAL(103,$A$'+F+':$A$'+Lr+')&" lines"',v:'TOTAL · '+N+' lines'},'','',''];
+  cities.forEach(function(c,ci){ var s=0; rows.forEach(function(r){s+=(r.cities[c]||0);}); tv.push({f:'SUBTOTAL(109,'+rg(c0+ci)+')',v:s}); });
+  var gT=0,gV=0; rows.forEach(function(r){gT+=r.total;gV+=r.mrp*r.total;});
+  tv.push({f:'SUBTOTAL(109,'+rg(cTot)+')',v:gT},{f:'SUBTOTAL(109,'+rg(cVal)+')',v:gV},null);
+  var missMrp=rows.filter(function(r){return !r.mrp;}).length;
+  var ws1=_osaXSheet(X,styled,{title:'GAW · Open PO by Item · Aggregator & City Breakdown · '+mk,
+    sub:'Raw tracker cities (not rolled into metros) · Total = sum of the city columns · PO Value = MRP × qty, a reference value (not invoice value) · TOTAL row, Platform x City and SKU Summary are live: delete or filter lines and they recalculate'+(missMrp?' · '+missMrp+' line(s) have no MRP in the SKU master and carry no value':''),
+    cols:cols,rows:xr.concat([{t:'t',v:tv}]),freeze:{x:2,y:3}});
+  X.utils.book_append_sheet(wb,ws1,'Open PO');
+
+  // ═══ Sheet 2: Platform x City (SUMIFS over Open PO) ═══
+  var OP="'Open PO'!", pr=function(c){return OP+rg(c);};
+  var cols2=[{h:'Platform',w:14},{h:'SKU Lines',w:10,fmt:_SX.INT}];
+  cities.forEach(function(c){cols2.push({h:c,w:12,fmt:_SX.INT});});
+  cols2.push({h:'Total Open PO',w:13,fmt:_SX.INT,key:true},{h:'PO Value @MRP (₹)',w:17,fmt:_OSAX.INR,key:true},{h:'% of Value',w:10,fmt:'0.0'});
+  var P0=4, P1=3+plats.length, PT=P1+1, nc2=2+nC;
+  var x2=plats.map(function(p,i){
+    var R=P0+i, rs=rows.filter(function(r){return r.plat===p;}), tt=0, vv=0;
+    var v=[p,{f:'COUNTIFS('+pr(0)+',$A'+R+')',v:rs.length}];
+    cities.forEach(function(c,ci){ var s=0; rs.forEach(function(r){s+=(r.cities[c]||0);}); v.push({f:'IFERROR(SUMIFS('+pr(c0+ci)+','+pr(0)+',$A'+R+'),"")',v:s}); });
+    rs.forEach(function(r){tt+=r.total;vv+=r.mrp*r.total;});
+    v.push({f:'IFERROR(SUMIFS('+pr(cTot)+','+pr(0)+',$A'+R+'),"")',v:tt},{f:'IFERROR(SUMIFS('+pr(cVal)+','+pr(0)+',$A'+R+'),"")',v:vv},
+      {f:'IFERROR(ROUND('+_sxCol(X,nc2+1)+R+'/'+_sxCol(X,nc2+1)+PT+'*100,1),"")',v:gV?_osaR1(vv/gV*100):''});
+    return {t:'d',v:v};
+  });
+  var t2=['ALL PLATFORMS',{f:'SUM(B'+P0+':B'+P1+')',v:N}];
+  cities.forEach(function(c,ci){ var s=0; rows.forEach(function(r){s+=(r.cities[c]||0);}); var L=_sxCol(X,2+ci); t2.push({f:'SUM('+L+P0+':'+L+P1+')',v:s}); });
+  t2.push({f:'SUM('+_sxCol(X,nc2)+P0+':'+_sxCol(X,nc2)+P1+')',v:gT},{f:'SUM('+_sxCol(X,nc2+1)+P0+':'+_sxCol(X,nc2+1)+P1+')',v:gV},{f:'IFERROR(ROUND('+_sxCol(X,nc2+1)+PT+'/'+_sxCol(X,nc2+1)+PT+'*100,1),"")',v:gV?100:''});
+  var ws2=_osaXSheet(X,styled,{title:'GAW · Open PO · Aggregator × City · '+mk,
+    sub:'Every figure is a live SUMIFS over the Open PO tab — delete lines there and this tab follows',cols:cols2,rows:x2.concat([{t:'t',v:t2}]),freeze:{x:1,y:3}});
+  X.utils.book_append_sheet(wb,ws2,'Platform x City');
+
+  // ═══ Sheet 3: SKU Summary (SKU × platform, SUMIFS over Open PO) ═══
+  var skuMap={}; rows.forEach(function(r){ var e=skuMap[r.sku]||(skuMap[r.sku]={sku:r.sku,cat:r.cat,mrp:r.mrp,by:{},total:0}); e.by[r.plat]=(e.by[r.plat]||0)+r.total; e.total+=r.total; if(!e.mrp)e.mrp=r.mrp; });
+  var skus=Object.values(skuMap).sort(function(a,b){return (b.total-a.total)||a.sku.localeCompare(b.sku);});
+  var cols3=[{h:'SKU',w:38},{h:'Category',w:18},{h:'MRP (₹)',w:10,fmt:_OSAX.INR}];
+  plats.forEach(function(p){cols3.push({h:p,w:11,fmt:_SX.INT});});
+  cols3.push({h:'Total Open PO',w:13,fmt:_SX.INT,key:true},{h:'PO Value @MRP (₹)',w:17,fmt:_OSAX.INR,key:true},{h:'Row shown (calc)',w:9,fmt:'0',helper:true});
+  var K0=4, K1=3+skus.length, kc=function(c){var l=_sxCol(X,c);return '$'+l+'$'+K0+':$'+l+'$'+K1;};
+  var cT3=3+plats.length, cV3=cT3+1, cS3=cV3+1;
+  var x3=skus.map(function(s,i){
+    var R=K0+i, v=[s.sku,s.cat,s.mrp||''];
+    plats.forEach(function(p){ v.push({f:'IFERROR(SUMIFS('+pr(cTot)+','+pr(1)+',$A'+R+','+pr(0)+',"'+p+'"),"")',v:s.by[p]||0}); });
+    v.push({f:'IFERROR(SUMIFS('+pr(cTot)+','+pr(1)+',$A'+R+'),"")',v:s.total},{f:'IFERROR(SUMIFS('+pr(cVal)+','+pr(1)+',$A'+R+'),"")',v:s.mrp?s.mrp*s.total:0},{f:'SUBTOTAL(103,$A'+R+')',v:1});
+    return {t:'d',v:v};
+  });
+  var t3=[{f:'"TOTAL · "&SUBTOTAL(103,$A$'+K0+':$A$'+K1+')&" SKUs"',v:'TOTAL · '+skus.length+' SKUs'},'',''];
+  plats.forEach(function(p,pi){ var s=0; skus.forEach(function(k){s+=(k.by[p]||0);}); t3.push({f:'SUBTOTAL(109,'+kc(3+pi)+')',v:s}); });
+  var v3=0; skus.forEach(function(k){v3+=(k.mrp||0)*k.total;});
+  t3.push({f:'SUBTOTAL(109,'+kc(cT3)+')',v:gT},{f:'SUBTOTAL(109,'+kc(cV3)+')',v:v3},null);
+  var ws3=_osaXSheet(X,styled,{title:'GAW · Open PO · SKU × Aggregator · '+mk,
+    sub:'Biggest inbound SKU first · Every figure is a live SUMIFS over the Open PO tab · TOTAL row follows filters',cols:cols3,rows:x3.concat([{t:'t',v:t3}]),freeze:{x:1,y:3}});
+  X.utils.book_append_sheet(wb,ws3,'SKU Summary');
+  _osaSave(X,wb,'GAW_OpenPO_Breakdown_'+(mk||'export')+'.xlsx');
+}
+
+// ══════════════════════════════════════════════
+// REPLENISHMENT PLAN — one urgency-ranked PO sheet, net of open PO, sized to each platform's cover target.
+// Tabs: Replenishment · Platform Summary · <P> x City (per platform) · City Detail · City Summary. Discontinued SKUs are never reordered.
+// ══════════════════════════════════════════════
+function _replenExportXlsx(){
+  var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
+  var styled=!!window.XLSXStyle;
+  var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
+  var mtd=window._availMTD; if(!mtd){alert('No availability data loaded to export.');return;}
+  var rows=[];
+  (_AVAIL_PLATFORMS||Object.keys(mtd)).forEach(function(plat){
+    var pd=mtd[plat]; if(!pd||!pd.skus)return;
+    Object.keys(pd.skus).forEach(function(sku){
+      var k=pd.skus[sku], info=skuLookup(plat,sku);
+      var drr=k.drr||0, soh=k.soh||0, osa=k.wt_osa_ls;
+      if(!(drr>_SX.MINV))return;                              // no velocity -> not a reorder candidate
+      if(_sohIsDisc(info.name,plat))return;                   // discontinued -> never reorder
+      var openPo=(typeof _sohOpenPO==='function')?_sohOpenPO(plat,info.name,null):null;
+      var cover=_sohCoverDays(plat);                          // shared engine + per-platform cover: always agrees with the screen
+      var net=_sohReorderQty(k,plat,openPo);
+      if(net==null)return;
+      var mrp=info.mrp||0;
+      var urgency=(osa==null?0:Math.max(0,100-osa))*drr*mrp;
+      if(net<=0&&urgency<=0)return;
+      var d8=_sxR8(drr), s0=Math.round(soh), po=(openPo==null)?'':openPo, o4=(osa==null)?'':_osaR4(osa);
+      var dts=(plat==='Instamart'&&k.doi!=null)?_sxR1(k.doi):_XF.dtsJS(s0,d8);
+      rows.push({plat:plat,name:info.name,cat:(typeof normCat==='function'?normCat(info.cat):info.cat)||'',osa:o4,soh:s0,drr:d8,dts:dts,native:(plat==='Instamart'&&k.doi!=null),
+        po:po,cover:cover,mrp:mrp,tgt:_XF.tgtJS(d8,cover),net:_XF.netJS(s0,po,d8,cover),urg:Math.round(((o4===''?0:Math.max(0,100-o4))*d8*mrp)*1e6)/1e6,k:k,sku:sku});
+    });
+  });
+  if(!rows.length){alert('No replenishment actions — stock and pipeline look covered.');return;}
+  rows.sort(function(a,b){return b.urg-a.urg||b.net-a.net;});
+  var wb=X.utils.book_new(), N=rows.length, F=4, Lr=3+N;
+
+  // ═══ Sheet 1: Replenishment ═══
+  var cols=[{h:'Rank',w:7,fmt:'0'},{h:'SKU',w:38},{h:'Platform',w:12},{h:'Category',w:18},{h:'OSA % (MTD)',w:11,fmt:_OSAX.PCT,rag:'osa'},
+    {h:'SOH',w:10,fmt:_SX.INT},{h:'DRR (u/day)',w:12,fmt:_SX.DEC1},{h:'Days to Stockout',w:13,fmt:_SX.DTS,rag:'dts'},{h:'Open PO (incoming)',w:14,fmt:_SX.INT},
+    {h:'Cover (days)',w:10,fmt:'0'},{h:'Target (units)',w:12,fmt:_SX.INT},{h:'Net Reorder (units)',w:14,fmt:_SX.INT,rag:'net',key:true},{h:'Urgency',w:12,fmt:_SX.INT,key:true},
+    {h:'MRP (₹, calc)',w:9,fmt:_OSAX.INR,helper:true},{h:'Row shown (calc)',w:9,fmt:'0',helper:true}];
+  var rg=function(c){var l=_sxCol(X,c);return '$'+l+'$'+F+':$'+l+'$'+Lr;};
+  var xr=rows.map(function(r,i){
+    var R=F+i;
+    return {t:'d',v:[{f:'IFERROR(RANK(M'+R+','+rg(12)+',0)+COUNTIF($M$'+F+':M'+R+',M'+R+')-1,"")',v:i+1},r.name,r.plat,r.cat,r.osa,r.soh,r.drr,
+      r.native?r.dts:{f:_XF.dts('F'+R,'G'+R),v:r.dts},r.po,r.cover,
+      {f:_XF.tgt('G'+R,'J'+R),v:r.tgt},{f:_XF.net('F'+R,'I'+R,'G'+R,'J'+R),v:r.net},
+      {f:'IF(ISNUMBER(E'+R+'),MAX(0,100-E'+R+'),0)*G'+R+'*N(N'+R+')',v:r.urg},r.mrp,{f:'SUBTOTAL(103,$B'+R+')',v:1}]};
+  });
+  var sm=function(k){var s=0;rows.forEach(function(r){if(typeof r[k]==='number')s+=r[k];});return s;};
+  var nReo=rows.filter(function(r){return typeof r.net==='number'&&r.net>0;}).length;
+  var pad=_sxPad;
+  var s1=pad(['SKU lines needing reorder','','','',null,null,null,null,null,null,null,{f:'SUMPRODUCT('+rg(14)+',--ISNUMBER('+rg(11)+'),--('+rg(11)+'>0))',v:nReo}],15);
+  var tot=pad([{f:'"TOTAL · "&SUBTOTAL(103,$B$'+F+':$B$'+Lr+')&" lines"',v:'TOTAL · '+N+' lines'},'','','',null,
+    {f:'SUBTOTAL(109,'+rg(5)+')',v:sm('soh')},{f:'SUBTOTAL(109,'+rg(6)+')',v:_sxR8(sm('drr'))},null,{f:'SUBTOTAL(109,'+rg(8)+')',v:sm('po')},null,
+    {f:'SUBTOTAL(109,'+rg(10)+')',v:sm('tgt')},{f:'SUBTOTAL(109,'+rg(11)+')',v:sm('net')},{f:'SUBTOTAL(109,'+rg(12)+')',v:Math.round(sm('urg')*1e6)/1e6}],15);
+  var ws1=_osaXSheet(X,styled,{title:'GAW · Replenishment Plan · net of open PO · '+mk,
+    sub:'Net Reorder = DRR × cover − SOH − open PO (cover: Blinkit 8d, others 14d — edit a row’s Cover and it recalculates) · Urgency = (100 − OSA%) × DRR × MRP · Discontinued SKUs excluded · Rank, totals and colours are live',
+    cols:cols,rows:xr.concat([{t:'s',fmt:{11:'0'},v:s1},{t:'t',v:tot}]),freeze:{x:2,y:3}});
+  X.utils.book_append_sheet(wb,ws1,'Replenishment');
+
+  // ═══ Sheet 2: Platform Summary (SUMIFS over Replenishment) ═══
+  var plats=(_AVAIL_PLATFORMS||[]).filter(function(p){return rows.some(function(r){return r.plat===p;});});
+  var RP="'Replenishment'!", rp=function(c){return RP+rg(c);};
+  var cols2=[{h:'Aggregator',w:16},{h:'SKU Lines',w:10,fmt:_SX.INT},{h:'Lines Needing Reorder',w:13,fmt:_SX.INT},{h:'SOH',w:11,fmt:_SX.INT},{h:'DRR (u/day)',w:12,fmt:_SX.INT},
+    {h:'Open PO',w:11,fmt:_SX.INT},{h:'Net Reorder (units)',w:14,fmt:_SX.INT,key:true,rag:'net'},{h:'Urgency',w:12,fmt:_SX.INT,key:true}];
+  var P0=4, P1=3+plats.length, PT=P1+1;
+  var x2=plats.map(function(p,i){
+    var R=P0+i, rs=rows.filter(function(r){return r.plat===p;}), s=function(k){var t=0;rs.forEach(function(r){if(typeof r[k]==='number')t+=r[k];});return t;};
+    var A=rp(2), key='$A'+R;
+    return {t:'d',v:[p,{f:'COUNTIFS('+A+','+key+')',v:rs.length},
+      {f:'COUNTIFS('+A+','+key+','+rp(11)+',">0")',v:rs.filter(function(r){return typeof r.net==='number'&&r.net>0;}).length},
+      {f:'SUMIFS('+rp(5)+','+A+','+key+')',v:s('soh')},{f:'SUMIFS('+rp(6)+','+A+','+key+')',v:_sxR8(s('drr'))},{f:'SUMIFS('+rp(8)+','+A+','+key+')',v:s('po')},
+      {f:'SUMIFS('+rp(11)+','+A+','+key+')',v:s('net')},{f:'SUMIFS('+rp(12)+','+A+','+key+')',v:Math.round(s('urg')*1e6)/1e6}]};
+  });
+  var col=function(k){return plats.reduce(function(a,p){return a+rows.filter(function(r){return r.plat===p;}).reduce(function(b,r){return b+(typeof r[k]==='number'?r[k]:0);},0);},0);};
+  x2.push({t:'t',v:['ALL AGGREGATORS',{f:'SUM(B'+P0+':B'+P1+')',v:N},{f:'SUM(C'+P0+':C'+P1+')',v:nReo},{f:'SUM(D'+P0+':D'+P1+')',v:col('soh')},{f:'SUM(E'+P0+':E'+P1+')',v:_sxR8(col('drr'))},
+    {f:'SUM(F'+P0+':F'+P1+')',v:col('po')},{f:'SUM(G'+P0+':G'+P1+')',v:col('net')},{f:'SUM(H'+P0+':H'+P1+')',v:Math.round(col('urg')*1e6)/1e6}]});
+  var ws2=_osaXSheet(X,styled,{title:'GAW · Replenishment · Aggregator Summary · '+mk,sub:'Every figure is a live SUMIFS over the Replenishment tab — delete lines there and this tab follows',cols:cols2,rows:x2,freeze:{x:1,y:3}});
+  X.utils.book_append_sheet(wb,ws2,'Platform Summary');
+
+  try{ _replenCityTabs(X,wb,rows,styled,mk); }catch(e){ console.warn('[Replenishment export] city tabs failed',e); }
+  _osaSave(X,wb,'GAW_Replenishment_'+(mk||'plan')+'.xlsx');
+}
+
+// ── city granularity: per-platform SKU × City matrix, one combined City Detail (source) and City Summary (SUMIFS over it) ──
+function _replenCityTabs(X,wb,rowsAll,styled,mk){
+  var pad=_sxPad;
+  var selCap=(typeof SELECTED_DAY!=='undefined'&&SELECTED_DAY!=null)?SELECTED_DAY:Infinity, cityMap={};
+  rowsAll.forEach(function(r){
+    var sohM=_metroRollupSoh(r.plat,r.k), poM=_cityOpenPOMap(r.plat,r.name), drrM=_cityDRRMap(r.plat,r.sku,selCap), osaBy=r.k.by_city||{}, poNone=(r.po==='');
+    var cs={}; Object.keys(sohM).forEach(function(c){cs[c]=1;}); Object.keys(poM).forEach(function(c){cs[c]=1;}); Object.keys(drrM).forEach(function(c){cs[c]=1;});
+    r.byCity={};
+    Object.keys(cs).forEach(function(c){
+      var soh=Math.round(sohM[c]||0), po=Math.round(poM[c]||0), drr=_sxR8(drrM[c]||0);
+      if(!(soh>0||po>0||drr>_SX.MINV))return;
+      var osa=(osaBy[c]&&osaBy[c].wt_osa_ls!=null)?_osaR4(osaBy[c].wt_osa_ls):'', poV=poNone?'':po;
+      var urg=Math.round(((osa===''?0:Math.max(0,100-osa))*drr*(r.mrp||0))*1e6)/1e6;
+      cityMap[c]=true;
+      r.byCity[c]={soh:soh,po:poV,drr:drr,osa:osa,net:_XF.netJS(soh,poV,drr,r.cover),urg:urg};
+    });
+  });
+  var cities=Object.keys(cityMap).sort(); if(!cities.length)return;
+  var plats=(_AVAIL_PLATFORMS||[]).filter(function(p){return rowsAll.some(function(r){return r.plat===p;});});
+  var MS="'Replenishment'!", NM=rowsAll.length, ML=3+NM, mr=function(c){var l=_sxCol(X,c);return MS+'$'+l+'$4:$'+l+'$'+ML;};
+
+  // ═══ per-platform matrix: All-India (looked up from Replenishment) + one group per city ═══
+  var perG=6, mHead=['SOH','Open PO','DRR','OSA %','Reorder','Urgency'];
+  plats.forEach(function(plat){
+    var rs=rowsAll.filter(function(r){return r.plat===plat;}); if(!rs.length)return;
+    var cs=cities.filter(function(c){return rs.some(function(r){return r.byCity[c];});}); if(!cs.length)return;
+    var groups=['All-India'].concat(cs), base=2, NA=base+groups.length*perG, cMrp=NA, cCov=NA+1, cSh=NA+2, n=rs.length, LA=3+n;
+    var colsA=[{h:'SKU',w:38},{h:'Category',w:18}];
+    groups.forEach(function(g,gi){
+      colsA.push({h:g+'\nSOH',w:9,fmt:_SX.INT},{h:g+'\nOpen PO',w:9,fmt:_SX.INT},{h:g+'\nDRR',w:8,fmt:_SX.DEC1},{h:g+'\nOSA %',w:8,fmt:_OSAX.PCT,rag:'osa'},
+        {h:g+'\n'+(gi===0?'Reorder (India net)':'Reorder (local)'),w:11,fmt:_SX.INT,rag:'net',key:gi===0},{h:g+'\nUrgency',w:10,fmt:_SX.INT,key:gi===0});
+    });
+    colsA.push({h:'MRP (₹, calc)',w:9,fmt:_OSAX.INR,helper:true},{h:'Cover days (calc)',w:9,fmt:'0',helper:true},{h:'Row shown (calc)',w:9,fmt:'0',helper:true});
+    var ra=function(c){var l=_sxCol(X,c);return '$'+l+'$4:$'+l+'$'+LA;};
+    var natF=function(srcCol,R,mode){          // mode: 'sum' | 'avg' | 'po'
+      var l=_sxCol(X,srcCol), rngS=MS+'$'+l+'$4:$'+l+'$'+ML, crit=mr(1)+',$A'+R+','+mr(2)+',"'+plat+'"';
+      var inner=(mode==='avg')?'IFERROR(AVERAGEIFS('+rngS+','+crit+'),"")'
+        :((mode==='po')?'IF(COUNTIFS('+crit+','+rngS+',">=0")=0,"",SUMIFS('+rngS+','+crit+'))':'SUMIFS('+rngS+','+crit+')');
+      return 'IF(COUNTIFS('+crit+')=0,"",'+inner+')';
+    };
+    var xa=rs.map(function(r,i){
+      var R=4+i, v=[r.name,r.cat];
+      groups.forEach(function(g,gi){
+        var c0=base+gi*perG, L=function(m){return _sxCol(X,c0+m)+R;};
+        if(gi===0){
+          v.push({f:natF(5,R),v:r.soh},{f:natF(8,R,'po'),v:r.po},{f:natF(6,R),v:r.drr},{f:natF(4,R,'avg'),v:r.osa},{f:natF(11,R),v:r.net},{f:natF(12,R),v:r.urg});
+        }else{
+          var q=r.byCity[g]; if(!q){ v.push('','','','','',''); return; }
+          v.push(q.soh,q.po,q.drr,q.osa,{f:_XF.net(L(0),L(1),L(2),_sxCol(X,cCov)+R),v:q.net},
+            {f:'IF(ISNUMBER('+L(3)+'),MAX(0,100-'+L(3)+'),0)*'+L(2)+'*N('+_sxCol(X,cMrp)+R+')',v:q.urg});
+        }
+      });
+      v.push(r.mrp,r.cover,{f:'SUBTOTAL(103,$A'+R+')',v:1});
+      return {t:'d',v:v};
+    });
+    var tv=[{f:'"TOTAL · "&SUBTOTAL(103,$A$4:$A$'+LA+')&" SKUs"',v:'TOTAL · '+n+' SKUs'},''];
+    groups.forEach(function(g,gi){
+      var c0=base+gi*perG, sv=[0,0,0,null,0,0];
+      rs.forEach(function(r){ var q=(gi===0)?{soh:r.soh,po:r.po,drr:r.drr,net:r.net,urg:r.urg}:r.byCity[g]; if(!q)return;
+        ['soh','po','drr',null,'net','urg'].forEach(function(k,ix){ if(k&&typeof q[k]==='number')sv[ix]+=q[k]; }); });
+      tv.push({f:'SUBTOTAL(109,'+ra(c0)+')',v:sv[0]},{f:'SUBTOTAL(109,'+ra(c0+1)+')',v:sv[1]},{f:'SUBTOTAL(109,'+ra(c0+2)+')',v:_sxR8(sv[2])},null,
+        {f:'SUBTOTAL(109,'+ra(c0+4)+')',v:sv[4]},{f:'SUBTOTAL(109,'+ra(c0+5)+')',v:Math.round(sv[5]*1e6)/1e6});
+    });
+    tv.push(null,null,null);
+    var wsA=_osaXSheet(X,styled,{title:'GAW · '+plat+' · Replenishment by SKU × City · '+mk,
+      sub:'All-India group is looked up from the Replenishment tab (India-net reorder) · City groups use city stock, open PO and velocity (local reorder) · Reorder and Urgency recalculate if you edit SOH / PO / DRR / OSA · Blank = SKU not present in that city',
+      cols:colsA,rows:xa.concat([{t:'t',v:tv}]),freeze:{x:2,y:3}});
+    X.utils.book_append_sheet(wb,wsA,plat.replace(/[^A-Za-z0-9]/g,'').slice(0,18)+' x City');
+  });
+
+  // ═══ City Detail (all platforms, flat, worst urgency first) ═══
+  var det=[];
+  rowsAll.forEach(function(r){ Object.keys(r.byCity).forEach(function(c){ det.push({city:c,r:r,v:r.byCity[c]}); }); });
+  det.sort(function(a,b){return b.v.urg-a.v.urg||(b.v.net===''?-1:b.v.net)-(a.v.net===''?-1:a.v.net);});
+  if(!det.length)return;
+  var nD=det.length, DL=3+nD, dr=function(c){var l=_sxCol(X,c);return '$'+l+'$4:$'+l+'$'+DL;};
+  var colsD=[{h:'City',w:16},{h:'Platform',w:12},{h:'SKU',w:38},{h:'Category',w:18},{h:'SOH',w:10,fmt:_SX.INT},{h:'Open PO',w:10,fmt:_SX.INT},{h:'DRR (u/day)',w:11,fmt:_SX.DEC1},
+    {h:'OSA %',w:9,fmt:_OSAX.PCT,rag:'osa'},{h:'Reorder (local)',w:13,fmt:_SX.INT,rag:'net',key:true},{h:'Urgency',w:11,fmt:_SX.INT,key:true},
+    {h:'Cover days (calc)',w:9,fmt:'0',helper:true},{h:'MRP (₹, calc)',w:9,fmt:_OSAX.INR,helper:true},{h:'Row shown (calc)',w:9,fmt:'0',helper:true}];
+  var xd=det.map(function(x,i){ var R=4+i, v=x.v;
+    return {t:'d',v:[x.city,x.r.plat,x.r.name,x.r.cat,v.soh,v.po,v.drr,v.osa,{f:_XF.net('E'+R,'F'+R,'G'+R,'K'+R),v:v.net},
+      {f:'IF(ISNUMBER(H'+R+'),MAX(0,100-H'+R+'),0)*G'+R+'*N(L'+R+')',v:v.urg},x.r.cover,x.r.mrp,{f:'SUBTOTAL(103,$A'+R+')',v:1}]}; });
+  var dS=function(k){var s=0;det.forEach(function(x){if(typeof x.v[k]==='number')s+=x.v[k];});return s;};
+  var dtot=pad([{f:'"TOTAL · "&SUBTOTAL(103,$C$4:$C$'+DL+')&" SKU×city lines"',v:'TOTAL · '+nD+' SKU×city lines'},'','','',
+    {f:'SUBTOTAL(109,'+dr(4)+')',v:dS('soh')},{f:'SUBTOTAL(109,'+dr(5)+')',v:dS('po')},{f:'SUBTOTAL(109,'+dr(6)+')',v:_sxR8(dS('drr'))},null,
+    {f:'SUBTOTAL(109,'+dr(8)+')',v:dS('net')},{f:'SUBTOTAL(109,'+dr(9)+')',v:Math.round(dS('urg')*1e6)/1e6}],13);
+  var wsD=_osaXSheet(X,styled,{title:'GAW · Replenishment · City Detail (all aggregators) · '+mk,
+    sub:'One line per Aggregator × City × SKU, worst urgency first · Reorder is the LOCAL gap (city stock does not offset another city) so it adds up to more than the India net on the Replenishment tab · Blank = no data · Totals live',
+    cols:colsD,rows:xd.concat([{t:'t',v:dtot}]),freeze:{x:3,y:3}});
+  X.utils.book_append_sheet(wb,wsD,'City Detail');
+
+  // ═══ City Summary (SUMIFS over City Detail) ═══
+  var DT="'City Detail'!", dd=function(c){return DT+dr(c);}, PL=plats.map(function(p){return '"'+p+'"';}).join(',');
+  var sumRows=cities.map(function(c){
+    var xs=det.filter(function(x){return x.city===c;}), s=function(k){var t=0;xs.forEach(function(x){if(typeof x.v[k]==='number')t+=x.v[k];});return t;};
+    var pset={}; xs.forEach(function(x){pset[x.r.plat]=1;}); var poAny=xs.some(function(x){return typeof x.v.po==='number';});
+    return {city:c,plats:Object.keys(pset).length,n:xs.length,soh:s('soh'),po:poAny?s('po'):'',net:s('net'),urg:Math.round(s('urg')*1e6)/1e6};
+  }).filter(function(s){return s.n>0;});
+  sumRows.sort(function(a,b){return b.urg-a.urg;});
+  var colsS=[{h:'City',w:18},{h:'Aggregators',w:12,fmt:'0'},{h:'SKU Lines',w:11,fmt:_SX.INT},{h:'SOH',w:11,fmt:_SX.INT},{h:'Open PO',w:11,fmt:_SX.INT},
+    {h:'Reorder (local)',w:14,fmt:_SX.INT,rag:'net',key:true},{h:'Urgency',w:12,fmt:_SX.INT,key:true}];
+  var S1=4, S2=3+sumRows.length, ST=S2+1;
+  var xs2=sumRows.map(function(s,i){ var R=4+i, A=dd(0), cy='$A'+R;
+    return {t:'d',v:[s.city,{f:'SUMPRODUCT(--(COUNTIFS('+A+','+cy+','+dd(1)+',{'+PL+'})>0))',v:s.plats},{f:'COUNTIFS('+A+','+cy+')',v:s.n},
+      {f:'SUMIFS('+dd(4)+','+A+','+cy+')',v:s.soh},{f:'IF(COUNTIFS('+A+','+cy+','+dd(5)+',">=0")=0,"",SUMIFS('+dd(5)+','+A+','+cy+'))',v:s.po},
+      {f:'SUMIFS('+dd(8)+','+A+','+cy+')',v:s.net},{f:'SUMIFS('+dd(9)+','+A+','+cy+')',v:s.urg}]}; });
+  var sT=function(k){return sumRows.reduce(function(a,s){return a+(typeof s[k]==='number'?s[k]:0);},0);};
+  xs2.push({t:'t',v:['ALL '+sumRows.length+' CITIES',null,{f:'SUM(C'+S1+':C'+S2+')',v:sT('n')},{f:'SUM(D'+S1+':D'+S2+')',v:sT('soh')},{f:'SUM(E'+S1+':E'+S2+')',v:sT('po')},
+    {f:'SUM(F'+S1+':F'+S2+')',v:sT('net')},{f:'SUM(G'+S1+':G'+S2+')',v:Math.round(sT('urg')*1e6)/1e6}]});
+  var wsS=_osaXSheet(X,styled,{title:'GAW · Replenishment · City Summary (all aggregators) · '+mk,
+    sub:'Highest urgency first · Every figure is a live formula over the City Detail tab',cols:colsS,rows:xs2,freeze:{x:1,y:3}});
+  X.utils.book_append_sheet(wb,wsS,'City Summary');
 }
 
 // ══════════════════════════════════════════════
@@ -8920,13 +9233,14 @@ function _osaExportXlsx(forceAll){
           ds:(typeof _availDs==='function')?_availDs(k):k.ds_listing});
       }).filter(function(r){return (r.soh||0)>0||r.drr>0||r.osaMtd!=null;}).sort(function(a,b){return ((a.osaMtd==null?999:a.osaMtd)-(b.osaMtd==null?999:b.osaMtd));});
     }
+    rows=rows.filter(function(r){return !_sohIsDisc(r.name,plat);});   // discontinued SKUs excluded from the export
     var cols=[
       {h:'SKU',w:40},{h:'Category',w:18},
       {h:'OSA MTD',w:11,fmt:K.PCT,rag:'osa'},
       {h:'OSA Today',w:11,fmt:K.PCT,rag:'osa',key:true},
       {h:'OSA WoW (pp)',w:13,fmt:K.PP,rag:'wow'},
-      {h:'FR% ('+frLbl+')',w:12,fmt:'0"%"',rag:'fr'},
-      {h:'DS Listing',w:12,fmt:K.PCT,rag:'ds'},
+      {h:'FR% ('+frLbl+')',w:12,fmt:'0',rag:'fr'},
+      {h:'DS Listing ('+_availWinLabel()+')',w:14,fmt:K.PCT,rag:'ds'},
       {h:'DS WoW (pp)',w:13,fmt:K.PP,rag:'wow'},
       {h:'DOI',w:9,fmt:'0',rag:'doi'},
       {h:'SOH',w:10,fmt:K.INT},{h:'DRR (u/day)',w:12,fmt:K.INT},
@@ -8935,7 +9249,7 @@ function _osaExportXlsx(forceAll){
     ];
     var F=4, nR=rows.length, Lr=3+nR, Rng=function(c){var l=X.utils.encode_col(c);return l+F+':'+l+Lr;};
     var xrows=rows.map(function(r,i){
-      var fmt={}; if(r.frPlat)fmt[5]='0"% (plat)"'; if(r.doiCap)fmt[8]='0"+"';
+      var fmt={}; if(r.frPlat)fmt[5]='0" (plat)"'; if(r.doiCap)fmt[8]='0"+"';
       return {t:'d',fmt:fmt,v:[r.name,r.cat,r.osaMtd,r.osaToday,r.wow,r.fr,r.ds,r.dsWow,(r.doi!=null?r.doi:r.doiTxt),r.soh,r.drr,r.g,{f:'SUBTOTAL(103,$A'+(F+i)+')',v:1}]};
     });
     if(nR){
@@ -8978,6 +9292,7 @@ function _osaCombinedBuild(){
       var k=av[p].skus[code];
       if(k.day_osa_ls==null&&k.wt_osa_ls==null)return;     // no OSA reading -> nothing to show
       var info=skuLookup(p,code), key=_osaSkuKey(info.name);
+      if(_sohIsDisc(info.name,p))return;                   // discontinued -> not in the export
       var lastDay=null; Object.keys(k.daily||{}).forEach(function(d){var dn=parseInt(d,10); if(dn<=cap&&k.daily[d]&&k.daily[d].wt_osa_ls!=null&&(lastDay==null||dn>lastDay))lastDay=dn;});
       var cell={plat:p,code:code,name:(_OSA_SKU_LABEL[key]||info.name),cat:(typeof normCat==='function'?normCat(info.cat):info.cat)||'',
         today:_osaR4(k.day_osa_ls),mtd:_osaR4(k.wt_osa_ls),ds:_osaR4(k.day_ds_listing),g:_osaR4(k.mtd_gmv||0),
@@ -9144,82 +9459,12 @@ function _osaCombinedExportXlsx(){
   _osaSave(X,wb,'GAW_OSA_AllAggregators_Combined_'+(mk||'export')+'.xlsx');
 }
 
-// Replenishment plan: one urgency-ranked PO sheet, net of open PO, sized to each platform's cover target.
-function _replenExportXlsx(){
-  var X=window.XLSXStyle||window.XLSX; if(!X){alert('Excel library not loaded yet — try again in a moment.');return;}
-  var styled=!!window.XLSXStyle;
-  var mk=(typeof getViewingMonth==='function')?getViewingMonth():'';
-  var mtd=window._availMTD; if(!mtd){alert('No availability data loaded to export.');return;}
-  var rows=[];
-  (_AVAIL_PLATFORMS||Object.keys(mtd)).forEach(function(plat){
-    var pd=mtd[plat]; if(!pd||!pd.skus)return;
-    Object.keys(pd.skus).forEach(function(sku){
-      var k=pd.skus[sku]; var info=skuLookup(plat,sku);
-      var drr=k.drr||0, soh=k.soh||0, osa=k.wt_osa_ls;
-      if(drr<=0)return; // no velocity → not a reorder candidate
-      var openPo=(typeof _sohOpenPO==='function')?(_sohOpenPO(plat,info.name,null)||0):0;
-      // Shared engine + per-platform cover, so this export always agrees with the UI.
-      var cover=_sohCoverDays(plat);
-      var target=Math.ceil(drr*cover);
-      var net=_sohReorderQty(k,plat,openPo);
-      if(net==null)return; // no velocity → can't size
-      var mrp=info.mrp||0;
-      var urgency=(osa==null?0:Math.max(0,100-osa))*drr*mrp;
-      if(net<=0 && urgency<=0)return;
-      rows.push({plat:plat,name:info.name,cat:info.cat||'',osa:osa,soh:Math.round(soh),drr:Math.round(drr),
-        doi:(k.doi==null)?'':Math.round(k.doi)+(k.doi_flag==='capped'?'+':''),openPo:openPo,cover:cover,target:target,net:net,urg:Math.round(urgency),
-        k:k,sku:sku,mrp:mrp}); // k/sku/mrp kept for the city-breakdown tabs below; not written to the main sheet
-    });
-  });
-  if(!rows.length){alert('No replenishment actions — stock and pipeline look covered.');return;}
-  rows.sort(function(a,b){return b.urg-a.urg || b.net-a.net;});
-  var NAVY={rgb:'1B2B45'}, AMBER={rgb:'D4860A'};
-  var bd={top:{style:'thin',color:{rgb:'E4E4E4'}},bottom:{style:'thin',color:{rgb:'E4E4E4'}},left:{style:'thin',color:{rgb:'E4E4E4'}},right:{style:'thin',color:{rgb:'E4E4E4'}}};
-  var head=['Rank','SKU','Platform','Category','OSA %','SOH','DRR (u/day)','DOI','Open PO (incoming)','Cover (days)','Target (u)','Net Reorder (u)','Urgency'];
-  var _pct=function(v){return (v==null||isNaN(v))?'':Math.round(v*10)/10;};
-  var aoa=[['GAW · Replenishment Plan · net of open PO · per-platform cover (Blinkit 8d, others 14d) · '+mk,'','','','','','','','','','','',''],head];
-  rows.forEach(function(r,i){ aoa.push([i+1,r.name,r.plat,r.cat,_pct(r.osa),r.soh,r.drr,r.doi,r.openPo,r.cover,r.target,r.net,r.urg]); });
-  var ws=X.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:6},{wch:38},{wch:12},{wch:18},{wch:9},{wch:10},{wch:12},{wch:9},{wch:18},{wch:12},{wch:12},{wch:15},{wch:12}];
-  if(ws['!merges'])ws['!merges'].push({s:{r:0,c:0},e:{r:0,c:head.length-1}}); else ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:head.length-1}}];
-  if(styled){
-    var t=ws[X.utils.encode_cell({r:0,c:0})]; if(t)t.s={font:{name:'Calibri',sz:13,bold:true,color:NAVY},alignment:{horizontal:'center',vertical:'center'}};
-    for(var c=0;c<head.length;c++){var hc=ws[X.utils.encode_cell({r:1,c:c})]; if(hc)hc.s={font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:AMBER},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd};}
-    for(var r2=0;r2<rows.length;r2++){for(var c2=0;c2<head.length;c2++){var cell=ws[X.utils.encode_cell({r:r2+2,c:c2})]; if(!cell)continue; var hot=(c2===11&&rows[r2].net>0); cell.s={font:{name:'Calibri',sz:10,bold:hot,color:hot?{rgb:'B0390A'}:NAVY},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:bd,fill:{fgColor:{rgb:(r2%2?'F7F8FA':'FFFFFF')}}};}}
-  }
-  var wb=X.utils.book_new(); X.utils.book_append_sheet(wb,ws,'Replenishment');
-  try{ _replenCityTabs(X,wb,rows,styled,mk); }catch(e){ console.warn('[Replenishment export] city tabs failed',e); }
-  X.writeFile(wb,'GAW_Replenishment_'+(mk||'plan')+'.xlsx');
-}
-
 function _availRenderSohSkuTable(){
   const plat=_availSohPlat;
   if(!plat)return;
   const _showFR=(function(){var f=(typeof _frState==='function')?_frState():null;return !!(f&&((f.hasSku)||(f.byPlat&&Object.keys(f.byPlat).length)));})();
-  const pd=(window._availMTD||{})[plat]||{skus:{}};
-  const search=(document.getElementById('availSohSearch')?.value||'').toLowerCase().trim();
-  const sortBy=document.getElementById('availSohSort')?.value||'dts_asc';
-  let list=Object.keys(pd.skus).map(sku=>{
-    const info=skuLookup(plat,sku);
-    const k=pd.skus[sku];
-    const best=_sohBestDTS(plat,k);
-    const _opo=_sohOpenPO(plat,info.name,null);
-    const reorder=_sohReorderQty(k,plat,_opo);
-    const sohCities=k.soh_by_city||{};
-    const nCities=Object.keys(sohCities).filter(c=>(sohCities[c]||0)>0).length;
-    return {sku,name:info.name,cat:info.cat,soh:k.soh||0,dts:best.days,dts_flag:best.flag,drr:k.drr||0,reorder,nCities,openpo:_opo};
-  }).filter(r=>r.soh>0||r.drr>0); // only SKUs with stock or sales
-  if(search)list=list.filter(r=>(r.name||'').toLowerCase().includes(search)||(r.cat||'').toLowerCase().includes(search));
-  list=_applyAvailFilters(list,plat,'soh');
-  list.sort((a,b)=>{
-    if(sortBy==='dts_asc')return (a.dts??99999)-(b.dts??99999);
-    if(sortBy==='soh_desc')return b.soh-a.soh;
-    if(sortBy==='soh_asc')return a.soh-b.soh;
-    if(sortBy==='doi_asc')return (a.dts??99999)-(b.dts??99999);
-    if(sortBy==='reorder_desc')return (b.reorder??-1)-(a.reorder??-1);
-    if(sortBy==='name')return a.name.localeCompare(b.name);
-    return 0;
-  });
+  // Shared with the Excel download (_sohScopedList): search + filters + sort, discontinued residual-only lines dropped.
+  const list=_sohScopedList(plat);
   if(!list.length){document.getElementById('availSohSkuTable').innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">No SOH data for this platform.</div>';return;}
   const rows=list.map(r=>{
     const tint=_sohRowTint(r.dts);
