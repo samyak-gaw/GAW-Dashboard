@@ -1474,6 +1474,39 @@ function _fkDiscActive(monthKey){
   const me = MONTH_NUM_FROM_KEY(em) + YEAR_FROM_KEY(em)*12;
   return mk >= me;
 }
+// ── Flipkart Oct–Nov 2026 BF promo plan (submitted "Flipkart_Oct-Nov_Promos_Big_Billion_Days") ──
+// Per-SKU, per-window BF % overrides the flat 30/35 weekday/weekend rule for these two months.
+// Oct: 1–6 = 30% (Cookies & Cream Cone 35%) · 7–18 = 35% · 19–31 = 25% (Jars 30%).
+// Nov: 1 = Oct 24–Nov 1 window (25%, Jars 30%) · 2–6 = 25% · Sat/Sun (7,8,14,15,21,22,28,29) = 30% · other days 25%.
+// SKUs not in the file (NLC tubs/bars, discontinued) return null → fall back to the flat rule.
+const FK_PLAN_MONTHS = new Set(['Oct-2026','Nov-2026']);
+const FK_PLAN_SKUS = new Set(['ICEH2GC8DVHQWX5R','ICEH2GC8GTFJWZ4H','ICEH2GC8NKWVARYJ','ICEHEAFC5FGFRQHU','ICEHEAFCCXHSGDUM','ICEHEAFCE6G5FGUY','ICEHEAFCH98YXSHK','ICEHEAFCPXXTNFZ3','ICEHEAFCRG6CJCW2','ICEHEAFCTX6UDJFT','ICEHEAFCXQKHG9GX','ICEHPWPETHA9WBH9','ICEH2GC8TBJK5KDC']);
+const FK_PLAN_JARS = new Set(['ICEHEAFC5FGFRQHU','ICEHEAFCH98YXSHK','ICEHEAFCTX6UDJFT','ICEHEAFCXQKHG9GX']);
+const FK_PLAN_CC = 'ICEHPWPETHA9WBH9';
+function _fkPlanActive(monthKey){ return FK_PLAN_MONTHS.has(monthKey); }
+function _fkPlanRate(monthKey, day, code){
+  if(!FK_PLAN_MONTHS.has(monthKey)) return null;
+  const id = String(code==null?'':code).trim();
+  if(!FK_PLAN_SKUS.has(id)) return null;
+  const jar = FK_PLAN_JARS.has(id), cc = (id === FK_PLAN_CC);
+  day = Number(day);
+  if(monthKey === 'Oct-2026'){
+    if(day <= 6)  return cc ? 0.35 : 0.30;
+    if(day <= 18) return 0.35;
+    return jar ? 0.30 : 0.25;
+  }
+  if(day === 1) return jar ? 0.30 : 0.25;
+  if(day <= 6)  return 0.25;
+  return _fkIsWeekend(monthKey, day) ? 0.30 : 0.25;
+}
+// Per SKU-row BF discount: plan rate if the SKU is in the plan, else the flat weekday/weekend rule.
+function _fkRowDisc(monthKey, r){
+  const g = r.gmv || 0; if(g <= 0) return 0;
+  const pr = _fkPlanRate(monthKey, r.day, r.sku_code);
+  if(pr === null) return _fkBfDisc(monthKey, r.day, g);
+  return Math.round(g * pr * 100) / 100;
+}
+
 // BigBasket fixed-rate discount, per month, with an optional intra-month renegotiation date.
 // Aug-2026: 25% days 1-13, renegotiated to 30% from day 14 onward.
 // Add a month key to BB_DISC_RATES when the base rate changes again; add/adjust
@@ -1524,8 +1557,25 @@ const AMZ_RAKHI_DEAL = {
     'B0GYQ415CK','B0F1Y4S56T','B0F1XZPZKK','B0F1Y4XCZQ','B0GZ381253','B0F1Y3TXHC'
   ])
 };
+// Oct-2026 offer ("Amazon_Oct_Promo.xlsx"): full catalog 33% BF + 17% Amazon Fund all month, EXCEPT 3 ASINs at 40% BF + 23% Amazon Fund
+// on 8-18 Oct (33% on 1-7 and 19-31). NLC ASINs are not in the offer file; they keep the default rate and are carved out by the Net Disc logic.
+const AMZ_OCT_DEAL = {
+  rate: 0.40,
+  month: 'Oct-2026',
+  dayStart: 8,
+  dayEnd: 18,
+  asins: new Set([
+    'B0F1YMGCRY',     // Mango High Protein Ice Cream Cup 100ml
+    'B0F1Y4P7HG',     // Belgian Chocolate High Protein Ice Cream Cup 100ml
+    'B0F1Y3Z7XP'      // Chocolate Brownie Ice Cream Cone
+  ])
+};
 function _amzDiscRate(asin, monthKey, day){
   const a = String(asin||'').trim().toUpperCase();
+  const o = AMZ_OCT_DEAL;
+  if(a && o.asins.has(a) && monthKey===o.month && Number(day)>=o.dayStart && Number(day)<=o.dayEnd){
+    return o.rate;
+  }
   const r = AMZ_RAKHI_DEAL;
   if(a && r.asins.has(a) && monthKey===r.month && Number(day)>=r.dayStart && Number(day)<=r.dayEnd){
     return r.rate;
@@ -1541,13 +1591,34 @@ function _amzDiscRate(asin, monthKey, day){
   return AMZ_DEFAULT_DISC;
 }
 
+/* MRP revision (Oct-2026) ---------------------------------------------------- */
+// Cups, Cones & Bars moved from MRP ₹120 to ₹100. Applied when the SKU master is built, so Open PO
+// value @MRP, restock urgency, SKU detail and the exports all use the new MRP. Only a current MRP of
+// exactly ₹120 is rewritten: any other value uploaded to the master (e.g. a later revision) wins.
+// Not revised (own MRP/pricing): Mango Duet, Raspberry Duet, Malai Kulfi, Vanilla Chocobar, Cookies & Cream.
+// Historical GMV, units and discount are untouched (they come from platform reports, not the master).
+const MRP_REVISION = {
+  from: 120, to: 100,
+  names: new Set([
+    'Almond Crunch Ice Cream Bar','Brownie Crunch Ice Cream Bar','Choco Hazelnut Crunch Ice Cream Bar','Dark Truffle Ice Cream Bar',
+    'Belgian Chocolate Ice Cream Cup 100ml','Blueberry Cheesecake Ice Cream Cup 100ml','Chocolate Brownie Fudge Ice Cream Cup 100ml',
+    'Keto Very Berry Ice Cream Cup 100ml','Mango Ice Cream Cup 100ml',
+    'Blueberry Cheesecake Ice Cream Cone','Chocolate Brownie Ice Cream Cone','Dark Chocolate Ice Cream Cone'
+  ])
+};
+function _mrpRevised(name, mrp){
+  return (mrp === MRP_REVISION.from && MRP_REVISION.names.has(String(name||'').trim())) ? MRP_REVISION.to : mrp;
+}
+
 /* NLC / Realized Revenue ---------------------------------------------------- */
 // 13 confirmed NLCs. FK/Zepto/IM keyed by canonical SKU NAME; Amazon by ASIN.
 const NLC_MAP = {
   Flipkart: {
     'Belgian Chocolate Ice Cream Tub 500ml': 200,
     'Blueberry Cheesecake Ice Cream Tub 500ml': 175,
-    'Mango Ice Cream Tub 500ml': 175
+    'Mango Ice Cream Tub 500ml': 175,
+    'Choco Hazelnut Crunch Ice Cream Bar': 42,  // GST-inclusive; NLC from Oct-2026
+    'Brownie Crunch Ice Cream Bar': 42           // GST-inclusive; NLC from Oct-2026
   },
   Zepto: {
     'Blueberry Cheesecake Ice Cream Cone': 50,
@@ -1573,7 +1644,13 @@ const NLC_EFFECTIVE = { Flipkart:'live', Zepto:'live', Instamart:'live', Amazon:
 // live (e.g. Instamart's other 3 are 'live'; this one joined Aug-2026). Key = platform ->
 // SKU name (ASIN for Amazon) -> 'Mon-YYYY'. Absent = falls back to NLC_EFFECTIVE[plat].
 const NLC_SKU_EFFECTIVE = {
-  Instamart: { 'Blueberry Cheesecake Ice Cream Tub 500ml': 'Aug-2026' }
+  Instamart: { 'Blueberry Cheesecake Ice Cream Tub 500ml': 'Aug-2026' },
+  Flipkart:  { 'Choco Hazelnut Crunch Ice Cream Bar': 'Oct-2026', 'Brownie Crunch Ice Cream Bar': 'Oct-2026' }
+};
+// Extra platform sku_ids that carry the same NLC name (a SKU relisted under a second FSN).
+// _nlcSkuIdByName keeps only the first id per name, so list the others here.
+const NLC_ID_ALIAS = {
+  Flipkart: { 'Choco Hazelnut Crunch Ice Cream Bar': ['ICEHMVVZAVWMEJ2Q'] }
 };
 function _nlcEffFor(plat, key){
   return (key!==undefined && NLC_SKU_EFFECTIVE[plat] && NLC_SKU_EFFECTIVE[plat][key]) || NLC_EFFECTIVE[plat];
@@ -1607,6 +1684,7 @@ function _nlcIdSet(plat, monthKey){
   if(plat === 'Amazon') return new Set(names.map(n => _normSkuId(n)));
   const idx = _nlcSkuIdByName(plat);
   const ids = names.map(n => idx[n]).filter(Boolean).map(id => _normSkuId(id));
+  names.forEach(n => ((NLC_ID_ALIAS[plat]||{})[n]||[]).forEach(id => ids.push(_normSkuId(id))));
   return ids.length ? new Set(ids) : null;
 }
 // day -> {gmv, disc} contributed by NLC SKUs, from SKU-level rows.
@@ -1717,7 +1795,10 @@ function renderNLCSection(){
       const active = _nlcActive(plat, mk, key); // per-SKU: a platform can carry a mix (e.g. Instamart)
       const skuId = (plat==='Amazon') ? key : (nameIdx[key]||null);
       const nm = (plat==='Amazon') ? (skuLookup('Amazon',key).name||key) : key;
-      const m = skuId ? _nlcMtd(plat, skuId) : {units:0,gmv:0};
+      let m = skuId ? _nlcMtd(plat, skuId) : {units:0,gmv:0};
+      ((NLC_ID_ALIAS[plat]||{})[key]||[]).forEach(function(aid){
+        const a = _nlcMtd(plat, aid); m = {units:(m.units||0)+(a.units||0), gmv:(m.gmv||0)+(a.gmv||0), disc:(m.disc||0)+(a.disc||0)};
+      });
       const realized = active ? m.units*nlc : 0;
       const realPct = (active && m.gmv>0) ? (realized/m.gmv*100) : null;
       if(active){ pRealized+=realized; pGmv+=m.gmv; pAggDisc+=(m.disc||0); totAggDisc+=(m.disc||0); anyActiveInPlat=true; }
@@ -2165,9 +2246,11 @@ function _buildDB() {
     Object.keys(base).forEach(id => { out[id] = Object.assign({}, base[id]); });
     Object.keys(dlt).forEach(id => {
       const b = out[id] || {}, d = dlt[id] || {};
-      const mrp = (d.mrp > 0) ? d.mrp : ((b.mrp > 0) ? b.mrp : 0);
+      let mrp = (d.mrp > 0) ? d.mrp : ((b.mrp > 0) ? b.mrp : 0);
+      mrp = _mrpRevised(d.name || b.name, mrp);
       out[id] = Object.assign({}, b, d, { mrp: mrp });
     });
+    Object.keys(out).forEach(id => { out[id].mrp = _mrpRevised(out[id].name, out[id].mrp); });  // SEED-only entries too
     DB.sku_master[p] = out;
   });
 
@@ -2225,17 +2308,41 @@ function _buildMonthData(monthKey) {
     // Applies only to Flipkart, only for months at/after the effective month (Jun-2026),
     // and only where the day has GMV. A manual disc_override (if ever set) still wins.
     // SKU rows are needed both for the NLC split below and for result[p].sku
-    const _skuRows = buildSku(seedP, deltaP);
+    let _skuRows = buildSku(seedP, deltaP);
+    // Flipkart Oct–Nov plan: re-derive SKU-row BF disc from the per-SKU/window plan (copies; stored delta untouched).
+    const _fkPlan = (p === 'Flipkart' && _fkDiscActive(monthKey) && _fkPlanActive(monthKey));
+    if (_fkPlan) _skuRows = _skuRows.map(r => Object.assign({}, r, { disc: _fkRowDisc(monthKey, r) }));
     const _exclNlc = _nlcDiscExclActive(monthKey) && _nlcActive(p, monthKey)
                      && DISC_SOURCE[p] === 'consumer';
     const _needNlcDay = _nlcDiscExclActive(monthKey) && _nlcActive(p, monthKey)
                         && DISC_SOURCE[p] !== 'brand';
     const _nlcDay  = _needNlcDay ? _nlcDayTotals(p, _skuRows, monthKey) : {};
 
+    const _fkCityScale = {};
     if (p === 'Flipkart' && _fkDiscActive(monthKey)) {
       const hasOverride = (d) => (deltaP.disc_overrides || {})[d] !== undefined;
+      // Plan months: day totals built from SKU rows (plan rate per SKU), NLC SKUs carved out of the net.
+      const _fkPlanDay = {};
+      if (_fkPlan) {
+        const nlcIds = _nlcIdSet('Flipkart', monthKey) || new Set();
+        _skuRows.forEach(r => {
+          const dd = Number(r.day);
+          const o = _fkPlanDay[dd] || (_fkPlanDay[dd] = { raw:0, net:0, gmv:0 });
+          o.raw += r.disc || 0; o.gmv += r.gmv || 0;
+          if (!nlcIds.has(_normSkuId(r.sku_code))) o.net += r.disc || 0;
+        });
+      }
       Object.values(dayMap).forEach(d => {
-        if (d && d.day && d.gmv > 0 && !hasOverride(d.day) && !hasOverride(String(d.day))) {
+        if (d && d.day && d.gmv > 0 && _fkPlan && _fkPlanDay[d.day] && !hasOverride(d.day) && !hasOverride(String(d.day))) {
+          const o = _fkPlanDay[d.day];
+          const gap = Math.max(0, d.gmv - o.gmv);               // SKU/day reconciliation gap → flat rule
+          const gapDisc = gap > 0 ? _fkBfDisc(monthKey, d.day, gap) : 0;
+          d.disc_raw = Math.round((o.raw + gapDisc) * 100) / 100;
+          d.disc     = Math.round((o.net + gapDisc) * 100) / 100;
+          d.disc_nlc = Math.max(0, d.disc_raw - d.disc);
+          const flat = _fkBfDisc(monthKey, d.day, d.gmv);
+          if (flat > 0) _fkCityScale[d.day] = d.disc_raw / flat;
+        } else if (d && d.day && d.gmv > 0 && !hasOverride(d.day) && !hasOverride(String(d.day))) {
           // BF is charged on consumer GMV; NLC SKUs are excluded because the
           // aggregator, not GAW, funds the promo on those.
           const nlcGmv = (_nlcDay[d.day] && _nlcDay[d.day].gmv) || 0;
@@ -2272,7 +2379,7 @@ function _buildMonthData(monthKey) {
 
     result[p] = {
       daily:   Object.values(dayMap).sort((a,b) => a.day - b.day).filter(d=>d.day>=1&&d.day<=dMaxDays),
-      city:    buildCity(seedP, deltaP),
+      city:    (_fkPlan ? buildCity(seedP, deltaP).map(r => (_fkCityScale[r.day] !== undefined) ? Object.assign({}, r, { disc: Math.round((r.disc||0) * _fkCityScale[r.day] * 100) / 100 }) : r) : buildCity(seedP, deltaP)),
       sku:     _skuRows,
       citysku: buildCitySku(deltaP),
       march:   []
@@ -6086,7 +6193,7 @@ function procIM(){
 
 // ══════════════════════════════════════════════
 // AMAZON PARSER
-// disc = _amzDiscRate() of GMV (default 33%; crazy-deal ASINs 45% from Aug-1-2026; Rakhi ASINs 45% Aug 27-28 only)
+// disc = _amzDiscRate() of GMV (default 33%; crazy-deal ASINs 45% from Aug-1-2026; Rakhi ASINs 45% Aug 27-28 only; Oct 3 ASINs 40% on 8-18 Oct)
 // No city data in Amazon reports
 // ══════════════════════════════════════════════
 function procAmazon(rows){
@@ -8540,7 +8647,13 @@ var _XF={
 // ── shared SKU list: ONE pipeline for the on-screen SOH table and the Excel download ──
 // Discontinued: global list (CM_DISCONTINUED: Very Berry, Biscrunch, Red Velvet ...) + platform-specific delistings (same SKU still live elsewhere).
 // SOH / Open PO / Replenishment (screen + Excel) exclude them entirely - no stock, PO or reorder shown.
-var _SOH_DISC_PLAT={Instamart:['blueberrycassata','mangoicecreamtub500ml'],Flipkart:['raspberryduetstick']};
+// Platform-specific delistings (SKU still live on other platforms, or dead everywhere but not yet global). Keys = cmKey(name).
+// 08-Oct-2026: +11 SKUs verified dead on live data (0 units in 14 days, DS listing avg 0-4.8% over last 7 days).
+var _SOH_DISC_PLAT={
+  Instamart:['blueberrycassata','mangoicecreamtub500ml','chocolatecassata','chocolateoverloadicecreamcup100ml','hotchocolatefudgeicecreampastry','roastedalmondkulfistick','vanillachocobar'],
+  Flipkart:['raspberryduetstick','mangoicecreamcup100ml','strawberryraspberryicepop'],
+  Zepto:['chocolatecassata','mangoicecreamcup100ml','strawberryraspberryicepop','tendercoconutlitchiicepop']
+};
 function _sohIsDisc(name,plat){ try{ var k=cmKey(name); if(CM_DISCONTINUED.has(k))return true; return !!(plat&&_SOH_DISC_PLAT[plat]&&_SOH_DISC_PLAT[plat].indexOf(k)>=0); }catch(e){ return false; } }
 function _sohFiltersActive(){
   var s=((document.getElementById('availSohSearch')||{}).value||'').trim(); if(s)return true;
