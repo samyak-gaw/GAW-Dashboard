@@ -533,7 +533,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
       <h3>Weekend Regulars <span class="pill" style="color:var(--muted)">top-10 in ≥3 of last weekends</span></h3>
       <div id="wkRegulars" style="font-size:12.5px;line-height:1.8"></div>
 </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:24px">Weekend = Saturday + Sunday. Lift = avg weekend daily GMV vs avg Mon–Fri daily GMV of the same week. WoW = this weekend total vs prior weekend total. OSA = GMV-weighted weekend on-shelf availability (same method as the Availability tab, windowed to Sat–Sun), across 5 platforms (no Amazon). Lost GMV = Σ wknd GMV × (100−OSA)/OSA. Month-end weekends that split across months show only the in-month day in this view.</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:24px">Weekend = Saturday + Sunday. Lift = avg weekend daily GMV vs avg Mon–Fri daily GMV of the same week. WoW = this weekend total vs prior weekend total. OSA = GMV-weighted weekend on-shelf availability (same method as the Availability tab, windowed to Sat–Sun), across all 6 platforms. Lost GMV = Σ wknd GMV × (100−OSA)/OSA. Month-end weekends that split across months show only the in-month day in this view.</div>
 </div>
 </div>
 
@@ -2573,8 +2573,10 @@ function initDB() {
 }
 
 // Save the small delta to one key, large data slots to separate keys (avoids quota).
-// AVAIL is the heaviest slot; we trim per-day detail to the last 14 days before persisting
-// (only Trending needs daily; MTD avg + by_city + latest-day are kept in full).
+// AVAIL: `daily` (SKU-level, ~250KB per month for all platforms) is kept in FULL for every day —
+// MTD OSA/DS, WoW and Trending are all computed from it, so trimming it silently turned "MTD"
+// into a 14-day average (May-Aug 2026 archive was found holding only days 16-30). Only the heavy
+// per-day per-city snapshot (`daily_city`) is capped to the newest 14 days; by_city (MTD per city) is kept.
 function _trimAvailForStorage(avail){
   if(!avail)return {};
   const out={};
@@ -2585,15 +2587,12 @@ function _trimAvailForStorage(avail){
       Object.keys(avail[mk][plat]||{}).forEach(sku=>{
         const rec=avail[mk][plat][sku]||{};
         const daily=rec.daily||{};
-        // Keep only the latest 14 day-keys
-        const dayNums=Object.keys(daily).map(d=>parseInt(d,10)).filter(n=>!isNaN(n)).sort((a,b)=>b-a);
-        const keep=new Set(dayNums.slice(0,14).map(String));
-        const trimmedDaily={};
-        Object.keys(daily).forEach(d=>{if(keep.has(d))trimmedDaily[d]=daily[d];});
-        // daily_city already 14-day-capped at parse; keep same day-set as daily
-        const dc=rec.daily_city||{}; const trimmedDC={};
-        Object.keys(dc).forEach(d=>{if(keep.has(String(d)))trimmedDC[d]=dc[d];});
-        out[mk][plat][sku]={daily:trimmedDaily,by_city:rec.by_city||{},daily_city:trimmedDC};
+        const dc=rec.daily_city||{};
+        const dcDays=Object.keys(dc).map(d=>parseInt(d,10)).filter(n=>!isNaN(n)).sort((a,b)=>b-a);
+        const keepDC=new Set(dcDays.slice(0,14).map(String));
+        const trimmedDC={};
+        Object.keys(dc).forEach(d=>{if(keepDC.has(String(d)))trimmedDC[d]=dc[d];});
+        out[mk][plat][sku]={daily:daily,by_city:rec.by_city||{},daily_city:trimmedDC};
       });
     });
   });
@@ -2634,7 +2633,9 @@ function _sohWoWForPlat(plat){
   const cur=hh[wks[wks.length-1]];
   if(wks.length<2)return {cur,prev:null,delta:null};
   const prev=hh[wks[wks.length-2]];
-  return {cur,prev,delta:(prev>0)?((cur-prev)/prev*100):null};
+  const _wi=k=>{ const m=String(k).match(/^(\d{4})-W(\d{1,2})$/); return m?(+m[1])*52+(+m[2]):null; };
+  const a=_wi(wks[wks.length-1]), b=_wi(wks[wks.length-2]);
+  return {cur,prev,delta:(prev>0)?((cur-prev)/prev*100):null,gap:(a!=null&&b!=null)?(a-b):1};
 }
 
 function saveDB() {
@@ -3454,7 +3455,8 @@ function platSkuRca(prefix,plat,skuCode,rowEl){
     const k=pd&&pd.skus?pd.skus[String(skuCode).trim()]:null;
     if(!k){ td.innerHTML='<span style="font-size:11px;color:var(--muted)">No availability/SOH data for this SKU — upload OSA + SOH files for '+plat+'.</span>'; tr.appendChild(td); rowEl.after(tr); return; }
     const _nm=(typeof skuLookup==='function'?(skuLookup(plat,skuCode)||{}).name:null)||k.name;
-    const fr=(typeof _frForSku==='function')?_frForSku(plat,_nm):null;
+    const _drMtd=(_availWindow==='mtd');
+    const fr=(typeof _frForSku==='function')?_frForSku(plat,_nm,_drMtd):null;
     const wow=(typeof _osaWoWForSku==='function')?_osaWoWForSku(plat,String(skuCode).trim()):null;
     const m=(l,v,c)=>'<div style="min-width:86px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:700">'+l+'</div><div style="font-size:14px;font-weight:800;color:'+(c||'#22304A')+'">'+v+'</div></div>';
     const strip='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px">'
@@ -3462,9 +3464,9 @@ function platSkuRca(prefix,plat,skuCode,rowEl){
       +m('OSA MTD',_availFmtPct(k.wt_osa_ls),_availColor(k.wt_osa_ls,'osa'))
       +m('OSA WoW',(wow&&wow.delta!=null)?((wow.delta>=0?'▲ ':'▼ ')+Math.abs(wow.delta).toFixed(1)+'pp'):'—',(wow&&wow.delta!=null)?(wow.delta>=0?'#1E7A46':'#BD2635'):'#8B97AD')
       +m('SOH',Math.round(k.soh||0).toLocaleString('en-IN')+' u')
-      +m('DOI',(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':'—'):Math.round(k.doi)+'d'+(k.doi_flag==='capped'?'+':''),_availColor(k.doi,'doi'))
+      +m('DOI',(k.doi==null)?(k.doi_flag==='no_velocity'?'no velocity':(k.doi_flag==='no_soh'?'no SOH row':'—')):(k.doi===0?'OUT':Math.round(k.doi)+'d'+(k.doi_flag==='capped'?'+':'')),_availColor(k.doi,'doi'))
       +m('DRR',Math.round(k.drr||0)+' u/day')
-      +m('FR% 10d',fr?Math.round(fr.fr)+'%'+(fr.level!=='sku'?' (plat)':''):'—',fr?_frColor(fr.fr):'#8B97AD')
+      +m('FR% '+(_drMtd?'MTD':'10d'),fr?Math.round(fr.fr)+'%'+(fr.level!=='sku'?' (plat)':''):'—',fr?_frColor(fr.fr):'#8B97AD')
       +m('Lost GMV MTD',_availFmtRupees(k.lost_gmv),'#BD2635')
       +'</div>';
     // city mini-table: metro-grouped (nCity). OSA by_city is already metro-keyed (avg of its
@@ -3475,14 +3477,14 @@ function platSkuRca(prefix,plat,skuCode,rowEl){
     if(cset.size){
       const rows=[...cset].map(c=>{
         const bc=(k.by_city||{})[c]||{}; const s=_metroSoh[c]||0;
-        const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,_nm,c):null;
+        const cf=(typeof _frForSkuCity==='function')?_frForSkuCity(plat,_nm,c,_drMtd):null;
         return {c,osa:bc.wt_osa_ls,soh:s,fr:cf?cf.fr:null};
       }).sort((a,b)=>(b.soh||0)-(a.soh||0)).slice(0,12);
       cityHtml='<div class="scroll-table"><table style="width:100%;min-width:420px;border-collapse:collapse"><thead><tr style="background:#EEF1F6">'
         +'<th style="padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;color:var(--muted)">City</th>'
         +'<th style="padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;color:var(--muted)">OSA MTD</th>'
         +'<th style="padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;color:var(--muted)">SOH</th>'
-        +'<th style="padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;color:var(--muted)">FR% (10d)</th></tr></thead><tbody>'
+        +'<th style="padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;color:var(--muted)">FR% ('+(_drMtd?'MTD':'10d')+')</th></tr></thead><tbody>'
         +rows.map(r=>'<tr><td style="padding:5px 8px;font-size:11px"><b>'+r.c+'</b></td>'
           +'<td style="padding:5px 8px;font-size:11px;font-weight:700;color:'+_availColor(r.osa,'osa')+'">'+_availFmtPct(r.osa)+'</td>'
           +'<td style="padding:5px 8px;font-size:11px">'+Math.round(r.soh||0).toLocaleString('en-IN')+'</td>'
@@ -3685,7 +3687,7 @@ function _ovHeroMetrics(){
       if(sm.wt_osa_ls!=null&&w>0){oS+=sm.wt_osa_ls*w;oW+=w;}
       if(sm.wt_osa_ls!=null&&sm.wt_osa_ls<90)osaWeak++;
       if(sm.doi!=null&&w>0){dS+=sm.doi*w;dW+=w;}
-      Object.values(agg[p].skus||{}).forEach(k=>{ if(k.doi!=null&&k.doi<7)doiLow++; });
+      Object.values(agg[p].skus||{}).forEach(k=>{ if(k.doi!=null&&k.doi<7&&!k.disc&&k.has_soh!==false)doiLow++; });
     });
     if(oW>0)osa=oS/oW;
     if(dW>0)doi=dS/dW;
@@ -5091,7 +5093,7 @@ function renderWeekend(){
     <div class="kpi g"><div class="label">Units</div><div class="value">${fN(L.units)}</div><div class="sub">${L.days} day${L.days>1?'s':''} of data</div></div>
     <div class="kpi r"><div class="label">Blended Discount</div><div class="value">${L.discPct.toFixed(1)}%</div><div class="sub">${fC(L.disc)} spend</div></div>
     <div class="kpi"><div class="label">Weekend Lift vs Weekday</div><div class="value" style="color:${lift===null?'#22304A':(lift>=0?'#1E7A46':'#BD2635')}">${lift===null?'—':(lift>=0?'+':'')+lift.toFixed(1)+'%'}</div><div class="sub">avg daily GMV, Sat–Sun vs Mon–Fri</div></div>
-    <div class="kpi"><div class="label">Weekend OSA</div><div class="value" style="color:${osaCol}">${osaL.osa!=null?osaL.osa.toFixed(1)+'%':'—'}</div><div class="sub">${osaL.osa!=null?`<span style="color:#BD2635">${fC(osaL.lostGmv)} lost GMV</span> · 5 platforms`:'upload OSA reports'}</div></div>`;
+    <div class="kpi"><div class="label">Weekend OSA</div><div class="value" style="color:${osaCol}">${osaL.osa!=null?osaL.osa.toFixed(1)+'%':'—'}</div><div class="sub">${osaL.osa!=null?`<span style="color:#BD2635">${fC(osaL.lostGmv)} lost GMV</span> · 6 platforms`:'upload OSA reports'}</div></div>`;
 
   // Monday action callout — top 3 signals
   const acts=[];
@@ -5779,6 +5781,11 @@ function processFile(file,type){
           const days=type==='zp'&&r?` (${_ma2} ${r.daysFound.join(',')})`:''
           document.getElementById(subId).textContent=`✅ ${file.name}${days}`;
         }
+        if(/Soh$/.test(type)&&window._sohLastResult){ const _sr=window._sohLastResult;
+          summary+=`\n\nSKUs: ${_sr.skuCount} · Units: ${Math.round(_sr.totalUnits).toLocaleString('en-IN')}`;
+          if(_sr.unmatchedSku>0)summary+=`\n⚠ ${_sr.unmatchedSku} rows skipped — SKU not in master`;
+          if(_sr.blankCells>0)summary+=`\n⚠ ${_sr.blankCells} rows had a blank/non-numeric SOH cell (read as 0)`;
+        }
         if(/Soh$/.test(type)) _sohSnapshotWeek(); // archive this week's per-platform SOH for WoW
         saveDB();renderAll();
         if(window._cloudAwareSaveDB) window._cloudAwareSaveDB();
@@ -5786,6 +5793,7 @@ function processFile(file,type){
         updateUploadDiag();
       } else {
         // Processor returned false — likely 0 valid rows after parseDay/column matching
+        if(window._sohCancelled){window._sohCancelled=false;return;}  // user declined a low-SOH overwrite — nothing changed
         const tip = type==='zp' && window._zpLastResult ? `\n\nDays found: ${window._zpLastResult.daysFound.join(', ') || '(none)'}\nDate fails: ${window._zpLastResult.dateFails || 0}\nGMV fails: ${window._zpLastResult.gmvFails || 0}\nDate column: "${window._zpLastCols?.dateCol || '(not detected)'}"\nGMV column: "${window._zpLastCols?.gmvCol || '(not detected)'}"` : '';
         alert(`⚠ Upload completed but no valid rows were found.\n\nThis usually means:\n• Date column wasn't recognized\n• OR all rows are from a month that doesn't match the active month (${MONTH_LABEL(getActiveMonth())})\n• OR the wrong file type was selected for this slot${tip}\n\nCheck the browser console (F12) for details.`);
       }
@@ -6413,6 +6421,14 @@ function _pickSkuCol(platform, rows, sk){
   window._availColProbe=Object.assign(window._availColProbe||{},{[platform]:report});
   return best;
 }
+// Mean of the raw rows accumulated for one (day, SKU, metro) cell -> {wt_osa_ls, ds_listing} (2dp, null if no samples).
+function _availCityMean(cv){
+  if(!cv)return {wt_osa_ls:null,ds_listing:null};
+  return {
+    wt_osa_ls:cv.oN?Math.round((cv.oS/cv.oN)*100)/100:null,
+    ds_listing:cv.dN?Math.round((cv.dS/cv.dN)*100)/100:null
+  };
+}
 function procAvail(platform,rows){
   if(!rows||!rows.length){alert(platform+' Availability: empty file');return false;}
   const sk=Object.keys(rows[0]||{});
@@ -6458,7 +6474,13 @@ function procAvail(platform,rows){
     const slot=agg[monthKey][sku][day];
     if(!isNaN(osaLs))slot.osaLs_samples.push(osaLs);
     if(!isNaN(ds))slot.ds_samples.push(ds);
-    slot.cities[city]={wt_osa_ls:isNaN(osaLs)?null:Math.round(osaLs*100)/100, ds_listing:isNaN(ds)?null:Math.round(ds*100)/100};
+    // City/metro value = MEAN of every raw row that maps to this (day, SKU, metro). Previously this was
+    // `slot.cities[city]={...}` (last row wins) — for Flipkart (locality-level rows, ~125 per cell) the "city"
+    // OSA/DS was one arbitrary locality; for Zepto/Blinkit/IM/Amazon any metro fed by several raw cities
+    // (Delhi NCR, Rest) kept only the last one. Accumulate sums so the mean is order-independent.
+    const _cs=slot.cities[city]||(slot.cities[city]={oS:0,oN:0,dS:0,dN:0});
+    if(!isNaN(osaLs)){_cs.oS+=osaLs;_cs.oN++;}
+    if(!isNaN(ds)){_cs.dS+=ds;_cs.dN++;}
     parsed++;
   });
 
@@ -6484,7 +6506,7 @@ function procAvail(platform,rows){
         };
         // Accumulate city-level across days
         Object.keys(s.cities||{}).forEach(c=>{
-          const cv=s.cities[c];
+          const cv=_availCityMean(s.cities[c]);
           if(!cityAgg[c])cityAgg[c]={osaSum:0,osaCnt:0,dsSum:0,dsCnt:0};
           if(cv.wt_osa_ls!=null){cityAgg[c].osaSum+=cv.wt_osa_ls;cityAgg[c].osaCnt++;}
           if(cv.ds_listing!=null){cityAgg[c].dsSum+=cv.ds_listing;cityAgg[c].dsCnt++;}
@@ -6500,7 +6522,7 @@ function procAvail(platform,rows){
       // Per-day per-city snapshot (newest 14 days only — quota-safe; powers city-scoped day OSA)
       const _dcDays=Object.keys(allDays).map(Number).sort((a,b)=>b-a).slice(0,14);
       const daily_city={};
-      _dcDays.forEach(d=>{ const s=allDays[d]; const o={}; Object.keys(s.cities||{}).forEach(c=>{ const cv=s.cities[c]; o[c]=[cv.wt_osa_ls,cv.ds_listing]; }); daily_city[d]=o; });
+      _dcDays.forEach(d=>{ const s=allDays[d]; const o={}; Object.keys(s.cities||{}).forEach(c=>{ const cv=_availCityMean(s.cities[c]); o[c]=[cv.wt_osa_ls,cv.ds_listing]; }); daily_city[d]=o; });
       _delta.avail[mk][platform][sku]={daily,by_city,daily_city};
     });
   });
@@ -6560,9 +6582,23 @@ function procSoh(platform,rows){
   const monthKey=getActiveMonth();
   if(!_delta.soh)_delta.soh={};
   if(!_delta.soh[monthKey])_delta.soh[monthKey]={};
+  // Collapse guard: a new snapshot far below the one it replaces (or the recent weekly level) usually means
+  // a broken/partial source report (e.g. BigBasket W39 45,171 -> W40 1,980). Ask before overwriting good data.
+  window._sohCancelled=false;
+  try{
+    const prior=_delta.soh[monthKey][platform];
+    let prevTot=0; if(prior&&prior.data)Object.values(prior.data).forEach(d=>{prevTot+=(d&&d.total)||0;});
+    const hist=[]; try{ const hh=(_delta.soh_hist&&_delta.soh_hist[platform])||{}; Object.keys(hh).forEach(k=>{ if(hh[k]>0)hist.push(hh[k]); }); }catch(e){}
+    hist.sort((a,b)=>a-b); const med=hist.length?hist[Math.floor(hist.length/2)]:0;
+    const ref=Math.max(prevTot,med);
+    if(ref>0 && res.totalUnits<0.5*ref){
+      const ok2=(typeof confirm==='function')?confirm('\u26a0 '+platform+' SOH looks too low.\n\nNew file: '+Math.round(res.totalUnits).toLocaleString('en-IN')+' units\nPrevious: '+Math.round(ref).toLocaleString('en-IN')+' units ('+Math.round(res.totalUnits/ref*100)+'% of it)\n\nThe source report may be incomplete. Replace the stored snapshot anyway?'):true;
+      if(!ok2){window._sohCancelled=true;return false;}
+    }
+  }catch(e){console.warn('[SOH guard]',e);}
   _delta.soh[monthKey][platform]={data:res.data,last_updated:new Date().toISOString()};
   saveDB();_buildDB();
-  window._sohLastResult={platform,skuCount:res.skuCount,totalUnits:res.totalUnits,unmatchedSku:res.unmatchedSku,citiesCovered:res.citiesCovered};
+  window._sohLastResult={platform,skuCount:res.skuCount,totalUnits:res.totalUnits,unmatchedSku:res.unmatchedSku,citiesCovered:res.citiesCovered,blankCells:res.blankCells||0};
   console.log('[SOH '+platform+'] skus='+res.skuCount,'units='+res.totalUnits,'unmatched='+res.unmatchedSku);
   return true;
 }
@@ -6703,18 +6739,19 @@ function _sohBB(rows){
   const cityCol=sk.find(k=>k==='city')||sk.find(k=>/^city$/i.test(k))||'city';
   const skuCol=sk.find(k=>k==='sku_id')||sk.find(k=>/sku.?id/i.test(k))||'sku_id';
   const sohCol=sk.find(k=>k==='SOH')||sk.find(k=>/^soh$/i.test(k))||'SOH';
-  const data={};let unmatched=0,totalU=0;const cities=new Set();
+  const data={};let unmatched=0,totalU=0,blank=0;const cities=new Set();
   rows.forEach(r=>{
     const sku=_normSkuId(r[skuCol]);if(!sku)return;
     if(!DB.sku_master.BigBasket?.[sku]&&!SEED.sku_master.BigBasket?.[sku]){unmatched++;return;}
     const city=_sohCity(String(r[cityCol]||'').trim());
-    const u=parseFloat(r[sohCol])||0;
+    const _raw=parseFloat(r[sohCol]); if(isNaN(_raw))blank++;   // blank/non-numeric SOH cell: counted, never silently read as real stock
+    const u=isNaN(_raw)?0:_raw;
     if(!data[sku])data[sku]={total:0,by_city:{}};
     data[sku].total+=u;
     data[sku].by_city[city]=(data[sku].by_city[city]||0)+u;
     totalU+=u;cities.add(city);
   });
-  return{data,skuCount:Object.keys(data).length,totalUnits:totalU,unmatchedSku:unmatched,citiesCovered:cities.size};
+  return{data,skuCount:Object.keys(data).length,totalUnits:totalU,unmatchedSku:unmatched,citiesCovered:cities.size,blankCells:blank};
 }
 
 function _sohAmazon(rows){
@@ -6881,6 +6918,7 @@ function availSetWindow(w){
   if(_availCurrentPlat&&document.getElementById('availSkuView').style.display!=='none')availRenderSkuTable();
   if(_availCurrentSku&&document.getElementById('availCityView').style.display!=='none')_availRenderCityTable();
   // SOH Explorer FR% also follows this toggle now — re-render whichever SOH sub-view is visible.
+  try{ if(typeof _availRenderSohPlatformCards==='function')_availRenderSohPlatformCards(); }catch(e){ console.warn('SOH platform cards re-render failed',e); }
   const sohSkuEl=document.getElementById('availSohSkuView'), sohCityEl=document.getElementById('availSohCityView');
   if(sohSkuEl&&sohSkuEl.style.display!=='none'&&typeof _availRenderSohSkuTable==='function')_availRenderSohSkuTable();
   if(sohCityEl&&sohCityEl.style.display!=='none'&&typeof _availRenderSohCityTable==='function')_availRenderSohCityTable();
@@ -7080,19 +7118,21 @@ function _availComputeMTD(){
       // MTD GMV for this SKU
       const mtdGmv=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&_mtdDay(r.day)).reduce((s,r)=>s+r.gmv,0);
       const mtdUnits=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&_mtdDay(r.day)).reduce((s,r)=>s+r.units,0);
-      // Lost GMV: prefer platform-reported (IM only), else compute (1-OSA/100)/(OSA/100) * MTD GMV
+      // Lost GMV: COMPUTED on the MTD window for every platform = MTD GMV x (100-OSA)/OSA (OSA floored at OSA_LOSS_FLOOR).
+      // Instamart's PotentialGmvLoss is a ~30-day trailing platform figure (stays ~Rs 75L-1.16Cr whatever day of month the
+      // snapshot is taken), so mixing it into an "MTD" total overstated Instamart and disagreed with the Overview leaks.
+      // It is kept separately as platform_loss (shown on the Instamart card as a labelled 30-day platform figure).
       let lostGmv=0;
       const sohRec=platSoh[sku];
-      if(plat==='Instamart'&&sohRec&&sohRec.platform_loss){
-        lostGmv=sohRec.platform_loss;
-      }else if(avgOsa!=null&&avgOsa>0&&avgOsa<100){
+      if(avgOsa!=null&&avgOsa>0&&avgOsa<100){
         const _osaEff=Math.max(avgOsa,OSA_LOSS_FLOOR);
         lostGmv=mtdGmv*(100-_osaEff)/_osaEff;
       }
-      // DOI computation:
-      //  - IM provides native DaysOnHand (weighted avg, placeholders excluded) → use directly
-      //  - Other platforms: compute SOH / DRR
-      //  - Zero-velocity (DRR≈0 with stock): DOI = null, flagged 'no velocity' in UI
+      const platformLoss=(plat==='Instamart'&&sohRec&&sohRec.platform_loss)?sohRec.platform_loss:0;
+      // DOI computation (single basis for ALL platforms, incl. Instamart): SOH / DRR.
+      //  - SKU has a SOH row and velocity: SOH/DRR; SOH = 0 -> DOI 0 (stocked out, not null)
+      //  - SKU has NO SOH row (not in the SOH file): unknown -> DOI null, flag 'no_soh' (never treated as OUT)
+      //  - Stock but DRR~0: DOI null, flag 'no_velocity'
       const totalSoh=sohRec?sohRec.total:0;
       const _dayGmv=(_latestDayWithData>0)?aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&r.day===_latestDayWithData).reduce((s,r)=>s+r.gmv,0):0;
       let _dayLost=0;
@@ -7100,19 +7140,15 @@ function _availComputeMTD(){
       const mtdDaysElapsed=Object.keys(aprilPlatData.reduce((m,r)=>{if(_mtdDay(r.day))m[r.day]=1;return m;},{})).length||1;
       const drr=mtdUnits/mtdDaysElapsed;
       let doi=null;
-      let doiFlag=null; // null | 'no_velocity' | 'capped'
-      if(plat==='Instamart'&&sohRec&&sohRec.native_doh!=null){
-        // Use IM's own DaysOnHand (already weighted, placeholders removed)
-        doi=sohRec.native_doh;
-      }else if(drr>0.05&&totalSoh>0){
-        // Compute for non-IM platforms
-        doi=totalSoh/drr;
-      }else if(totalSoh>0&&drr<=0.05){
+      let doiFlag=null; // null | 'no_velocity' | 'no_soh' | 'capped'
+      if(drr>0.05){
+        if(sohRec){ doi=(totalSoh>0)?totalSoh/drr:0; }
+        else{ doiFlag='no_soh'; }
+      }else if(totalSoh>0){
         // Has stock but effectively no sales → exclude from DOI, flag it
-        doi=null;
         doiFlag='no_velocity';
       }
-      // Cap display at 90 days for computed (non-native) values to avoid absurd numbers
+      // Cap display at 90 days to avoid absurd numbers
       if(doi!=null&&doi>90){
         doi=90;
         doiFlag='capped';
@@ -7128,7 +7164,10 @@ function _availComputeMTD(){
         soh:totalSoh,
         doi,
         doi_flag:doiFlag,
+        has_soh:!!sohRec,
+        disc:(function(){ try{ return _sohIsDisc(skuLookup(plat,sku).name,plat); }catch(e){ return false; } })(),
         lost_gmv:lostGmv,
+        platform_loss:platformLoss,
         days_data:dayKeys.length,
         by_city:cityDetail,
         soh_by_city:_metroSohMTD,
@@ -7165,7 +7204,7 @@ function _availComputeMTD(){
       result[plat].summary.day_osa_ls=_wavg('day_osa_ls');
       result[plat].summary.day_ds_listing=_wavg('day_ds_listing');
       // --- DOI: median of valid (excludes no-velocity & nulls), robust to outliers ---
-      const doiList=skuList.filter(k=>k.doi!=null).map(k=>k.doi).sort((a,b)=>a-b);
+      const doiList=skuList.filter(k=>k.doi!=null&&!k.disc).map(k=>k.doi).sort((a,b)=>a-b);
       if(doiList.length){
         const mid=Math.floor(doiList.length/2);
         result[plat].summary.doi=doiList.length%2?doiList[mid]:(doiList[mid-1]+doiList[mid])/2;
@@ -7173,6 +7212,7 @@ function _availComputeMTD(){
         result[plat].summary.doi=null;
       }
       result[plat].summary.lost_gmv=skuList.reduce((s,k)=>s+k.lost_gmv,0);
+      result[plat].summary.platform_loss_30d=skuList.reduce((s,k)=>s+(k.platform_loss||0),0);
     }
   });
   // ── SOH-only fallback: any platform with a SOH snapshot but no OSA availability yet
@@ -7195,15 +7235,15 @@ function _availComputeMTD(){
       const mtdGmv=aprilPlatData.filter(r=>String(r.sku_code).trim()===sku&&_mtdDay(r.day)).reduce((s,r)=>s+r.gmv,0);
       const drr=mtdUnits/mtdDaysElapsed;
       let doi=null,doiFlag=null;
-      if(drr>0.05&&totalSoh>0)doi=totalSoh/drr;
-      else if(totalSoh>0&&drr<=0.05){doi=null;doiFlag='no_velocity';}
+      if(drr>0.05){ if(sohRec)doi=(totalSoh>0)?totalSoh/drr:0; else doiFlag='no_soh'; }
+      else if(totalSoh>0){doi=null;doiFlag='no_velocity';}
       if(doi!=null&&doi>90){doi=90;doiFlag='capped';}
       const _metroSohSolo=sohRec?_metroRollupSoh(plat,{soh:sohRec.total,by_facility:sohRec.by_facility,soh_by_city:sohRec.by_city}):{};
       const cityDetail={};
       Object.keys(_metroSohSolo).forEach(c=>{ cityDetail[c]={wt_osa_ls:null,ds_listing:null,soh:_metroSohSolo[c]||0}; });
       result[plat].skus[sku]={
         wt_osa_ls:null, ds_listing:null, day_osa_ls:null, day_ds_listing:null,
-        mtd_gmv:mtdGmv, mtd_units:mtdUnits, drr, soh:totalSoh, doi, doi_flag:doiFlag,
+        mtd_gmv:mtdGmv, mtd_units:mtdUnits, drr, soh:totalSoh, doi, doi_flag:doiFlag, has_soh:!!sohRec,
         lost_gmv:0, days_data:0, by_city:cityDetail,
         soh_by_city:_metroSohSolo, soh_by_city_raw:sohRec?(sohRec.by_city||{}):{}, by_facility:sohRec?(sohRec.by_facility||{}):{}
       };
@@ -7239,6 +7279,8 @@ function _availFmtPct(v){return v==null?'—':(Math.round(v*10)/10)+'%';}
 function _availFmtRupees(v){if(v==null||v===0)return'₹0';const s=v<0?'-':'';return s+'₹'+Math.round(Math.abs(v)).toLocaleString('en-IN');}
 function _availFmtDays(v,flag){
   if(flag==='no_velocity')return '<span style="color:#8B97AD;font-size:11px">— no velocity</span>';
+  if(flag==='no_soh')return '<span style="color:#8B97AD;font-size:11px">— no SOH row</span>';
+  if(v===0)return '<span style="color:#BD2635;font-weight:700">OUT</span>';
   if(v==null)return '—';
   if(flag==='capped'||v>=90)return '90+d';
   return Math.round(v)+'d';
@@ -7449,7 +7491,7 @@ function _availRenderPlatformCards(){
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Wt. OSA (LS) — ${winLbl}</div><div style="font-size:20px;font-weight:800;color:${osaCol}">${_availFmtPct(primaryOsa)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">${otherLbl}: <b>${_availFmtPct(secondaryOsa)}</b>${(s.osa_wow!=null)?' · <span title="OSA 7d avg vs prior 7d">'+ _osaWoWBadge({delta:s.osa_wow}) +' WoW</span>':''}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DS Listing — ${winLbl}</div><div style="font-size:20px;font-weight:800;color:${dsCol}">${_availFmtPct(primaryDs)}</div><div style="font-size:10px;color:var(--muted);margin-top:1px">${otherLbl}: <b>${_availFmtPct(secondaryDs)}</b></div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Median</div><div style="font-size:20px;font-weight:800;color:${doiCol}">${_availFmtDays(s.doi,s.doi>=90?'capped':null)}</div></div>
-        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Lost GMV (MTD)</div><div style="font-size:20px;font-weight:800;color:#BD2635">${_availFmtRupees(s.lost_gmv)}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Lost GMV (MTD)</div><div style="font-size:20px;font-weight:800;color:#BD2635">${_availFmtRupees(s.lost_gmv)}</div>${(plat==='Instamart'&&s.platform_loss_30d>0)?`<div style="font-size:9px;color:var(--muted);margin-top:2px" title="Instamart PotentialGmvLoss from the SOH file: platform-reported, ~30-day trailing window (not MTD)">Platform-reported (~30d): ${_availFmtRupees(s.platform_loss_30d)}</div>`:''}</div>
       </div>
       ${_availCityDoiBlock(plat,'osa')}
       <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:6px">GMV-weighted · Click to drill into SKUs →</div>
@@ -7493,30 +7535,19 @@ function _availRenderTrendingDegradation(){
   const host=document.getElementById('availTrendingDegradation');
   const mk=getViewingMonth();
   const availM=(DB.avail||{})[mk]||{};
-  // For each SKU×Platform, compare avg OSA last 7 days vs prior 7 days
-  const td=latestDay()||1;
-  const recent7=[];
-  const prev7=[];
-  for(let i=0;i<7;i++){
-    if(td-i>0)recent7.push(String(td-i));
-    if(td-i-7>0)prev7.push(String(td-i-7));
-  }
+  // For each SKU×Platform: trailing 7d avg OSA vs the 7d before it (same engine as the WoW chips —
+  // honours SELECTED_DAY, crosses into the prior month, needs >=3 sampled days in each window).
   const issues=[];
   _AVAIL_PLATFORMS.forEach(plat=>{
     const platAvail=availM[plat]||{};
     Object.keys(platAvail).forEach(sku=>{
-      // Backward-compatible: normalize old or new shape to {daily, by_city}
-      const skuRec=_availNormalizeSkuRec(platAvail[sku]);
-      const daily=skuRec.daily||{};
-      const recAvg=_avgAcrossDays(daily,recent7);
-      const prevAvg=_avgAcrossDays(daily,prev7);
-      if(recAvg!=null&&prevAvg!=null){
-        const drop=prevAvg-recAvg;
-        if(drop>=5){
-          const info=skuLookup(plat,sku);
-          if(CM_DISCONTINUED.has(cmKey(info.name)))return; // discontinued — residual sales, not real de-growth
-          issues.push({plat,sku,name:info.name,cat:info.cat,prevAvg,recAvg,drop});
-        }
+      const w=_osaWoWForSku(plat,sku);
+      if(!w||w.delta==null)return;
+      const drop=-w.delta;
+      if(drop>=5){
+        const info=skuLookup(plat,sku);
+        if(CM_DISCONTINUED.has(cmKey(info.name)))return; // discontinued — residual sales, not real de-growth
+        issues.push({plat,sku,name:info.name,cat:info.cat,prevAvg:w.prev,recAvg:w.cur,drop});
       }
     });
   });
@@ -7666,7 +7697,7 @@ function _applyAvailFilters(list,plat,view){
     if(st.city&&!_availSkuInCity(plat,r.sku,st.city))return false;
     if(st.skus&&!st.skus.has(r.sku))return false;
     if(st.po){ const po=(view==='osa')?_sohOpenPO(plat,r.name,null):r.openpo; const has=(po!=null&&po>0); if(st.po==='has'&&!has)return false; if(st.po==='none'&&has)return false; }
-    if(st.fr){ const f=(typeof _frForSku==='function')?_frForSku(plat,r.name,view==='osa'&&_availWindow==='mtd'):null; if(_frBand(f&&f.fr)!==st.fr)return false; }
+    if(st.fr){ const f=(typeof _frForSku==='function')?_frForSku(plat,r.name,_availWindow==='mtd'):null; if(_frBand(f&&f.fr)!==st.fr)return false; }
     if(view==='osa'&&st.osa){ if(_osaBand(r.wt_osa_ls)!==st.osa)return false; }
     if(view==='soh'&&st.ds){ if(_dsBand(r.dts)!==st.ds)return false; }
     return true;
@@ -7740,7 +7771,7 @@ function _osaScopedList(plat){
       // city DRR + MTD GMV from sales citysku
       let cu=0,cg=0; Object.keys(csRows).forEach(d=>{ if(+d>selCap)return; const cs=(csRows[d]||{})[_cityScope]; const v=cs&&cs[r.sku]; if(v){cu+=(v.units||0);cg+=(v.gmv||0);} });
       o.drr=cu/daysElapsed; o.mtd_gmv=cg;
-      o.doi=(o.drr>0.05&&o.soh>0)?Math.min(o.soh/o.drr,90):null; o.doi_flag=(o.doi===90)?'capped':((o.soh>0&&o.drr<=0.05)?'no_velocity':null);
+      o.doi=(o.drr>0.05&&o.soh!=null)?(o.soh>0?Math.min(o.soh/o.drr,90):0):null; o.doi_flag=(o.doi===90)?'capped':((o.soh>0&&o.drr<=0.05)?'no_velocity':null);
       const osaEff=(o.wt_osa_ls!=null&&o.wt_osa_ls>0)?Math.max(o.wt_osa_ls,OSA_LOSS_FLOOR):null;
       o.lost_gmv=(osaEff&&osaEff<100)?cg*(100-osaEff)/osaEff:0;
       // city today-window: latest daily_city day for OSA + that day's city GMV
@@ -8023,6 +8054,32 @@ function _sohFmtDTS(d){
   return Math.round(d)+'d';
 }
 
+// SOH freshness + sanity strip for a platform card: snapshot age (upload time) and a level check against
+// the platform's own stored weekly history (snapshot < 50% of the median of earlier weeks => likely a broken/partial source report).
+function _sohFreshnessInfo(plat){
+  const out={html:'',ageDays:null,collapsed:false};
+  try{
+    const mk=getViewingMonth(), rec=(((DB.soh||{})[mk]||{})[plat])||null;
+    const parts=[]; 
+    if(rec&&rec.last_updated&&mk===getActiveMonth()){
+      const t=new Date(rec.last_updated); const age=Math.floor((Date.now()-t.getTime())/86400000);
+      out.ageDays=age;
+      const col=age>=4?'#BD2635':(age>=2?'#EB8B2C':'#8B97AD');
+      parts.push(`<span style="color:${col};font-weight:${age>=2?700:500}">SOH as of ${t.toLocaleDateString('en-IN',{day:'numeric',month:'short'})}${age>=1?` · ${age}d old`:''}</span>`);
+    }
+    const hh=(_delta&&_delta.soh_hist&&_delta.soh_hist[plat])||null;
+    if(hh){
+      const wks=Object.keys(hh).sort(); const cur=hh[wks[wks.length-1]];
+      const prior=wks.slice(0,-1).slice(-6).map(w=>hh[w]).filter(v=>v>0).sort((a,b)=>a-b);
+      if(prior.length>=3&&cur>=0){
+        const med=prior.length%2?prior[(prior.length-1)/2]:(prior[prior.length/2-1]+prior[prior.length/2])/2;
+        if(cur<0.5*med){ out.collapsed=true; parts.push(`<span style="color:#BD2635;font-weight:700">⚠ SOH ${Math.round((1-cur/med)*100)}% below its recent level — verify source report</span>`); }
+      }
+    }
+    if(parts.length)out.html=`<div style="font-size:10px;margin:-6px 0 8px;display:flex;flex-direction:column;gap:2px">${parts.join('')}</div>`;
+  }catch(e){}
+  return out;
+}
 function _availRenderSohPlatformCards(){
   const host=document.getElementById('availSohPlatformCards');
   if(!host)return;
@@ -8034,11 +8091,13 @@ function _availRenderSohPlatformCards(){
     if(!pd||!pd.summary||!pd.summary.has_data){
       return `<div class="card" style="opacity:.5"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px">${plat}</b></div><div style="font-size:11px;color:var(--muted)">No SOH data — upload SOH file</div></div>`;
     }
-    const skus=Object.values(pd.skus);
+    // Same SKU set as the SOH table below (discontinued and dead rows excluded) so card counts == table rows.
+    const skus=Object.values(pd.skus).filter(k=>!k.disc&&((k.soh||0)>0||(k.drr||0)>0));
     const totalSoh=skus.reduce((s,k)=>s+(k.soh||0),0);
-    // # SKUs at risk: days-to-stockout < 7
+    // # SKUs at risk: days-to-stockout < 7 (SKUs absent from the SOH file are unknown, not at risk)
     let atRisk=0;
-    skus.forEach(k=>{const dts=_sohDaysToStockout(k.soh,k.drr); if(dts!=null&&dts<7)atRisk++;});
+    skus.forEach(k=>{ if(k.has_soh===false)return; const dts=_sohDaysToStockout(k.soh,k.drr); if(dts!=null&&dts<7)atRisk++;});
+    const _sohInfo=_sohFreshnessInfo(plat);
     const doiList=skus.filter(k=>k.doi!=null).map(k=>k.doi).sort((a,b)=>a-b);
     const doiMed=doiList.length?(doiList.length%2?doiList[Math.floor(doiList.length/2)]:(doiList[doiList.length/2-1]+doiList[doiList.length/2])/2):null;
     const riskCol=atRisk>0?'#BD2635':'#1E7A46';
@@ -8047,13 +8106,20 @@ function _availRenderSohPlatformCards(){
         <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;background:${c};border-radius:50%"></span><b style="font-size:14px;color:#22304A">${plat}</b></div>
         <span style="font-size:10px;color:var(--muted)">${skus.length} SKUs</span>
       </div>
+      ${_sohInfo.html}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
-        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Total SOH</div><div style="font-size:20px;font-weight:800;color:#22304A">${Math.round(totalSoh).toLocaleString('en-IN')}<span style="font-size:11px;color:var(--muted);font-weight:400"> u</span></div>${(()=>{const sw=_sohWoWForPlat(plat); if(!sw||sw.cur==null)return ''; const d=sw.delta; const b=(d==null)?'<span style="font-size:9px;color:var(--muted)">building WoW…</span>':(d>=1?`<span style="color:#1E7A46;font-size:10px;font-weight:700">▲ ${d.toFixed(0)}% WoW</span>`:(d<=-1?`<span style="color:#BD2635;font-size:10px;font-weight:700">▼ ${Math.abs(d).toFixed(0)}% WoW</span>`:'<span style="color:var(--muted);font-size:10px;font-weight:700">▬ flat WoW</span>')); return `<div style="margin-top:1px">${b}</div>`;})()}</div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Total SOH</div><div style="font-size:20px;font-weight:800;color:#22304A">${Math.round(totalSoh).toLocaleString('en-IN')}<span style="font-size:11px;color:var(--muted);font-weight:400"> u</span></div>${(()=>{const sw=_sohWoWForPlat(plat); if(!sw||sw.cur==null)return ''; const d=sw.delta; const b=(d==null)?'<span style="font-size:9px;color:var(--muted)">building WoW…</span>':(d>=1?`<span style="color:#1E7A46;font-size:10px;font-weight:700">▲ ${d.toFixed(0)}% ${sw.gap>1?'vs '+sw.gap+'w ago':'WoW'}</span>`:(d<=-1?`<span style="color:#BD2635;font-size:10px;font-weight:700">▼ ${Math.abs(d).toFixed(0)}% ${sw.gap>1?'vs '+sw.gap+'w ago':'WoW'}</span>`:'<span style="color:var(--muted);font-size:10px;font-weight:700">▬ flat WoW</span>')); return `<div style="margin-top:1px">${b}</div>`;})()}</div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">DOI Median</div><div style="font-size:20px;font-weight:800;color:${_availColor(doiMed,'doi')}">${_availFmtDays(doiMed,doiMed>=90?'capped':null)}</div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">SKUs at Risk</div><div style="font-size:20px;font-weight:800;color:${riskCol}">${atRisk}<span style="font-size:11px;color:var(--muted);font-weight:400"> / ${skus.length}</span></div></div>
         <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">&lt;7d Stockout</div><div style="font-size:13px;font-weight:700;color:${riskCol};padding-top:6px">${atRisk>0?'⚠ Action needed':'✓ Healthy'}</div></div>
       </div>
-      ${(()=>{const w=_frWoWForPlat(plat); if(!w||w.cur==null)return '';
+      ${(()=>{
+        if(_availWindow==='mtd'){   // MTD toggle: platform fill rate over 1st of month → latest delivered PO (no WoW comparator)
+          const _F=_frState(), pm=(_F&&_F.byPlatMtd)?_F.byPlatMtd[plat]:null;
+          if(!pm||pm.fr==null)return '';
+          return `<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:7px;margin-top:4px"><span style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Fill Rate · MTD</span><span style="font-size:13px;font-weight:800;color:${_frColor(pm.fr)}">${Math.round(pm.fr)}% <span style="font-size:10px;font-weight:600;color:var(--muted)">${pm.nPO} POs</span></span></div>`;
+        }
+        const w=_frWoWForPlat(plat); if(!w||w.cur==null)return '';
         const arr=(w.delta==null)?'<span style="color:var(--muted)">· no prior wk</span>':(w.delta>=0.5?`<span style="color:#1E7A46">▲ ${w.delta.toFixed(1)}pp</span>`:(w.delta<=-0.5?`<span style="color:#BD2635">▼ ${Math.abs(w.delta).toFixed(1)}pp</span>`:'<span style="color:var(--muted)">▬ flat</span>'));
         return `<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:7px;margin-top:4px"><span style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Fill Rate · 10d</span><span style="font-size:13px;font-weight:800;color:${_frColor(w.cur)}">${Math.round(w.cur)}% <span style="font-size:10px;font-weight:600">${arr} WoW</span></span></div>`;
       })()}
@@ -8146,9 +8212,7 @@ function _sohCityReorderHtml(plat,skuName,byCityGranular){
     <div style="font-size:10px;color:var(--muted);margin-top:6px">Metro level, not facility level: sales data is metro-grouped, so per-facility demand can't be split. SOH and open PO here are the granular cities rolled up. DRR from last ${r.nDays} day(s) of sales.</div>`;
 }
 
-// Best available days-to-stockout per platform:
-//  - Instamart: use its native DaysOnHand (stored as k.doi) — store-weighted, more accurate
-//  - Others: compute SOH ÷ DRR
+// Days-to-stockout, all platforms: SOH ÷ DRR (Instamart native DaysOnHand no longer used).
 // Returns {days:number|null, flag:'no_velocity'|'capped'|null}. days null = no velocity.
 // Reorder cover target, in days, per platform. Blinkit confirmed at 8d (Jul-2026):
 // their WH holds ~8 days across backend + frontend, and our Blinkit SOH parser composes
@@ -8161,12 +8225,10 @@ function _sohCoverDays(plat){
   return (typeof v==='number'&&v>0)?v:_SOH_COVER_DEFAULT;
 }
 function _sohBestDTS(plat,k){
-  if(plat==='Instamart'&&k.doi!=null){
-    let d=k.doi, flag=k.doi_flag||null;
-    return {days:d, flag};
-  }
+  // Single basis for ALL platforms (incl. Instamart): SOH / DRR (decision 10-Oct-2026: real-time SOH over Instamart's native DOH).
   const drr=k.drr||0, soh=k.soh||0;
   if(!drr||drr<=0.05)return {days:null, flag:'no_velocity'};
+  if(k.has_soh===false)return {days:null, flag:'no_soh'};   // SKU absent from the SOH file: stock unknown, never "OUT"
   if(soh<=0)return {days:0, flag:null};
   let d=soh/drr, flag=null;
   if(d>90){d=90; flag='capped';}
@@ -8179,6 +8241,7 @@ function _sohBestDTS(plat,k){
 function _sohReorderQty(k,plat,openPo){
   const drr=k.drr||0, soh=k.soh||0;
   if(!drr||drr<=0.05)return null;
+  if(k.has_soh===false)return null;   // no SOH row -> stock unknown -> do not size a full-cover reorder against 0
   const inbound=(typeof openPo==='number'&&isFinite(openPo)&&openPo>0)?openPo:0;
   return Math.max(0, Math.ceil(Math.round((drr*_sohCoverDays(plat) - soh - inbound)*1e6)/1e6));   // round to 1e-6 first: float noise (e.g. 80966.00000000001) must not add a phantom unit
 }
@@ -8704,8 +8767,7 @@ function _sohOrphans(plat){
     if(!(tot>0))return;                                       // no stock -> nothing to add
     var units=0, cs=String(code).trim(); sales.forEach(function(r){ if(String(r.sku_code).trim()===cs&&r.day>=1&&r.day<=latest)units+=r.units; });
     var drr=units/nd, doi=null, flag=null;
-    if(plat==='Instamart'&&sr.native_doh!=null){ doi=sr.native_doh; }
-    else if(drr>_SX.MINV){ doi=tot/drr; } else { flag='no_velocity'; }
+    if(drr>_SX.MINV){ doi=tot/drr; } else { flag='no_velocity'; }
     if(doi!=null&&doi>90){ doi=90; flag='capped'; }
     var rec2={soh:tot,by_facility:sr.by_facility,soh_by_city:sr.by_city};
     var k={soh:tot,drr:drr,mtd_units:units,doi:doi,doi_flag:flag,soh_by_city:_metroRollupSoh(plat,rec2),soh_by_city_raw:sr.by_city||{},by_facility:sr.by_facility||{},by_city:{},daily_city:{},wt_osa_ls:null};
@@ -8724,7 +8786,7 @@ function _sohAppendOrphans(plat,list){
       var m=Object.assign({},hit.sohM||_metroRollupSoh(plat,hit.k));
       Object.keys(o.sohM).forEach(function(c){ m[c]=(m[c]||0)+o.sohM[c]; });
       hit.sohM=m; hit.soh+=o.soh; hit.nCities=Object.keys(m).filter(function(c){return (m[c]||0)>0;}).length;
-      if(!(plat==='Instamart'&&hit.k.doi!=null)){ var b=_sohBestDTS(plat,{soh:hit.soh,drr:hit.drr,doi:null}); hit.dts=b.days; hit.dts_flag=b.flag; }
+      { var b=_sohBestDTS(plat,{soh:hit.soh,drr:hit.drr,doi:null}); hit.dts=b.days; hit.dts_flag=b.flag; }
       hit.reorder=_sohReorderQty({soh:hit.soh,drr:hit.drr},plat,hit.openpo);
       hit.note='Incl. '+o.soh.toLocaleString('en-IN')+' units under a 2nd code (not in OSA feed)';
       info.merged.push(o.name); info.units+=o.soh;
@@ -8812,7 +8874,7 @@ function _sohExportXlsx(){
   var notes=[];
   if(filtered)notes.push('Filtered view — matches the table on screen');
   if(orph.merged.length||orph.added.length)notes.push(orph.units.toLocaleString('en-IN')+' units held under codes with no OSA row are included (not shown on screen): '+orph.merged.concat(orph.added).join(', '));
-  var sub='Days to Stockout = '+(plat==='Instamart'?'Instamart native DaysOnHand (SOH ÷ DRR where no native value)':'SOH ÷ DRR')+', capped 90 · Reorder = DRR × '+cover+'d cover − SOH − open PO, netted India-wide · RAG: <3d red · <7d amber · FR ≥95 / 85 · Totals, counts and colours are live: delete or filter rows and they recalculate'+(notes.length?' · '+notes.join(' · '):'');
+  var sub='Days to Stockout = SOH ÷ DRR (all platforms, incl. Instamart), capped 90 · Reorder = DRR × '+cover+'d cover − SOH − open PO, netted India-wide · RAG: <3d red · <7d amber · FR ≥95 / 85 · Totals, counts and colours are live: delete or filter rows and they recalculate'+(notes.length?' · '+notes.join(' · '):'');
   var ws1=_osaXSheet(X,styled,{title:'GAW · '+plat+' · SOH Explorer · '+mk,sub:sub,cols:cols,
     rows:xrows.concat([{t:'s',fmt:fmtCnt,v:s1},{t:'s',fmt:fmtCnt,v:s2},{t:'s',fmt:fmtCnt,v:s3},{t:'t',v:tot}]),freeze:{x:1,y:3}});
   X.utils.book_append_sheet(wb,ws1,safe+' SOH');
@@ -9320,7 +9382,7 @@ function _osaExportXlsx(forceAll){
     var mkRow=function(name,cat,k,o){
       var doiN=(k.doi==null)?null:Math.round(k.doi);
       return {name:name,cat:((typeof normCat==='function'?normCat(cat):cat)||''),g:_osaR4(k.mtd_gmv||0),osaMtd:_osaR4(k.wt_osa_ls),osaToday:_osaR4(k.day_osa_ls),wow:o.wow,fr:o.fr,frPlat:o.frPlat,ds:_osaR4(o.ds),dsWow:o.dsWow,
-        doi:doiN,doiTxt:(k.doi==null&&k.doi_flag==='no_velocity')?'no velocity':'',doiCap:(k.doi_flag==='capped'),
+        doi:doiN,doiTxt:(k.doi==null&&k.doi_flag==='no_velocity')?'no velocity':((k.doi==null&&k.doi_flag==='no_soh')?'no SOH row':''),doiCap:(k.doi_flag==='capped'),
         soh:(k.soh==null?null:Math.round(k.soh)),drr:Math.round(k.drr||0)};
     };
     if(plat===_availCurrentPlat && forceAll!==true && typeof _osaScopedList==='function'){
@@ -9555,7 +9617,7 @@ function _osaCombinedExportXlsx(){
     var M=lowList.length, L3=3+M, R3=function(c){var l=L(c);return l+'4:'+l+L3;};
     rows3=lowList.map(function(c,i){
       var ww=(c.pairs.length===1&&typeof _osaWoWForSku==='function')?_osaWoWForSku(c.plat,c.code):null;
-      var doiV=(c.doi==null)?(c.doiFlag==='no_velocity'?'no velocity':''):Math.round(c.doi);
+      var doiV=(c.doi==null)?(c.doiFlag==='no_velocity'?'no velocity':(c.doiFlag==='no_soh'?'no SOH row':'')):Math.round(c.doi);
       var fmt={}; if(c.doiFlag==='capped')fmt[7]='0"+"';
       return {t:'d',fmt:fmt,v:[c.plat,c.name,c.cat,c.today,c.mtd,(ww&&ww.delta!=null)?_osaR1(ww.delta):null,c.ds,doiV,Math.round(c.soh),Math.round(c.drr),c.g,{f:'SUBTOTAL(103,$B'+(4+i)+')',v:1}]};
     });
@@ -9587,7 +9649,7 @@ function _availRenderSohSkuTable(){
     return `<tr style="cursor:pointer;background:${tint}" onclick="availSohDrillToSku('${plat}','${r.sku}')">
     <td style="padding:8px 10px;font-size:12px"><b>${r.name}</b><div style="font-size:10px;color:var(--muted)">${r.cat}</div></td>
     <td style="padding:8px 10px;font-size:12px;font-weight:700">${Math.round(r.soh).toLocaleString('en-IN')}</td>
-    <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(r.dts)};font-weight:700">${_sohFmtDTS(r.dts)}${r.dts_flag==='capped'?'<span style="font-size:9px;color:#8B97AD">+</span>':''}</td>
+    <td style="padding:8px 10px;font-size:12px;color:${_sohColorDTS(r.dts)};font-weight:700">${r.dts_flag==='no_soh'?'<span style="color:#8B97AD;font-size:11px">— no SOH row</span>':_sohFmtDTS(r.dts)}${r.dts_flag==='capped'?'<span style="font-size:9px;color:#8B97AD">+</span>':''}</td>
     <td style="padding:8px 10px;font-size:12px">${_sohPoCell(r.openpo)}</td>
     ${_showFR?_frCellHtml(plat,r.name,_availWindow==='mtd'):''}
     <td style="padding:8px 10px;font-size:12px">${reorderTxt}</td>
@@ -9595,7 +9657,7 @@ function _availRenderSohSkuTable(){
     <td style="padding:8px 10px;font-size:12px;color:var(--muted)">${r.nCities} cities</td>
   </tr>`;}).join('');
   document.getElementById('availSohSkuTable').innerHTML=`<div class="scroll-table"><table style="width:100%;min-width:680px;border-collapse:collapse"><thead><tr style="background:#EEF1F6"><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SKU</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">SOH (units)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Days to Stockout</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Open PO</th>${_showFR?`<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Fill Rate, ${_availWindow==='mtd'?'month-to-date':'last 10 days'}, delivered POs">FR% (${_availWindow==='mtd'?'MTD':'10d'})</th>`:''}<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)" title="Units to add for ${_sohCoverDays(plat)}-day cover, net of SOH and inbound open PO">Reorder (${_sohCoverDays(plat)}d)</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">DRR</th><th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Spread</th></tr></thead><tbody>${rows}</tbody></table></div>
-  <div style="font-size:10px;color:var(--muted);margin-top:8px">Days to Stockout: ${plat==='Instamart'?'Instamart native DaysOnHand':'SOH ÷ DRR'}. Reorder (${_sohCoverDays(plat)}d) = units to add for ${_sohCoverDays(plat)}-day cover, net of current stock and inbound open PO.${plat==='Blinkit'?' Blinkit uses an 8-day target — their WH holds ~8d across backend + frontend.':''} Open PO = open indent units inbound (tracker \u00D7 SN) \u2014 upload both in the Upload tab. Rows tinted <span style="color:#BD2635">red &lt;3d</span> / <span style="color:#EB8B2C">amber &lt;7d</span>.</div>`;
+  <div style="font-size:10px;color:var(--muted);margin-top:8px">Days to Stockout: SOH ÷ DRR. Reorder (${_sohCoverDays(plat)}d) = units to add for ${_sohCoverDays(plat)}-day cover, net of current stock and inbound open PO.${plat==='Blinkit'?' Blinkit uses an 8-day target — their WH holds ~8d across backend + frontend.':''} Open PO = open indent units inbound (tracker \u00D7 SN) \u2014 upload both in the Upload tab. Rows tinted <span style="color:#BD2635">red &lt;3d</span> / <span style="color:#EB8B2C">amber &lt;7d</span>.</div>`;
 }
 
 function availSohDrillToSku(plat,sku){
@@ -9635,7 +9697,7 @@ function _availRenderSohCityTable(){
   const reorderCol=(reorder==null)?'#8B97AD':(reorder===0)?'#1E7A46':'#103E70';
   const summary=`<div style="padding:12px;background:#EEF1F6;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Total SOH</div><div style="font-size:16px;font-weight:800">${Math.round(k.soh||0).toLocaleString('en-IN')} u</div></div>
-    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Days to Stockout</div><div style="font-size:16px;font-weight:800;color:${_sohColorDTS(best.days)}">${_sohFmtDTS(best.days)}${best.flag==='capped'?'+':''}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Days to Stockout</div><div style="font-size:16px;font-weight:800;color:${_sohColorDTS(best.days)}">${best.flag==='no_soh'?'<span style="color:#8B97AD;font-size:11px">— no SOH row</span>':_sohFmtDTS(best.days)}${best.flag==='capped'?'+':''}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Reorder (${_sohCoverDays(plat)}d)</div><div style="font-size:16px;font-weight:800;color:${reorderCol}">${reorderTxt}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">Incoming PO</div><div style="font-size:16px;font-weight:800;color:${openPoTotal?'#1E7A46':'#8B97AD'}">${openPoTotal==null?'\u2014':openPoTotal.toLocaleString('en-IN')+' u'}</div></div>
     <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">DRR</div><div style="font-size:16px;font-weight:800">${Math.round(drr)}u/d</div></div>
@@ -10287,10 +10349,20 @@ function _applyGHPayload(payload,logFn,manual){
         }
       });
     }
-    // avail: month → platform → sku  (preserve at platform granularity)
+    // avail: month → platform → sku. Platform bucket: existing rule (local wins when it has more SKUs).
+    // Then, per SKU, keep whichever record carries MORE daily days — avail uploads are full-MTD so a record
+    // with more days is always the newer/fuller one; this stops an older day-trimmed copy overwriting a full one.
     Object.keys(_delta.avail||{}).forEach(mk=>{
       if(!merged.avail[mk]){ merged.avail[mk]=_delta.avail[mk]; return; }
+      const _cloudSnap={}; Object.keys(merged.avail[mk]).forEach(pl=>{ _cloudSnap[pl]=merged.avail[mk][pl]; });
       _mergeKeepLocal(_delta.avail[mk], merged.avail[mk], 1);
+      Object.keys(_delta.avail[mk]||{}).forEach(pl=>{
+        const L=_delta.avail[mk][pl]||{}, C=_cloudSnap[pl]||{}, M=merged.avail[mk][pl]; if(!M)return;
+        const _nd=r=>Object.keys((r&&r.daily)||{}).length;
+        const all=new Set([...Object.keys(L),...Object.keys(C)]);
+        const out={}; all.forEach(sk=>{ const l=L[sk], c=C[sk]; out[sk]=!l?c:(!c?l:(_nd(l)>_nd(c)?l:(_nd(c)>_nd(l)?c:(M[sk]||c)))); });
+        merged.avail[mk][pl]=out;
+      });
     });
     // soh: month → platform → {data,...}  (preserve whole platform record if local newer)
     Object.keys(_delta.soh||{}).forEach(mk=>{
@@ -11879,7 +11951,14 @@ function _frAggregateWindow(all,idx,hasIss,rangeStart,rangeEnd){
       });
     }
   });
-  Object.keys(byPlat).forEach(p=>{const o=byPlat[p];o.fr=o.poVal>0?(o.invVal/o.poVal*100):null;});
+  // Platform FR = quantity basis (Σissued ÷ Σindent over mapped, non-discontinued SKUs) so the 10d and MTD
+  // toggles and the WoW delta share one definition. Value basis (invVal/poVal) kept as frVal; it is the
+  // fallback only when no issued-qty data exists for the platform.
+  Object.keys(byPlat).forEach(p=>{const o=byPlat[p];
+    o.frVal=o.poVal>0?(o.invVal/o.poVal*100):null;
+    let ind=0,iss=0; if(bySku[p])Object.values(bySku[p]).forEach(x=>{ind+=x.indent||0;iss+=x.issued||0;});
+    if(ind>0){o.fr=iss/ind*100;o.basis='qty';} else {o.fr=o.frVal;o.basis='value';}
+  });
   Object.keys(bySku).forEach(p=>Object.keys(bySku[p]).forEach(c=>{const o=bySku[p][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;}));
   Object.keys(bySkuCity).forEach(p=>Object.keys(bySkuCity[p]).forEach(ct=>Object.keys(bySkuCity[p][ct]).forEach(c=>{const o=bySkuCity[p][ct][c];o.fr=o.indent>0?(o.issued/o.indent*100):null;})));
   return {bySku,byPlat,bySkuCity,nWin};
